@@ -14,7 +14,7 @@ services:
       - hboo-dev
 
   mysql:
-    image: mysql:8.0
+    image: mysql:8.0.46
     container_name: hboo-dev-mysql
     restart: unless-stopped
     environment:
@@ -37,6 +37,20 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    networks:
+      - hboo-dev
+
+  adminer:
+    image: adminer:5
+    container_name: hboo-dev-adminer
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    ports:
+      - "127.0.0.2:8080:8080"
     networks:
       - hboo-dev
 

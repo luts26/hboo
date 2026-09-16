@@ -47,6 +47,12 @@ https://dev.hboo.local
     -> hboo-dev-mysql
     -> hboo_dev
     -> synthetic data only
+
+Adminer:
+
+```text
+http://dev.hboo.local:8080
+```
 ```
 
 The web document root is `frontend/`. Public URLs do not include `/frontend/`:
@@ -105,11 +111,13 @@ HTTP            -> 127.0.0.2:80
 HTTPS           -> 127.0.0.2:443
 Backend         -> 127.0.0.2:3000
 MySQL           -> 127.0.0.2:3307
+Adminer         -> 127.0.0.2:8080
 ```
 
 The MySQL service uses the persistent Docker volume `hboo-dev-mysql-data`.
 `compose.yaml` always creates and uses `hboo_dev`; changing `DB_NAME` in a
 repository `.env` file must not select another database.
+DEV MySQL is Docker-only and contains synthetic data only.
 
 Local database dumps are imported explicitly and must not be committed. Public development data lives in sanitized schema/migration/seed files under `docker/mysql/`.
 
@@ -143,20 +151,26 @@ https://hboo.local
     -> hboo-real-nginx
     -> ~/hboo-runtime/app/frontend
     -> hboo-real-backend
-    -> host-installed MySQL
+    -> hboo-real-mysql
     -> real database
     -> real bank integrations
 ```
 
-REAL MySQL must be host-installed MySQL, not the DEV Docker MySQL container.
-For Linux Docker-to-host connectivity, the REAL template uses:
+REAL MySQL runs in a dedicated Docker container, not in the DEV Docker MySQL
+container. The REAL backend connects to it internally:
 
 ```text
-extra_hosts:
-  - "host.docker.internal:host-gateway"
-
-DB_HOST=host.docker.internal
+DB_HOST=mysql
 DB_PORT=3306
+```
+
+The REAL MySQL service binds `127.0.0.1:3306:3306` temporarily so the
+host-running Spring bank service can connect to the real database.
+
+REAL Adminer:
+
+```text
+http://hboo.local:8080
 ```
 
 REAL host bindings in the template:
@@ -166,7 +180,8 @@ hboo.local -> 127.0.0.1
 HTTP       -> 127.0.0.1:80
 HTTPS      -> 127.0.0.1:443
 Backend    -> 127.0.0.1:3000
-MySQL      -> host MySQL on 127.0.0.1:3306, reached from containers as host.docker.internal:3306
+MySQL      -> 127.0.0.1:3306
+Adminer    -> 127.0.0.1:8080
 ```
 
 DEV and REAL can run simultaneously because DEV binds to `127.0.0.2` and REAL

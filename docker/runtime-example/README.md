@@ -24,17 +24,24 @@ REAL source isolation:
 
 REAL MySQL:
 
-- Use host-installed MySQL.
-- Do not add a MySQL service to `compose.real.yaml`.
-- On Linux, containers reach host MySQL through:
+- Use the dedicated Docker MySQL service `hboo-real-mysql`.
+- Store real database state in Docker volume `hboo-real-mysql-data`.
+- Keep it separate from DEV volume `hboo-dev-mysql-data`.
+- The REAL backend connects internally through:
 
 ```text
-DB_HOST=host.docker.internal
+DB_HOST=mysql
 DB_PORT=3306
 ```
 
-The `extra_hosts` entry in `compose.real.yaml` maps `host.docker.internal` to
-the Docker host gateway.
+The REAL MySQL service also binds `127.0.0.1:3306:3306` so the host-running
+Spring bank service can connect during the transition period.
+
+REAL Adminer:
+
+```text
+http://hboo.local:8080
+```
 
 REAL credentials:
 

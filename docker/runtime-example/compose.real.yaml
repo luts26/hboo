@@ -15,6 +15,42 @@ services:
     networks:
       - hboo-real
 
+  mysql:
+    image: mysql:8.0.46
+    container_name: hboo-real-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${REAL_DB_NAME:?set REAL_DB_NAME in real.env}
+      MYSQL_USER: ${REAL_DB_USER:?set REAL_DB_USER in real.env}
+      MYSQL_PASSWORD: ${REAL_DB_PASSWORD:?set REAL_DB_PASSWORD in real.env}
+      MYSQL_ROOT_PASSWORD: ${REAL_DB_ROOT_PASSWORD:?set REAL_DB_ROOT_PASSWORD in real.env}
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - hboo-real-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - hboo-real
+
+  adminer:
+    image: adminer:5
+    container_name: hboo-real-adminer
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - hboo-real
+
   backend:
     build:
       context: ./app/backend
@@ -22,23 +58,28 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: production
-      DB_HOST: ${REAL_DB_HOST:?set REAL_DB_HOST in real.env}
-      DB_PORT: ${REAL_DB_PORT:?set REAL_DB_PORT in real.env}
+      DB_HOST: mysql
+      DB_PORT: 3306
       DB_NAME: ${REAL_DB_NAME:?set REAL_DB_NAME in real.env}
       DB_USER: ${REAL_DB_USER:?set REAL_DB_USER in real.env}
       DB_PASSWORD: ${REAL_DB_PASSWORD:?set REAL_DB_PASSWORD in real.env}
       BANK_SERVICE_URL: ${REAL_BANK_SERVICE_URL:?set REAL_BANK_SERVICE_URL in real.env}
       BANK_SERVICE_USER: ${REAL_BANK_SERVICE_USER:?set REAL_BANK_SERVICE_USER in real.env}
       BANK_SERVICE_PASSWORD: ${REAL_BANK_SERVICE_PASSWORD:?set REAL_BANK_SERVICE_PASSWORD in real.env}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     expose:
       - "3000"
     ports:
       - "${REAL_BACKEND_HOST:-127.0.0.1}:${REAL_BACKEND_PORT:-3000}:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
     networks:
       - hboo-real
 
 networks:
   hboo-real:
     name: hboo-real-network
+
+volumes:
+  hboo-real-mysql-data:
+    name: hboo-real-mysql-data
