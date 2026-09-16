@@ -1,0 +1,66 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: hboo-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - hboo-dev
+
+  mysql:
+    image: mysql:8.0
+    container_name: hboo-mysql
+    restart: unless-stopped
+    environment:
+      # Local development defaults only. Override via a private .env file.
+      MYSQL_DATABASE: ${DB_NAME:-hboo_dev}
+      MYSQL_USER: ${DB_USER:-hboo_dev}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-change_me}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me_root}
+    ports:
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - hboo-dev
+
+  backend:
+    build:
+      context: ./backend
+    container_name: hboo-backend
+    restart: unless-stopped
+    environment:
+      # Local development defaults only. Override via a private .env file.
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-hboo_dev}
+      DB_USER: ${DB_USER:-hboo_dev}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me}
+      BANK_SERVICE_URL: ${BANK_SERVICE_URL}
+      BANK_SERVICE_USER: ${BANK_SERVICE_USER}
+      BANK_SERVICE_PASSWORD: ${BANK_SERVICE_PASSWORD}
+    ports:
+      - "3000:3000"
+    expose:
+      - "3000"
+    networks:
+      - hboo-dev
+
+networks:
+  hboo-dev:
+    name: hboo-dev
+
+volumes:
+  mysql-data:
