@@ -1,4 +1,4 @@
-# HBOO — Home Bookkeeping
+# HBOO - Home Bookkeeping
 
 A personal finance application for managing bank balances, transactions, and financial plans.
 
