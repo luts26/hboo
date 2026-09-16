@@ -1662,12 +1662,29 @@ img.pb-icon {
 /*	border-radius: 10px;*/
 /*	box-shadow: -7px -7px 17px #ffffff,*/
 /*				7px 7px 17px rgba(70,70,70,.15);*/
+	align-items: center;
 	color: #778ba5;
 	cursor: pointer;
+	display: flex;
+	gap: .45rem;
 	font-weight: 800;
 	padding: 0 15px 20px;
 	margin: 5px 10px;
 	position: relative;
+}
+
+.environment-badge {
+	border-radius: 5px;
+	display: inline-flex;
+	font-size: 8pt;
+	font-weight: 900;
+	line-height: 1;
+	padding: .22rem .35rem;
+}
+
+.environment-badge-dev {
+	background: #2563eb;
+	color: #fff;
 }
 
 .app-name:after {
@@ -2452,6 +2469,11 @@ img.pb-icon {
 	background: #222;
 	border-color: transparent;
 	color: #ddd;
+}
+
+.dark-theme .environment-badge-dev {
+	background: #60a5fa;
+	color: #111827;
 }
 
 .dark-theme .header-utility-menu {

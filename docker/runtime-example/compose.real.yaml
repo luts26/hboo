@@ -1,0 +1,44 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: hboo-real-nginx
+    restart: unless-stopped
+    ports:
+      - "${REAL_HTTP_HOST:-127.0.0.1}:${REAL_HTTP_PORT:-80}:80"
+      - "${REAL_HTTPS_HOST:-127.0.0.1}:${REAL_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./app/frontend:/usr/share/nginx/html:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+    networks:
+      - hboo-real
+
+  backend:
+    build:
+      context: ./app/backend
+    container_name: hboo-real-backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      DB_HOST: ${REAL_DB_HOST:?set REAL_DB_HOST in real.env}
+      DB_PORT: ${REAL_DB_PORT:?set REAL_DB_PORT in real.env}
+      DB_NAME: ${REAL_DB_NAME:?set REAL_DB_NAME in real.env}
+      DB_USER: ${REAL_DB_USER:?set REAL_DB_USER in real.env}
+      DB_PASSWORD: ${REAL_DB_PASSWORD:?set REAL_DB_PASSWORD in real.env}
+      BANK_SERVICE_URL: ${REAL_BANK_SERVICE_URL:?set REAL_BANK_SERVICE_URL in real.env}
+      BANK_SERVICE_USER: ${REAL_BANK_SERVICE_USER:?set REAL_BANK_SERVICE_USER in real.env}
+      BANK_SERVICE_PASSWORD: ${REAL_BANK_SERVICE_PASSWORD:?set REAL_BANK_SERVICE_PASSWORD in real.env}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "3000"
+    ports:
+      - "${REAL_BACKEND_HOST:-127.0.0.1}:${REAL_BACKEND_PORT:-3000}:3000"
+    networks:
+      - hboo-real
+
+networks:
+  hboo-real:
+    name: hboo-real-network

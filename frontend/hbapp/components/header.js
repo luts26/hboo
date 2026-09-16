@@ -21,6 +21,8 @@ const header = {
 		let appName = appNameArr.map((i, index) => (index > 1) 
 				? '' 
 				: `<span class="first-sym">${i.charAt(0)}</span>${i.slice(1)}`).join('')
+		const isDevRuntime = window.location.hostname === 'dev.hboo.local'
+		const environmentBadgeHtml = isDevRuntime ? '<span class="environment-badge environment-badge-dev" title="Development environment">DEV</span>' : ''
 		const mainMenuHtml = header.mainMenuItems.map(item => {
 			return `<button class="header-menu-item" type="button" data-action="header-menu-route" data-route="${item.route}">${item.label}</button>`
 		}).join('')
@@ -31,7 +33,7 @@ const header = {
 			<div class="header-container d-flex align-items-center">
 				<div class="transactions-today-date text-center"></div>
 				<div class="label-header">
-					<div class="app-name" title="Open settings">${appName}</div>
+					<div class="app-name" title="Open settings">${appName}${environmentBadgeHtml}</div>
 					<nav class="sub-menu">
 						<ul>
 							<li data-sparam="abank">add bank</li>

@@ -1,11 +1,11 @@
 services:
   nginx:
     image: nginx:1.27-alpine
-    container_name: hboo-nginx
+    container_name: hboo-dev-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "${DEV_HTTP_HOST:-127.0.0.2}:${DEV_HTTP_PORT:-80}:80"
+      - "${DEV_HTTPS_HOST:-127.0.0.2}:${DEV_HTTPS_PORT:-443}:443"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
@@ -15,18 +15,22 @@ services:
 
   mysql:
     image: mysql:8.0
-    container_name: hboo-mysql
+    container_name: hboo-dev-mysql
     restart: unless-stopped
     environment:
-      # Local development defaults only. Override via a private .env file.
-      MYSQL_DATABASE: ${DB_NAME:-hboo_dev}
+      # DEV-only database. Do not make this selectable via DB_NAME.
+      MYSQL_DATABASE: hboo_dev
       MYSQL_USER: ${DB_USER:-hboo_dev}
       MYSQL_PASSWORD: ${DB_PASSWORD:-change_me}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me_root}
     ports:
-      - "${MYSQL_HOST_PORT:-3307}:3306"
+      - "${DEV_MYSQL_HOST:-127.0.0.2}:${DEV_MYSQL_PORT:-3307}:3306"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - hboo-dev-mysql-data:/var/lib/mysql
+      - ./docker/mysql/schema/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/mysql/migrations/20260911_categories.sql:/docker-entrypoint-initdb.d/02-categories.sql:ro
+      - ./docker/mysql/migrations/20260911_planning_v2.sql:/docker-entrypoint-initdb.d/03-planning-v2.sql:ro
+      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/04-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 10s
@@ -39,28 +43,33 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: hboo-backend
+    container_name: hboo-dev-backend
     restart: unless-stopped
     environment:
-      # Local development defaults only. Override via a private .env file.
+      APP_ENV: development
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: ${DB_NAME:-hboo_dev}
+      # DEV-only database. Do not make this selectable via DB_NAME.
+      DB_NAME: hboo_dev
       DB_USER: ${DB_USER:-hboo_dev}
       DB_PASSWORD: ${DB_PASSWORD:-change_me}
-      BANK_SERVICE_URL: ${BANK_SERVICE_URL}
-      BANK_SERVICE_USER: ${BANK_SERVICE_USER}
-      BANK_SERVICE_PASSWORD: ${BANK_SERVICE_PASSWORD}
+      BANK_SERVICE_URL: ${DEV_BANK_SERVICE_URL:-}
+      BANK_SERVICE_USER: ${DEV_BANK_SERVICE_USER:-change_me}
+      BANK_SERVICE_PASSWORD: ${DEV_BANK_SERVICE_PASSWORD:-change_me}
     ports:
-      - "3000:3000"
+      - "${DEV_BACKEND_HOST:-127.0.0.2}:${DEV_BACKEND_PORT:-3000}:3000"
     expose:
       - "3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
     networks:
       - hboo-dev
 
 networks:
   hboo-dev:
-    name: hboo-dev
+    name: hboo-dev-network
 
 volumes:
-  mysql-data:
+  hboo-dev-mysql-data:
+    name: hboo-dev-mysql-data

@@ -1,5 +1,5 @@
 planning/
-AGENTS.md
+.idea/
 
 .env
 .env.*
@@ -29,6 +29,10 @@ dist/
 docker/nginx/certs/*
 !docker/nginx/certs/.gitkeep
 !docker/nginx/certs/README.md
+
+docker/runtime-example/certs/*
+!docker/runtime-example/certs/.gitkeep
+!docker/runtime-example/certs/README.md
 
 docker/mysql/init/*.sql
 docker/mysql/dumps/

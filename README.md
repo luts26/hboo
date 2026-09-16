@@ -20,15 +20,16 @@ docker/
     Docker / Nginx / MySQL infrastructure
 
 compose.yaml
-    Local application environment
+    DEV-only local application environment
 
 .env.example
-    Example environment configuration without secrets
+    DEV example environment configuration without secrets
 ```
 
-## Local Development with Docker
+## DEV Local Environment
 
-Primary local development runs the current vanilla JavaScript frontend through Nginx with local HTTPS.
+`compose.yaml` is DEV-only. Running `docker compose up -d` from this repository
+must always mean the isolated development environment with synthetic data.
 
 Prerequisites:
 
@@ -36,30 +37,41 @@ Prerequisites:
 - Docker Compose
 - mkcert
 
+DEV architecture:
+
+```text
+https://dev.hboo.local
+    -> hboo-dev-nginx
+    -> frontend/
+    -> hboo-dev-backend
+    -> hboo-dev-mysql
+    -> hboo_dev
+    -> synthetic data only
+```
+
 The web document root is `frontend/`. Public URLs do not include `/frontend/`:
 
 ```text
-https://hboo.local/
-https://hboo.local/hbapp/index.js
-https://hboo.local/hbapp/assets/styles/main.css
+https://dev.hboo.local/
+https://dev.hboo.local/hbapp/index.js
+https://dev.hboo.local/hbapp/assets/styles/main.css
 ```
 
-Configure the local hostname on the development machine:
+Configure the DEV hostname on the development machine. `127.0.0.2` keeps DEV
+ports separate from the REAL runtime on `127.0.0.1`.
 
 ```bash
-sudo sh -c 'echo "127.0.0.1 hboo.local" >> /etc/hosts'
+sudo sh -c 'echo "127.0.0.2 dev.hboo.local" >> /etc/hosts'
 ```
 
 Generate local HTTPS certificates:
 
 ```bash
-LAN_IP="$(ip route get 1.1.1.1 | awk '{print $7; exit}')"
-
 mkcert -install
 mkcert \
-  -cert-file docker/nginx/certs/hboo.local.pem \
-  -key-file docker/nginx/certs/hboo.local-key.pem \
-  hboo.local "$LAN_IP"
+  -cert-file docker/nginx/certs/dev.hboo.local.pem \
+  -key-file docker/nginx/certs/dev.hboo.local-key.pem \
+  dev.hboo.local localhost 127.0.0.2
 ```
 
 Start the environment:
@@ -71,16 +83,8 @@ docker compose up -d
 Open on the development machine:
 
 ```text
-https://hboo.local/
+https://dev.hboo.local/
 ```
-
-Open from another device on the same Wi-Fi network:
-
-```text
-https://<developer-lan-ip>/
-```
-
-The mkcert local CA must also be installed and trusted on the mobile device for trusted HTTPS and future PWA testing. Direct LAN-IP access should not require router configuration when both devices are on the same LAN and the firewall or client isolation does not block access.
 
 Stop the environment:
 
@@ -90,9 +94,22 @@ docker compose down
 
 Nginx configuration lives in `docker/nginx/conf.d/default.conf`. Local certificate instructions live in `docker/nginx/certs/README.md`; generated certificate files and private keys are ignored by Git.
 
-The current Docker setup includes Nginx, the Node.js backend, and a local MySQL service for the existing HBOO database schema.
+The DEV Docker setup includes Nginx, the Node.js backend, and a local MySQL
+service for the existing HBOO database schema.
 
-The MySQL service uses a persistent named Docker volume and publishes container port `3306` to host port `${MYSQL_HOST_PORT:-3307}` by default, so a host-running Spring backend can connect without replacing a local MySQL installation on port `3306`.
+Default DEV host bindings:
+
+```text
+dev.hboo.local -> 127.0.0.2
+HTTP            -> 127.0.0.2:80
+HTTPS           -> 127.0.0.2:443
+Backend         -> 127.0.0.2:3000
+MySQL           -> 127.0.0.2:3307
+```
+
+The MySQL service uses the persistent Docker volume `hboo-dev-mysql-data`.
+`compose.yaml` always creates and uses `hboo_dev`; changing `DB_NAME` in a
+repository `.env` file must not select another database.
 
 Local database dumps are imported explicitly and must not be committed. Public development data lives in sanitized schema/migration/seed files under `docker/mysql/`.
 
@@ -103,13 +120,114 @@ docker compose up -d mysql
 
 Additional database notes live in `docker/mysql/README.md`.
 
-Optional fallback:
+## REAL Runtime Template
 
-```bash
-node server-app.js
+REAL is a deployment target, not the development working tree. Safe templates
+live under `docker/runtime-example/` and are intended to be copied manually to:
+
+```text
+~/hboo-runtime/
+    real.env
+    compose.real.yaml
+    app/
+    nginx/
+    certs/
 ```
 
-`server-app.js` serves `frontend/` over plain HTTP on port `3003` and remains a lightweight non-Docker fallback.
+Do not create or store REAL credentials in this repository.
+
+Proposed REAL architecture:
+
+```text
+https://hboo.local
+    -> hboo-real-nginx
+    -> ~/hboo-runtime/app/frontend
+    -> hboo-real-backend
+    -> host-installed MySQL
+    -> real database
+    -> real bank integrations
+```
+
+REAL MySQL must be host-installed MySQL, not the DEV Docker MySQL container.
+For Linux Docker-to-host connectivity, the REAL template uses:
+
+```text
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+
+DB_HOST=host.docker.internal
+DB_PORT=3306
+```
+
+REAL host bindings in the template:
+
+```text
+hboo.local -> 127.0.0.1
+HTTP       -> 127.0.0.1:80
+HTTPS      -> 127.0.0.1:443
+Backend    -> 127.0.0.1:3000
+MySQL      -> host MySQL on 127.0.0.1:3306, reached from containers as host.docker.internal:3306
+```
+
+DEV and REAL can run simultaneously because DEV binds to `127.0.0.2` and REAL
+binds to `127.0.0.1`, with separate container names, networks, volumes, and
+hostnames.
+
+## Source Isolation and Deployment
+
+The active development repository must not be mounted directly into REAL.
+
+```text
+~/projects/hboo/
+    active DEV working copy
+
+~/hboo-runtime/app/
+    clean deployed Git snapshot
+```
+
+Development flow:
+
+```text
+feature branch / working tree
+    -> DEV environment
+    -> test using hboo_dev synthetic data
+    -> commit
+    -> merge into main
+    -> push main to GitHub
+```
+
+Deployment flow:
+
+```text
+GitHub/main
+    -> ~/hboo-runtime/app
+    -> fetch/pull clean committed revision
+    -> apply reviewed DB migrations if needed
+    -> rebuild/restart REAL services
+    -> smoke test hboo.local
+```
+
+Git receives code from the DEVELOPMENT working repository. REAL is a deployment
+target, not a source of commits. Never edit application source directly in REAL
+runtime and never push from production.
+
+## Database Migrations
+
+Migration flow:
+
+```text
+create migration
+    -> apply/test against hboo_dev
+    -> commit migration with application code
+    -> push
+    -> backup REAL database
+    -> apply reviewed migration to REAL
+    -> deploy compatible application version
+```
+
+Do not execute REAL migrations from this repository. Before any allowed DEV DB
+operation, verify `DATABASE()` and `CURRENT_USER()` and stop if the selected
+database is not exactly `hboo_dev`.
 
 The project focuses not only on answering:
 

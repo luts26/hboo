@@ -27,12 +27,12 @@ Import a local dump only when needed:
 ```
 
 The dump does not include `CREATE DATABASE` or `USE`, so the script imports into
-`${DB_NAME:-hboo_dev}` created by the MySQL container.
+the DEV-only `hboo_dev` database created by the MySQL container.
 
 Host-running Spring should connect through the published host port:
 
 ```text
-jdbc:mysql://127.0.0.1:${MYSQL_HOST_PORT:-3307}/${DB_NAME:-hboo_dev}
+jdbc:mysql://127.0.0.2:${DEV_MYSQL_PORT:-3307}/hboo_dev
 ```
 
 Containers in Compose should connect to:
@@ -44,3 +44,6 @@ mysql:3306
 Do not commit real database dumps with personal financial history to a public
 repository. Keep real dumps ignored and create a sanitized demo seed separately
 when a public seed is needed.
+
+Never use the Docker DEV MySQL service for the REAL database. The real database
+belongs to host-installed MySQL and is not selected by repository `.env` files.
