@@ -1494,10 +1494,10 @@ img.pb-icon {
 	color: #778ba5;
 	cursor: pointer;
 	display: inline-flex;
-	font-size: 16pt;
+	font-size: 15pt;
 	font-weight: 800;
 	gap: .6rem;
-	padding: .25rem .35rem;
+	padding: .0;
 }
 
 .bank-refresh-trigger:hover,
@@ -1510,6 +1510,7 @@ img.pb-icon {
 	max-height: 28px;
 	max-width: 34px;
 	object-fit: contain;
+	border-radius: 5px;
 }
 
 .bank-card-status {
@@ -1522,10 +1523,10 @@ img.pb-icon {
 	white-space: nowrap;
 }
 
-.bank-account-card {
+/*.bank-account-card {
 	border-top: 1px solid rgba(119,139,165,.18);
 	padding: .8rem 0 .2rem;
-}
+}*/
 
 .bank-account-card:first-of-type {
 	border-top: none;
@@ -1662,11 +1663,8 @@ img.pb-icon {
 /*	border-radius: 10px;*/
 /*	box-shadow: -7px -7px 17px #ffffff,*/
 /*				7px 7px 17px rgba(70,70,70,.15);*/
-	align-items: center;
 	color: #778ba5;
 	cursor: pointer;
-	display: flex;
-	gap: .45rem;
 	font-weight: 800;
 	padding: 0 15px 20px;
 	margin: 5px 10px;
@@ -1675,11 +1673,13 @@ img.pb-icon {
 
 .environment-badge {
 	border-radius: 5px;
-	display: inline-flex;
 	font-size: 8pt;
 	font-weight: 900;
 	line-height: 1;
 	padding: .22rem .35rem;
+	position: absolute;
+	top: 0;
+	right: -5px;
 }
 
 .environment-badge-dev {
@@ -1824,9 +1824,20 @@ img.pb-icon {
 	margin-top: 3rem;
 }*/
 
-.total-card {
+/*.total-card {
 	padding-bottom: 2rem;
+}*/
+
+/*.total-cache-time {
+	color: #6c757d;
+	font-size: .85rem;
+	text-align: right;
+	margin: .25rem 1rem 0;
 }
+
+.dark-theme .total-cache-time {
+	color: #9aa0a6;
+}*/
 
 .card-title {
 	position: absolute;
@@ -1835,11 +1846,16 @@ img.pb-icon {
 	padding: .5rem 1rem;
 	font-weight: 600;
 	right: 90px;
-	z-index: 9999;
+	z-index: 9;
 	border-radius: 10px;
 	box-shadow: -6px -6px 10px rgba(255,255,255,1),
 				6px 6px 10px rgba(0,0,0,.15);
 	cursor: pointer;
+}
+
+.mono-card .card-title,
+.privat-card .card-title {
+	padding-bottom: .2rem;
 }
 
 .dark-theme .card-title {
@@ -1905,6 +1921,8 @@ img.pb-icon {
 .card-time {
 	color: #b1b1b1;
 	font-size: 13px;
+	padding-right: 1rem;
+	padding-left: 1rem;
 }
 
 .success-text {
@@ -2278,7 +2296,7 @@ img.pb-icon {
 	border: none;
 	border-radius: 8px;
 /*	box-shadow: -1px -1px 10px #ffffff, 1px 1px 10px rgba(70,70,70,.15);*/
-	margin-bottom: 1.35rem;
+	margin-bottom: 1rem;
 	padding: 0;
 	box-shadow: -5px -5px 10px rgba(255,255,255,.5), 5px 5px 10px rgba(0,0,0,.1);
 	transition: all 1s easy;
@@ -2290,13 +2308,13 @@ img.pb-icon {
 
 .financial-summary-title {
 	color: #778ba5;
-	font-size: 14pt;
+	font-size: 13pt;
 	font-weight: 700;
 	letter-spacing: 0;
-	line-height: 1.25;
-	margin-bottom: .45rem;
+	line-height: 1.2;
+/*	margin-bottom: .45rem;*/
 	text-transform: uppercase;
-	padding: .9rem 1.15rem .7rem;
+	padding: .7rem 1.15rem .7rem;
 	background: #dbe5ec;
 	border-radius: 8px 8px 0 0;
 }
@@ -2418,7 +2436,7 @@ img.pb-icon {
 .financial-summary-secondary {
 	border-top: 1px solid rgba(119,139,165,.2);
 	margin-top: .55rem;
-	padding-top: .55rem;
+	padding-top: .3rem;
 }
 
 .financial-summary-date-group,
@@ -2982,6 +3000,72 @@ textarea.planing-textarea {
 	white-space: nowrap;
 }
 
+.planing-linked-compact {
+	color: #778ba5;
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 10pt;
+	gap: .5rem;
+	margin-top: .35rem;
+}
+
+.planing-linked-compact span,
+.planing-linked-summary span {
+	color: #9baabd;
+}
+
+.planing-linked-compact strong,
+.planing-linked-summary strong {
+	color: #778ba5;
+}
+
+.planing-plan-fact {
+	color: #778ba5;
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 10pt;
+	gap: .5rem;
+	margin-top: .35rem;
+}
+
+.planing-plan-fact span {
+	color: #9baabd;
+}
+
+.planing-plan-fact strong {
+	color: #778ba5;
+}
+
+.planing-smart-suggestion {
+	align-items: center;
+	border: 1px solid rgba(29,78,216,.16);
+	border-radius: 10px;
+	display: grid;
+	gap: .75rem;
+	grid-column: 1 / -1;
+	grid-template-columns: minmax(0, 1fr) auto;
+	padding: .75rem .85rem;
+}
+
+.planing-smart-suggestion-main {
+	min-width: 0;
+}
+
+.planing-smart-suggestion-main span {
+	color: #1d4ed8;
+	display: block;
+	font-size: 10pt;
+	font-weight: 800;
+	margin-bottom: .2rem;
+}
+
+.planing-smart-suggestion-main strong {
+	color: #778ba5;
+	display: block;
+	font-size: 11pt;
+	overflow-wrap: anywhere;
+}
+
 .planing-item-meta {
 	align-items: flex-end;
 	display: flex;
@@ -3092,6 +3176,67 @@ textarea.planing-textarea {
 	padding: .75rem .85rem;
 	text-align: left;
 	width: 100%;
+}
+
+.planing-linked-summary {
+	border: 1px solid rgba(119,139,165,.16);
+	border-radius: 10px;
+	display: grid;
+	gap: .45rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin-top: 1.1rem;
+	padding: .75rem .85rem;
+}
+
+.planing-transaction-section {
+	margin-top: 1.2rem;
+}
+
+.planing-transaction-row {
+	align-items: center;
+	border-top: 1px solid rgba(119,139,165,.16);
+	color: #778ba5;
+	display: grid;
+	gap: .75rem;
+	grid-template-columns: minmax(0, 1fr) auto;
+	padding: .75rem 0;
+}
+
+.planing-transaction-main,
+.planing-transaction-title {
+	min-width: 0;
+}
+
+.planing-transaction-title {
+	font-weight: 800;
+	overflow-wrap: anywhere;
+}
+
+.planing-transaction-meta {
+	color: #9baabd;
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 10pt;
+	gap: .45rem .7rem;
+	margin-top: .25rem;
+}
+
+.planing-transaction-side {
+	align-items: flex-end;
+	display: flex;
+	flex-direction: column;
+	gap: .4rem;
+	text-align: right;
+}
+
+.planing-transaction-side strong {
+	white-space: nowrap;
+}
+
+.planing-transaction-empty {
+	color: #9baabd;
+	font-size: 11pt;
+	padding: .7rem 0;
 }
 
 .planing-shopping-summary-main,
@@ -3213,7 +3358,10 @@ textarea.planing-textarea {
 .planing-save-btn,
 .planing-cancel-edit-btn,
 .planing-status-btn,
-.planing-remove-btn {
+.planing-remove-btn,
+.planing-transaction-btn,
+.planing-transaction-action,
+.planing-smart-confirm-btn {
 	background: #ebf5fc;
 	border: 1px solid rgba(255,255,255,.65);
 	border-radius: 10px;
@@ -3229,6 +3377,35 @@ textarea.planing-textarea {
 	font-size: 10pt;
 	line-height: 1;
 	padding: .45rem .6rem;
+}
+
+.planing-transaction-btn {
+	color: #1d4ed8;
+	font-size: 10pt;
+	line-height: 1;
+	min-height: 36px;
+	padding: .45rem .6rem;
+}
+
+.planing-transaction-action {
+	min-height: 34px;
+	padding: .4rem .65rem;
+}
+
+.planing-transaction-action:disabled {
+	cursor: default;
+	opacity: .55;
+}
+
+.planing-smart-confirm-btn {
+	color: #00865a;
+	min-height: 36px;
+	padding: .45rem .7rem;
+}
+
+.planing-smart-confirm-btn:disabled {
+	cursor: default;
+	opacity: .55;
 }
 
 .planing-remove-btn {
@@ -3322,7 +3499,10 @@ textarea.planing-textarea {
 .dark-theme .planing-save-btn,
 .dark-theme .planing-cancel-edit-btn,
 .dark-theme .planing-status-btn,
-.dark-theme .planing-remove-btn {
+.dark-theme .planing-remove-btn,
+.dark-theme .planing-transaction-btn,
+.dark-theme .planing-transaction-action,
+.dark-theme .planing-smart-confirm-btn {
 	background: #000;
 	color: #ddd;
 	box-shadow: inset 3px 3px 5px #0e0e0e, inset -3px -3px 5px #575757;
@@ -3605,14 +3785,22 @@ textarea.planing-textarea {
 	}
 
 	.card {
-		margin: 2.5rem 1rem;
-		padding-left: 1rem;
-		padding-right: 1rem;
-		padding-bottom: 1rem;
+		margin: 2.5rem .6rem 3rem;
+		padding-left: .8rem;
+		padding-right: .8rem;
+		padding-bottom: .8rem;
+	}
+
+	.card:last-child {
+		margin-bottom: 0;
 	}
 
 	.card-row {
-		padding: 12px;
+		padding: 8px 12px;
+	}
+
+	.card-title {
+		right: 36px;
 	}
 
 	.planing-form-row {
@@ -3675,6 +3863,20 @@ textarea.planing-textarea {
 	}
 
 	.planing-detail-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.planing-linked-summary,
+	.planing-transaction-row {
+		grid-template-columns: 1fr;
+	}
+
+	.planing-transaction-side {
+		align-items: flex-start;
+		text-align: left;
+	}
+
+	.planing-smart-suggestion {
 		grid-template-columns: 1fr;
 	}
 

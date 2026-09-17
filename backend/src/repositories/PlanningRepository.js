@@ -143,7 +143,11 @@ class PlanningRepository {
     }
 
     async findItemById(userId, itemId) {
-        const [rows] = await pool.execute(`
+        return this.findItemByIdWithConnection(pool, userId, itemId);
+    }
+
+    async findItemByIdWithConnection(connection, userId, itemId) {
+        const [rows] = await connection.execute(`
             SELECT
                 pi.id,
                 pi.period_id AS periodId,
@@ -199,7 +203,11 @@ class PlanningRepository {
     }
 
     async updateItem(userId, itemId, item) {
-        const [result] = await pool.execute(`
+        return this.updateItemWithConnection(pool, userId, itemId, item);
+    }
+
+    async updateItemWithConnection(connection, userId, itemId, item) {
+        const [result] = await connection.execute(`
             UPDATE planning_item pi
             INNER JOIN planning_period pp
                 ON pp.id = pi.period_id
@@ -238,7 +246,7 @@ class PlanningRepository {
             return null;
         }
 
-        return this.findItemById(userId, itemId);
+        return this.findItemByIdWithConnection(connection, userId, itemId);
     }
 
     async deleteItem(userId, itemId) {

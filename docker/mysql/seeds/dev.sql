@@ -166,14 +166,14 @@ INSERT INTO `privat_transaction` (
     `t_id`,
     `type`
 ) VALUES
-    (2001, '9000.00', '8600.00', '0.00', 'income', 'salary', '1789106100000', 'Synthetic monthly income', '0.00', '0.0000', '0.0000', 'test-privat-tx-2001', 'CREDIT'),
-    (2002, '-410.20', '8190.00', '4.10', 'supermarket', 'groceries', '1789050900000', 'Synthetic supermarket purchase', '0.00', '0.0000', '0.0000', 'test-privat-tx-2002', 'DEBIT'),
-    (2003, '-260.00', '7780.00', '2.60', 'restaurant', 'lunch', '1789027800000', 'Synthetic lunch payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2003', 'DEBIT'),
-    (2004, '-185.80', '7520.00', '1.85', 'pharmacy', 'medicine', '1788967200000', 'Synthetic pharmacy purchase', '0.00', '0.0000', '0.0000', 'test-privat-tx-2004', 'DEBIT'),
-    (2005, '-640.00', '7334.20', '0.00', 'utilities', 'internet', '1788933900000', 'Synthetic internet bill', '0.00', '0.0000', '0.0000', 'test-privat-tx-2005', 'DEBIT'),
-    (2006, '-700.00', '6694.20', '0.00', 'transfer', 'card transfer', '1788866100000', 'Synthetic savings transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2006', 'DEBIT'),
-    (2007, '-1000.00', '5994.20', '0.00', 'cash', 'atm withdrawal', '1788802800000', 'Synthetic cash withdrawal', '15.00', '0.0000', '0.0000', 'test-privat-tx-2007', 'DEBIT'),
-    (2008, '-230.60', '4994.20', '2.30', 'delivery', 'food delivery', '1788691800000', 'Synthetic delivery payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2008', 'DEBIT'),
-    (2009, '-160.00', '4763.60', '0.00', 'mobile', 'mobile top up', '1788591600000', 'Synthetic mobile payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2009', 'DEBIT'),
-    (2010, '1200.00', '4603.60', '0.00', 'transfer', 'incoming transfer', '1788546000000', 'Synthetic incoming transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2010', 'CREDIT'),
-    (2011, '-500.00', '5803.60', '0.00', 'savings', 'deposit', '1788412200000', 'Synthetic deposit transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2011', 'DEBIT');
+    (2001, '9000.00', '8600.00', '0.00', '8', 'Перекази', '1789106100000', 'Synthetic monthly income', '0.00', '0.0000', '0.0000', 'test-privat-tx-2001', 'CREDIT'),
+    (2002, '-410.20', '8190.00', '4.10', '10', 'Продукти', '1789050900000', 'Synthetic supermarket purchase', '0.00', '0.0000', '0.0000', 'test-privat-tx-2002', 'DEBIT'),
+    (2003, '-260.00', '7780.00', '2.60', '5', 'Ресторани та бари', '1789027800000', 'Synthetic lunch payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2003', 'DEBIT'),
+    (2004, '-185.80', '7520.00', '1.85', '11', 'Інше', '1788967200000', 'Synthetic pharmacy purchase', '0.00', '0.0000', '0.0000', 'test-privat-tx-2004', 'DEBIT'),
+    (2005, '-640.00', '7334.20', '0.00', '9', 'Iнтернет', '1788933900000', 'Synthetic internet bill', '0.00', '0.0000', '0.0000', 'test-privat-tx-2005', 'DEBIT'),
+    (2006, '-700.00', '6694.20', '0.00', '8', 'Перекази', '1788866100000', 'Synthetic savings transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2006', 'DEBIT'),
+    (2007, '-1000.00', '5994.20', '0.00', '2', 'Зняття готівки', '1788802800000', 'Synthetic cash withdrawal', '15.00', '0.0000', '0.0000', 'test-privat-tx-2007', 'DEBIT'),
+    (2008, '-230.60', '4994.20', '2.30', '11', 'Інше', '1788691800000', 'Synthetic delivery payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2008', 'DEBIT'),
+    (2009, '-160.00', '4763.60', '0.00', '9', 'Поповнення мобільного', '1788591600000', 'Synthetic mobile payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2009', 'DEBIT'),
+    (2010, '1200.00', '4603.60', '0.00', '8', 'Перекази', '1788546000000', 'Synthetic incoming transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2010', 'CREDIT'),
+    (2011, '-500.00', '5803.60', '0.00', '100000000000896', 'Заощадження', '1788412200000', 'Synthetic deposit transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2011', 'DEBIT');

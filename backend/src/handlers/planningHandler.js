@@ -72,6 +72,51 @@ async function planningHandler(req, res, url) {
             return;
         }
 
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions\/candidates$/)) {
+            const transactions = await planningService.getTransactionCandidates(req.user.user_id, req.params.id);
+
+            sendJson(res, 200, transactions);
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions\/suggestions$/)) {
+            const transactions = await planningService.getSuggestedTransactions(req.user.user_id, req.params.id);
+
+            sendJson(res, 200, transactions);
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions\/linked$/)) {
+            const data = await planningService.getLinkedTransactions(req.user.user_id, req.params.id);
+
+            sendJson(res, 200, data);
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions$/)) {
+            const data = await readJson(req);
+            const result = await planningService.linkTransaction(req.user.user_id, req.params.id, data);
+
+            sendJson(res, 201, result);
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions\/confirm$/)) {
+            const data = await readJson(req);
+            const result = await planningService.confirmSuggestedTransaction(req.user.user_id, req.params.id, data);
+
+            sendJson(res, 200, result);
+            return;
+        }
+
+        if (req.method === 'DELETE' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions$/)) {
+            const data = await readJson(req);
+            const result = await planningService.unlinkTransaction(req.user.user_id, req.params.id, data);
+
+            sendJson(res, 200, result);
+            return;
+        }
+
         if (req.method === 'GET' && url.pathname.match(/^\/api\/planning\/period\/\d+\/statistics$/)) {
             const statistics = await planningService.getStatistics(req.user.user_id, req.params.id);
 

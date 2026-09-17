@@ -11,7 +11,8 @@ const BANK_PROVIDERS = [
 		logoAlt: 'mblogo',
 		refreshCode: '1',
 		transactionFilter: 'm1',
-		amountScale: 100
+		amountScale: 100,
+		dateScale: 1000
 	},
 	{
 		key: 'privat',
@@ -20,7 +21,8 @@ const BANK_PROVIDERS = [
 		logoAlt: 'pblogo',
 		refreshCode: '2',
 		transactionFilter: 'p1',
-		amountScale: 1
+		amountScale: 1,
+		dateScale: 1
 	}
 ]
 
@@ -93,6 +95,25 @@ export default class BalancePage extends AbstractClass {
 		return `${this.timeStampToStringDate(value)} ${this.timeStampToStringTime(value, false)}`
 	}
 
+	formatCacheUpdateTime(value) {
+		return value ? this.timeStampToStringTime(value, false) : '-'
+	}
+
+	getBankSnapshotTimestamp(provider) {
+		const timestamps = provider.accounts
+			.map(account => Number(account.date) * provider.dateScale)
+			.filter(timestamp => Number.isFinite(timestamp) && timestamp > 0)
+
+		return timestamps.length ? Math.max(...timestamps) : null
+	}
+
+	formatBankSnapshotDateTime(provider) {
+		const timestamp = this.getBankSnapshotTimestamp(provider)
+		if (!timestamp) return '-'
+
+		return `${this.timeStampToStringDate(timestamp)} ${this.timeStampToStringTime(timestamp)}`
+	}
+
 	getDataStatusTemplate() {
 		const viewModel = createDataStatusViewModel({
 			loading: this.state.loading,
@@ -163,7 +184,19 @@ export default class BalancePage extends AbstractClass {
 				<span class="font-weight-bold">Current:</span>
 				<span>${this.formatAmount(totals.current)}</span>
 			</div>
+			<div class="total-cache-time card-time mt-1" title="Local aggregate/cache calculation time">
+				Updated: ${this.formatCacheUpdateTime(this.state.updatedAt)}
+			</div>
 		</div>`
+	}
+
+	renderBankLogoName(provider, accountTitle) {
+		return `
+			<button class="bank-refresh-trigger" type="button" data-bank-refresh="${provider.key}" title="Refresh ${provider.name} (${accountTitle})">
+				<img src="${provider.logo}" alt="${provider.logoAlt}">
+				<span>${provider.name}</span>
+			</button>	
+		`
 	}
 
 	getBankAccountsTemplate(provider) {
@@ -174,7 +207,10 @@ export default class BalancePage extends AbstractClass {
 			const total = normalized.current - normalized.credit
 			const accountTitle = account.type || account.card_number || account.account || `Account ${index + 1}`
 			return `<div class="bank-account-card">
-				<div class="bank-account-title">${accountTitle}</div>
+				<div class="card-title total-title" data-otransaction="3" title="Open all transactions">
+					${this.renderBankLogoName(provider, accountTitle)}
+				</div>
+				<div class="bank-account-title d-none">${accountTitle}</div>
 				<div class="d-flex justify-content-between card-row">
 					<span class="font-weight-bold">Total:</span>
 					<span class="${total > 0 ? 'success' : 'error'}-text">${this.formatAmount(total)}</span>
@@ -193,19 +229,9 @@ export default class BalancePage extends AbstractClass {
 
 	renderBankCard(provider) {
 		const isRefreshing = this.state.loading && this.refreshingBankKey === provider.key
-		const updatedAt = this.state.updatedAt
-		const updateLabel = updatedAt ? `${this.timeStampToStringDate(updatedAt)} ${this.timeStampToStringTime(updatedAt)}` : '-'
+		const updateLabel = this.formatBankSnapshotDateTime(provider)
 
 		return `<div class="card bank-card ${provider.key}-card" data-bank="${provider.key}">
-			<div class="bank-card-header">
-				<button class="bank-refresh-trigger" type="button" data-bank-refresh="${provider.key}" title="Refresh ${provider.name}">
-					<img src="${provider.logo}" alt="${provider.logoAlt}">
-					<span>${provider.name}</span>
-				</button>
-				<span class="bank-card-status ${this.state.stale ? 'cache-state-stale' : ''}">
-					${isRefreshing ? 'Refreshing...' : this.getProviderStatusLabel()}
-				</span>
-			</div>
 			${this.getBankAccountsTemplate(provider)}
 			<div class="d-flex justify-content-between card-time mt-1">
 				<span>Last update:</span>

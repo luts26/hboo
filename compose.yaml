@@ -30,7 +30,8 @@ services:
       - ./docker/mysql/schema/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./docker/mysql/migrations/20260911_categories.sql:/docker-entrypoint-initdb.d/02-categories.sql:ro
       - ./docker/mysql/migrations/20260911_planning_v2.sql:/docker-entrypoint-initdb.d/03-planning-v2.sql:ro
-      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/04-seed.sql:ro
+      - ./docker/mysql/migrations/20260916_planning_transaction_link.sql:/docker-entrypoint-initdb.d/04-planning-transaction-link.sql:ro
+      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/05-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 10s

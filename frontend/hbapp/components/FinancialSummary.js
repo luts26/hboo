@@ -161,7 +161,7 @@ export default class FinancialSummary {
 						<span aria-hidden="true">&#8250;</span>
 					</div>
 					<div class="summary-card-content">
-						<div class="financial-summary-period-label">This month: ${transactions.periodLabel}</div>
+						<div class="financial-summary-period-label">${transactions.periodLabel}</div>
 						<div class="financial-summary-secondary">
 							<div class="financial-summary-row">
 								<span>Income</span>

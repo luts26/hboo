@@ -552,6 +552,43 @@ export default class PlanningLocalRepository {
 		return this.getPlanningState()
 	}
 
+	async applyPersistedItem(item, {statistics = undefined} = {}) {
+		const storage = this.readStorage()
+		const normalizedItem = normalizeItem(item, item.periodId || item.period_id || storage.currentPeriodId)
+		const items = storage.items.map(storedItem => {
+			if (String(storedItem.id) !== String(normalizedItem.id)) return storedItem
+			return {
+				...normalizedItem,
+				checklist: storedItem.checklist
+			}
+		})
+		const itemExists = items.some(storedItem => String(storedItem.id) === String(normalizedItem.id))
+		if (!itemExists) items.push(normalizedItem)
+
+		const snapshot = storage.serverSnapshot
+		const snapshotItems = Array.isArray(snapshot?.items) ? snapshot.items : []
+		const serverSnapshot = snapshot
+			? {
+				...snapshot,
+				items: [
+					...snapshotItems.filter(snapshotItem => String(snapshotItem.id) !== String(normalizedItem.id)),
+					normalizedItem
+				],
+				statistics: statistics === undefined ? snapshot.statistics : statistics,
+				updatedAt: Date.now()
+			}
+			: storage.serverSnapshot
+
+		this.writeStorage({
+			...storage,
+			items,
+			serverSnapshot,
+			dirty: storage.dirty
+		})
+
+		return this.getPlanningState()
+	}
+
 	isTemporaryId(id) {
 		return isTemporaryId(id)
 	}

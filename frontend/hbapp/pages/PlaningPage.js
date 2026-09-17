@@ -27,7 +27,9 @@ export default class PlaningPage extends AbstractClass {
 		saveError: null,
 		modal: null,
 		modalView: 'details',
-		selectedItemId: null
+		selectedItemId: null,
+		transactionLinks: {},
+		smartSuggestions: {}
 	}
 	categories = []
 	categoryApiService = new CategoryApiService()
@@ -59,7 +61,9 @@ export default class PlaningPage extends AbstractClass {
 				saveError: state.saveError,
 				modal: this.state.modal,
 				modalView: this.state.modalView,
-				selectedItemId: this.state.selectedItemId
+				selectedItemId: this.state.selectedItemId,
+				transactionLinks: state.transactionLinks || {},
+				smartSuggestions: state.smartSuggestions || {}
 			}
 			this.render()
 		})
@@ -147,6 +151,23 @@ export default class PlaningPage extends AbstractClass {
 		return this.state.summary.items.find(item => String(item.id) === String(this.state.selectedItemId)) || null
 	}
 
+	getTransactionLinkState(itemId) {
+		return this.state.transactionLinks?.[String(itemId)] || {
+			loading: false,
+			error: null,
+			candidates: [],
+			linkedTransactions: [],
+			linkedAmount: 0,
+			remainingAmount: null
+		}
+	}
+
+	getSmartSuggestion(item) {
+		if (!item || item.status !== 'pending') return null
+		const candidates = this.state.smartSuggestions?.[String(item.id)]?.candidates || []
+		return candidates[0] || null
+	}
+
 	formatStatusDateTime(value) {
 		return `${this.timeStampToStringDate(value)} ${this.timeStampToStringTime(value, false)}`
 	}
@@ -219,7 +240,7 @@ export default class PlaningPage extends AbstractClass {
 			<button class="planing-period-summary" type="button" title="Edit period">
 				<div class="planing-period-main">
 					<div class="planing-summary-label">Current period</div>
-					<div class="planing-period-range">${fromDate} — ${toDate}</div>
+					<div class="planing-period-range">${fromDate} - ${toDate}</div>
 				</div>
 				<div class="planing-period-metrics">
 					<div>
@@ -293,7 +314,42 @@ export default class PlaningPage extends AbstractClass {
 			actions.push('<button class="planing-status-btn" type="button" data-action="planning-pending" data-status="pending">Pending</button>')
 		}
 
-		return actions.length ? `<div class="planing-item-actions">${actions.join('')}</div>` : ''
+		return actions.length ? `<div class="planing-item-actions 222">${actions.join('')}</div>` : ''
+	}
+
+	getTransactionInfoTemplate(item, compact = false) {
+		const linkState = this.getTransactionLinkState(item.id)
+		const linkedAmount = Number(linkState.linkedAmount) || 0
+		if (!linkedAmount && compact) return ''
+
+		return `
+			<div class="${compact ? 'planing-linked-compact' : 'planing-linked-summary'}">
+				<span>Linked payments: <strong>${this.formatAmount(linkedAmount)} грн</strong></span>
+			</div>`
+	}
+
+	getSmartSuggestionTemplate(item) {
+		const suggestion = this.getSmartSuggestion(item)
+		if (!suggestion) return ''
+
+		return `
+			<div class="planing-smart-suggestion">
+				<div class="planing-smart-suggestion-main">
+					<span>Possible payment found</span>
+					<strong>${this.escapeHtml(suggestion.description || 'Transaction')} · ${this.formatAmount(suggestion.expenseAmount)} грн · ${this.formatPlanningDate(suggestion.timestamp)}</strong>
+				</div>
+				<button class="planing-smart-confirm-btn" type="button" data-action="planning-smart-confirm" data-itemid="${item.id}" data-provider="${this.escapeHtml(suggestion.provider)}" data-transaction-id="${this.escapeHtml(suggestion.providerTransactionId)}">Confirm</button>
+			</div>`
+	}
+
+	getPlanFactTemplate(item) {
+		if (item.status !== 'completed' || item.actualAmount === null || item.actualAmount === undefined) return ''
+
+		return `
+			<div class="planing-plan-fact">
+				<span>Plan: <strong>${this.formatAmount(item.sum)} грн</strong></span>
+				<span>Actual: <strong>${this.formatAmount(item.actualAmount)} грн</strong></span>
+			</div>`
 	}
 
 	getChecklistProgressTemplate(item) {
@@ -323,13 +379,17 @@ export default class PlaningPage extends AbstractClass {
 					<div class="planing-item-main">
 						<div class="planing-item-price">${this.formatAmount(amount)} грн</div>
 						<div class="planing-item-category">${this.escapeHtml(this.getCategoryName(item))}</div>
+						${this.getPlanFactTemplate(item)}
 						${this.getChecklistProgressTemplate(item)}
+						<span>${this.formatPlanningDate(item.date)}</span>
 					</div>
 				</button>
-				<div class="planing-item-meta">
+				<div class="planing-item-meta d-none">
 					<span>${this.formatPlanningDate(item.date)}</span>
+					<button class="planing-transaction-btn d-none" type="button" data-action="planning-transactions-open" data-itemid="${item.id}">Transactions</button>
 					${status === 'pending' ? actionsHtml : `<strong>${this.getStatusLabel(status)}</strong>`}
 				</div>
+				${this.getSmartSuggestionTemplate(item)}
 			</div>`
 	}
 
@@ -486,6 +546,76 @@ export default class PlaningPage extends AbstractClass {
 		</div>`
 	}
 
+	getTransactionProviderLabel(provider) {
+		const labels = {
+			mono: 'Monobank',
+			privat: 'PrivatBank'
+		}
+
+		return labels[provider] || provider
+	}
+
+	getMatchingTransactionRowTemplate(transaction, action) {
+		const disabled = transaction.linked && action === 'link' ? ' disabled' : ''
+		const actionLabel = action === 'unlink' ? 'Unlink' : 'Link'
+		const actionName = action === 'unlink' ? 'planning-transaction-unlink' : 'planning-transaction-link'
+
+		return `
+			<div class="planing-transaction-row">
+				<div class="planing-transaction-main">
+					<div class="planing-transaction-title">${this.escapeHtml(transaction.description || 'Transaction')}</div>
+					<div class="planing-transaction-meta">
+						<span>${this.formatPlanningDate(transaction.timestamp)}</span>
+						<span>${this.escapeHtml(this.getTransactionProviderLabel(transaction.provider))}</span>
+						${transaction.category ? `<span>${this.escapeHtml(transaction.category)}</span>` : ''}
+					</div>
+				</div>
+				<div class="planing-transaction-side">
+					<strong>${this.formatAmount(transaction.expenseAmount ?? Math.abs(Number(transaction.amount) || 0))} грн</strong>
+					<button class="planing-transaction-action" type="button" data-action="${actionName}" data-provider="${this.escapeHtml(transaction.provider)}" data-transaction-id="${this.escapeHtml(transaction.providerTransactionId)}"${disabled}>${actionLabel}</button>
+				</div>
+			</div>`
+	}
+
+	getTransactionListTemplate(transactions, action, emptyText) {
+		if (!transactions.length) {
+			return `<div class="planing-transaction-empty">${emptyText}</div>`
+		}
+
+		return transactions.map(transaction => this.getMatchingTransactionRowTemplate(transaction, action)).join('')
+	}
+
+	getTransactionMatchingTemplate(item) {
+		const linkState = this.getTransactionLinkState(item.id)
+		const linked = Array.isArray(linkState.linkedTransactions) ? linkState.linkedTransactions : []
+		const candidates = Array.isArray(linkState.candidates) ? linkState.candidates.filter(transaction => !transaction.linked) : []
+		const status = linkState.loading
+			? '<div class="planing-transaction-empty">Loading transactions...</div>'
+			: linkState.error
+				? '<div class="planing-sync-error">Transactions are unavailable for this planning item.</div>'
+				: ''
+
+		return `<div class="planing-transactions-view" data-itemid="${item.id}">
+			<div class="planing-shopping-view-header">
+				<button class="transaction-modal-back-btn" type="button" data-action="planning-shopping-back" title="Back">‹</button>
+				<div>
+					<div class="planing-detail-section-title">Transactions</div>
+					<div class="planing-shopping-count">${this.escapeHtml(item.desc || item.title || 'Planning expense')}</div>
+				</div>
+			</div>
+			${this.getTransactionInfoTemplate(item)}
+			${status}
+			<div class="planing-transaction-section">
+				<div class="planing-detail-section-title">Linked transactions</div>
+				${this.getTransactionListTemplate(linked, 'unlink', 'No linked transactions.')}
+			</div>
+			<div class="planing-transaction-section">
+				<div class="planing-detail-section-title">Available transactions</div>
+				${this.getTransactionListTemplate(candidates, 'link', 'No available expense transactions for this period.')}
+			</div>
+		</div>`
+	}
+
 	getDetailTemplate(item) {
 		const noteValue = item.desc || (item.title === 'Planning expense' ? '' : item.title) || ''
 		const note = noteValue ? this.escapeHtml(noteValue) : 'Коментар не додано.'
@@ -496,7 +626,7 @@ export default class PlaningPage extends AbstractClass {
 			? item.actualAmount
 			: item.sum
 		const statusActions = item.status === 'pending'
-			? `${this.getStatusActionsTemplate(item.status).replace('<div class="planing-item-actions">', '').replace('</div>', '')}`
+			? `${this.getStatusActionsTemplate(item.status).replace('<div class="planing-item-actions 111">', '').replace('</div>', '')}`
 			: ''
 
 		return `
@@ -509,10 +639,13 @@ export default class PlaningPage extends AbstractClass {
 						${actualAmount}
 					</div>
 					<div class="planing-detail-desc"><span>Note</span>${note}</div>
+					${this.getPlanFactTemplate(item)}
+					${item.status === 'pending' ? this.getSmartSuggestionTemplate(item) : ''}
 					${this.getChecklistSummaryTemplate(item)}
 					<div class="app-modal-actions planing-modal-actions planing-detail-actions">
 						<button class="planing-remove-btn" type="button">Delete</button>
 						${statusActions}
+						<button class="planing-transaction-btn" type="button" data-action="planning-transactions-open" data-itemid="${item.id}">Transactions</button>
 						<button class="planing-edit-btn" type="button">Edit</button>
 					</div>
 			</div>`
@@ -524,13 +657,17 @@ export default class PlaningPage extends AbstractClass {
 		const modalTitle = {
 			period: 'Edit period',
 			add: 'Add expense',
-			detail: this.state.modalView === 'shoppingList' ? 'Shopping list' : 'Expense details',
+			detail: this.state.modalView === 'shoppingList' ? 'Shopping list' : (this.state.modalView === 'transactions' ? 'Transactions' : 'Expense details'),
 			edit: 'Edit expense'
 		}[this.state.modal]
 		const modalContent = {
 			period: () => this.getPeriodFormTemplate(),
 			add: () => this.getExpenseFormTemplate(),
-			detail: () => item ? (this.state.modalView === 'shoppingList' ? this.getShoppingListTemplate(item) : this.getDetailTemplate(item)) : '',
+			detail: () => item
+				? (this.state.modalView === 'shoppingList'
+					? this.getShoppingListTemplate(item)
+					: (this.state.modalView === 'transactions' ? this.getTransactionMatchingTemplate(item) : this.getDetailTemplate(item)))
+				: '',
 			edit: () => item ? this.getExpenseFormTemplate(item) : ''
 		}[this.state.modal]
 
@@ -593,6 +730,14 @@ export default class PlaningPage extends AbstractClass {
 	setModalView(modalView = 'details') {
 		this.state.modalView = modalView
 		this.render()
+	}
+
+	async openTransactionMatching(itemId) {
+		this.state.modal = 'detail'
+		this.state.modalView = 'transactions'
+		this.state.selectedItemId = itemId
+		this.render()
+		await planningStore.loadPlanningItemTransactions(itemId)
 	}
 
 	getChecklistFormData(form) {
@@ -675,6 +820,53 @@ export default class PlaningPage extends AbstractClass {
 		await planningStore.togglePlanningChecklistItem(actionTarget.dataset.planningId, actionTarget.dataset.checklistId)
 	}
 
+	getTransactionActionPayload(actionTarget) {
+		return {
+			provider: actionTarget.dataset.provider,
+			providerTransactionId: actionTarget.dataset.transactionId
+		}
+	}
+
+	async linkPlanningTransaction(actionTarget) {
+		if (actionTarget.disabled) return
+		const itemId = this.state.selectedItemId
+		actionTarget.disabled = true
+		try {
+			await planningStore.linkPlanningTransaction(itemId, this.getTransactionActionPayload(actionTarget))
+			await planningStore.loadPlanningItemTransactions(itemId)
+		} catch {
+			Toast.show('Transaction link failed', {type: 'error', key: 'planning-link-failed'})
+		}
+	}
+
+	async unlinkPlanningTransaction(actionTarget) {
+		if (actionTarget.disabled) return
+		const itemId = this.state.selectedItemId
+		actionTarget.disabled = true
+		try {
+			await planningStore.unlinkPlanningTransaction(itemId, this.getTransactionActionPayload(actionTarget))
+			await planningStore.loadPlanningItemTransactions(itemId)
+		} catch {
+			Toast.show('Transaction unlink failed', {type: 'error', key: 'planning-unlink-failed'})
+		}
+	}
+
+	async confirmSmartSuggestion(actionTarget) {
+		if (actionTarget.disabled) return
+		actionTarget.disabled = true
+
+		try {
+			await planningStore.confirmSmartSuggestion(actionTarget.dataset.itemid, {
+				provider: actionTarget.dataset.provider,
+				providerTransactionId: actionTarget.dataset.transactionId
+			})
+			Toast.show('Planning item completed', {type: 'success', key: 'planning-smart-confirmed'})
+		} catch {
+			actionTarget.disabled = false
+			Toast.show('Payment confirmation failed', {type: 'error', key: 'planning-smart-confirm-failed'})
+		}
+	}
+
 	addChecklistFormRow(event) {
 		const form = event.target.closest('.planing-form')
 		const rows = form?.querySelector('.planing-checklist-form-rows')
@@ -742,9 +934,13 @@ export default class PlaningPage extends AbstractClass {
 			if (actionTarget?.dataset.action === 'planning-cancelled') return this.updatePlanningItemStatus(event)
 			if (actionTarget?.dataset.action === 'planning-pending') return this.updatePlanningItemStatus(event)
 			if (actionTarget?.dataset.action === 'planning-open') return this.openModal('detail', actionTarget.dataset.itemid)
+			if (actionTarget?.dataset.action === 'planning-transactions-open') return this.openTransactionMatching(actionTarget.dataset.itemid || this.state.selectedItemId)
 			if (actionTarget?.dataset.action === 'planning-shopping-open') return this.setModalView('shoppingList')
 			if (actionTarget?.dataset.action === 'planning-shopping-back') return this.setModalView('details')
 			if (actionTarget?.dataset.action === 'planning-checklist-toggle') return this.toggleChecklistItem(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-smart-confirm') return this.confirmSmartSuggestion(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-transaction-link') return this.linkPlanningTransaction(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-transaction-unlink') return this.unlinkPlanningTransaction(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-checklist-add') return this.addChecklistFormRow(event)
 			if (actionTarget?.dataset.action === 'planning-checklist-remove') return this.removeChecklistFormRow(event)
 			if (event.target.closest('.planing-remove-btn')) return this.removePlanningItem(event)

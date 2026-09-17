@@ -33,7 +33,7 @@ const header = {
 			<div class="header-container d-flex align-items-center">
 				<div class="transactions-today-date text-center"></div>
 				<div class="label-header">
-					<div class="app-name" title="Open settings">${appName}${environmentBadgeHtml}</div>
+					<div class="app-name" title="Open settings">${appName}</div>
 					<nav class="sub-menu">
 						<ul>
 							<li data-sparam="abank">add bank</li>
@@ -44,6 +44,7 @@ const header = {
 							<li data-sparam="out">logout</li>
 						</ul>
 					</nav>
+					${environmentBadgeHtml}
 				</div>
 				<div class="header-utility">
 					<button class="header-menu-toggle" type="button" aria-label="Open menu" aria-haspopup="true" aria-expanded="false" data-action="header-menu-toggle">&#8942;</button>

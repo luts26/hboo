@@ -53,6 +53,24 @@ const routes = {
     'DELETE /api/planning/item/:id': {
         handler: planningHandler
     },
+    'GET /api/planning/item/:id/transactions/candidates': {
+        handler: planningHandler
+    },
+    'GET /api/planning/item/:id/transactions/suggestions': {
+        handler: planningHandler
+    },
+    'GET /api/planning/item/:id/transactions/linked': {
+        handler: planningHandler
+    },
+    'POST /api/planning/item/:id/transactions': {
+        handler: planningHandler
+    },
+    'POST /api/planning/item/:id/transactions/confirm': {
+        handler: planningHandler
+    },
+    'DELETE /api/planning/item/:id/transactions': {
+        handler: planningHandler
+    },
     'GET /api/planning/period/:id/statistics': {
         handler: planningHandler
     }

@@ -51,6 +51,49 @@ export default class PlanningApiService {
 		return api.delete(`/planning/item/${encodeURIComponent(itemId)}`)
 	}
 
+	async getTransactionCandidates(itemId) {
+		return api.get(`/planning/item/${encodeURIComponent(itemId)}/transactions/candidates`)
+	}
+
+	async getLinkedTransactions(itemId) {
+		return api.get(`/planning/item/${encodeURIComponent(itemId)}/transactions/linked`)
+	}
+
+	async getTransactionSuggestions(itemId) {
+		return api.get(`/planning/item/${encodeURIComponent(itemId)}/transactions/suggestions`)
+	}
+
+	async linkTransaction(itemId, transaction) {
+		return api.post(`/planning/item/${encodeURIComponent(itemId)}/transactions`, {
+			provider: transaction.provider,
+			providerTransactionId: transaction.providerTransactionId
+		})
+	}
+
+	async unlinkTransaction(itemId, transaction) {
+		const response = await fetch(`${api.apiurl}/planning/item/${encodeURIComponent(itemId)}/transactions`, {
+			method: 'DELETE',
+			headers: api.getHeaders(),
+			body: JSON.stringify({
+				provider: transaction.provider,
+				providerTransactionId: transaction.providerTransactionId
+			})
+		})
+
+		if ([200, 201].indexOf(response.status) === -1) {
+			throw new Error('Unable to unlink transaction')
+		}
+
+		return response.json()
+	}
+
+	async confirmSuggestedTransaction(itemId, transaction) {
+		return api.post(`/planning/item/${encodeURIComponent(itemId)}/transactions/confirm`, {
+			provider: transaction.provider,
+			providerTransactionId: transaction.providerTransactionId
+		})
+	}
+
 	mapItemToApi(item, periodId) {
 		return {
 			period_id: Number(periodId),

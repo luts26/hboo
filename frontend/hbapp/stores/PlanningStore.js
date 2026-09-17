@@ -123,7 +123,9 @@ class PlanningStore {
 			stale: false,
 			error: null,
 			saveError: null,
-			lastUpdated: null
+			lastUpdated: null,
+			transactionLinks: {},
+			smartSuggestions: {}
 		}
 	}
 
@@ -134,7 +136,9 @@ class PlanningStore {
 			period: {...this.state.currentPeriod},
 			periods: [...this.state.periods],
 			planningItems: [...this.state.planningItems],
-			deletedItemIds: [...this.state.deletedItemIds]
+			deletedItemIds: [...this.state.deletedItemIds],
+			transactionLinks: {...this.state.transactionLinks},
+			smartSuggestions: {...this.state.smartSuggestions}
 		}
 	}
 
@@ -303,6 +307,7 @@ class PlanningStore {
 			error: null,
 			lastUpdated: Date.now()
 		})
+		this.refreshSmartSuggestions()
 
 		try {
 			const period = await this.apiService.getCurrentPeriod()
@@ -326,6 +331,7 @@ class PlanningStore {
 				error: null,
 				lastUpdated: Date.now()
 			})
+			this.refreshSmartSuggestions()
 		} catch (error) {
 			this.setState({
 				loading: false,
@@ -396,6 +402,184 @@ class PlanningStore {
 		await this.repository.removeItem(id)
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		return this.getState()
+	}
+
+	getSmartSuggestionState(itemId) {
+		return this.state.smartSuggestions[String(itemId)] || {
+			loading: false,
+			error: null,
+			candidates: []
+		}
+	}
+
+	setSmartSuggestionState(itemId, patch = {}) {
+		const key = String(itemId)
+		this.setState({
+			smartSuggestions: {
+				...this.state.smartSuggestions,
+				[key]: {
+					...this.getSmartSuggestionState(key),
+					...patch
+				}
+			}
+		})
+	}
+
+	async refreshSmartSuggestions() {
+		if (this.state.dirty) return this.getState()
+		const items = this.state.planningItems.filter(item => {
+			return item.status === 'pending' && !isTemporaryId(item.id)
+		})
+
+		if (!items.length) return this.getState()
+
+		await Promise.all(items.map(async item => {
+			this.setSmartSuggestionState(item.id, {loading: true, error: null})
+
+			try {
+				const candidates = await this.apiService.getTransactionSuggestions(item.id)
+				this.setSmartSuggestionState(item.id, {
+					loading: false,
+					error: null,
+					candidates: Array.isArray(candidates) ? candidates : []
+				})
+			} catch (error) {
+				this.setSmartSuggestionState(item.id, {
+					loading: false,
+					error,
+					candidates: []
+				})
+			}
+		}))
+
+		return this.getState()
+	}
+
+	async confirmSmartSuggestion(itemId, transaction) {
+		const result = await this.apiService.confirmSuggestedTransaction(itemId, transaction)
+		const item = result.item
+		const periodId = item?.periodId || this.state.currentPeriodId
+		const statistics = periodId
+			? await this.apiService.getPeriodStatistics(periodId).catch(() => undefined)
+			: undefined
+		const planningState = await this.repository.applyPersistedItem(item, {statistics})
+
+		this.applyPlanningState(planningState, {
+			source: 'api',
+			stale: false,
+			error: null,
+			saveError: null,
+			lastUpdated: Date.now(),
+			smartSuggestions: {
+				...this.state.smartSuggestions,
+				[String(itemId)]: {
+					loading: false,
+					error: null,
+					candidates: []
+				}
+			}
+		})
+
+		if (result.linked) {
+			this.applyLinkedTransactionResult(itemId, result.linked)
+		}
+
+		return this.getState()
+	}
+
+	getTransactionLinkState(itemId) {
+		return this.state.transactionLinks[String(itemId)] || {
+			loading: false,
+			error: null,
+			candidates: [],
+			linkedTransactions: [],
+			linkedAmount: 0,
+			remainingAmount: null
+		}
+	}
+
+	setTransactionLinkState(itemId, patch = {}) {
+		const key = String(itemId)
+		this.setState({
+			transactionLinks: {
+				...this.state.transactionLinks,
+				[key]: {
+					...this.getTransactionLinkState(key),
+					...patch
+				}
+			}
+		})
+	}
+
+	applyLinkedTransactionResult(itemId, result = {}) {
+		const linkedTransactions = Array.isArray(result.transactions) ? result.transactions : []
+		const linkedKeys = new Set(linkedTransactions.map(transaction => this.getTransactionKey(transaction)))
+		const currentState = this.getTransactionLinkState(itemId)
+
+		this.setTransactionLinkState(itemId, {
+			linkedTransactions,
+			linkedAmount: Number(result.linkedAmount) || 0,
+			remainingAmount: result.remainingAmount,
+			candidates: currentState.candidates.map(transaction => ({
+				...transaction,
+				linked: linkedKeys.has(this.getTransactionKey(transaction))
+			})),
+			loading: false,
+			error: null
+		})
+	}
+
+	getTransactionKey(transaction = {}) {
+		return `${transaction.provider}:${transaction.providerTransactionId}`
+	}
+
+	async loadPlanningItemTransactions(itemId) {
+		if (isTemporaryId(itemId)) {
+			this.setTransactionLinkState(itemId, {
+				loading: false,
+				error: new Error('Save the planning item before linking transactions')
+			})
+			return this.getState()
+		}
+
+		this.setTransactionLinkState(itemId, {loading: true, error: null})
+
+		try {
+			const [candidates, linkedResult] = await Promise.all([
+				this.apiService.getTransactionCandidates(itemId),
+				this.apiService.getLinkedTransactions(itemId)
+			])
+			const linkedTransactions = Array.isArray(linkedResult.transactions) ? linkedResult.transactions : []
+			const linkedKeys = new Set(linkedTransactions.map(transaction => this.getTransactionKey(transaction)))
+
+			this.setTransactionLinkState(itemId, {
+				loading: false,
+				error: null,
+				candidates: (Array.isArray(candidates) ? candidates : []).map(transaction => ({
+					...transaction,
+					linked: Boolean(transaction.linked) || linkedKeys.has(this.getTransactionKey(transaction))
+				})),
+				linkedTransactions,
+				linkedAmount: Number(linkedResult.linkedAmount) || 0,
+				remainingAmount: linkedResult.remainingAmount
+			})
+		} catch (error) {
+			this.setTransactionLinkState(itemId, {loading: false, error})
+		}
+
+		return this.getState()
+	}
+
+	async linkPlanningTransaction(itemId, transaction) {
+		const result = await this.apiService.linkTransaction(itemId, transaction)
+		this.applyLinkedTransactionResult(itemId, result)
+		return this.getState()
+	}
+
+	async unlinkPlanningTransaction(itemId, transaction) {
+		const result = await this.apiService.unlinkTransaction(itemId, transaction)
+		this.applyLinkedTransactionResult(itemId, result)
 		return this.getState()
 	}
 
@@ -531,6 +715,7 @@ class PlanningStore {
 				saveError: null,
 				lastUpdated: Date.now()
 			})
+			this.refreshSmartSuggestions()
 			return this.getState()
 		} catch (error) {
 			const planningState = await this.repository.getPlanningState()

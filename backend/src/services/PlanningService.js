@@ -1,7 +1,55 @@
 import planningRepository from '../repositories/PlanningRepository.js';
 import transactionRepository from '../repositories/TransactionRepository.js';
+import pool from '../database/mysql.js';
 
 const STATUSES = ['pending', 'completed', 'cancelled'];
+const SMART_MATCH_LIMIT = 3;
+const SMART_MATCH_MIN_SCORE = 50;
+const SMART_MATCH_WEIGHTS = {
+    merchant: 55,
+    category: 20,
+    date: 15,
+    amount: 10
+};
+const CYRILLIC_TO_LATIN = {
+    а: 'a',
+    б: 'b',
+    в: 'v',
+    г: 'h',
+    ґ: 'g',
+    д: 'd',
+    е: 'e',
+    є: 'ie',
+    ж: 'zh',
+    з: 'z',
+    и: 'y',
+    і: 'i',
+    ї: 'i',
+    й: 'i',
+    к: 'k',
+    л: 'l',
+    м: 'm',
+    н: 'n',
+    о: 'o',
+    п: 'p',
+    р: 'r',
+    с: 's',
+    т: 't',
+    у: 'u',
+    ф: 'f',
+    х: 'kh',
+    ц: 'ts',
+    ч: 'ch',
+    ш: 'sh',
+    щ: 'shch',
+    ь: '',
+    ю: 'iu',
+    я: 'ia',
+    ы: 'y',
+    э: 'e',
+    ё: 'io',
+    ъ: ''
+};
 
 class PlanningService {
 
@@ -204,6 +252,376 @@ class PlanningService {
         return statistics;
     }
 
+    async getTransactionCandidates(userId, itemId) {
+        const {item, period} = await this.getItemWithPeriod(userId, itemId);
+        const rows = await transactionRepository.getManualMatchCandidates(
+            this.dateRangeTimestamp(period.startDate),
+            this.dateRangeTimestamp(period.endDate, true),
+            item.id
+        );
+
+        return rows.map(row => this.formatMatchedTransaction(row));
+    }
+
+    async getSuggestedTransactions(userId, itemId) {
+        const {item, period} = await this.getItemWithPeriod(userId, itemId);
+
+        if (item.status !== 'pending') {
+            return [];
+        }
+
+        const rows = await transactionRepository.getSmartCompletionCandidates(
+            this.dateRangeTimestamp(period.startDate),
+            this.dateRangeTimestamp(period.endDate, true),
+            item.id,
+            item.categoryId
+        );
+
+        return rows
+            .map(row => this.formatSuggestedTransaction(row, item))
+            .filter(candidate => this.isUsefulSuggestion(candidate))
+            .sort((a, b) => b.score - a.score || b.timestamp - a.timestamp)
+            .slice(0, SMART_MATCH_LIMIT);
+    }
+
+    async getLinkedTransactions(userId, itemId) {
+        const {item} = await this.getItemWithPeriod(userId, itemId);
+        const rows = await transactionRepository.getLinkedPlanningTransactions(item.id);
+        const transactions = rows.map(row => this.formatMatchedTransaction(row));
+
+        return {
+            transactions,
+            linkedAmount: this.sumLinkedAmount(transactions),
+            remainingAmount: this.roundMoney(this.toMoney(item.plannedAmount) - this.sumLinkedAmount(transactions))
+        };
+    }
+
+    async linkTransaction(userId, itemId, data) {
+        const {item} = await this.getItemWithPeriod(userId, itemId);
+        const provider = this.requireProvider(data.provider);
+        const providerTransactionId = this.requireString(data.providerTransactionId ?? data.provider_transaction_id, 'providerTransactionId');
+        const exists = await transactionRepository.transactionExists(provider, providerTransactionId);
+
+        if (!exists) {
+            throw this.notFoundError('Transaction not found');
+        }
+
+        try {
+            await transactionRepository.createPlanningTransactionLink(item.id, provider, providerTransactionId);
+        } catch (error) {
+            if (error?.code === 'ER_DUP_ENTRY') {
+                const conflict = new Error('Transaction is already linked to this planning item');
+                conflict.statusCode = 409;
+                throw conflict;
+            }
+
+            throw error;
+        }
+
+        return this.getLinkedTransactions(userId, item.id);
+    }
+
+    async confirmSuggestedTransaction(userId, itemId, data) {
+        const id = this.requireId(itemId, 'item id');
+        const provider = this.requireProvider(data.provider);
+        const providerTransactionId = this.requireString(data.providerTransactionId ?? data.provider_transaction_id, 'providerTransactionId');
+        const connection = await pool.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const currentItem = await planningRepository.findItemByIdWithConnection(connection, userId, id);
+
+            if (!currentItem) {
+                throw this.notFoundError('Planning item not found');
+            }
+
+            if (currentItem.status !== 'pending') {
+                throw this.validationError('Planning item is already finished');
+            }
+
+            const transactionExists = await transactionRepository.transactionExistsWithConnection(
+                connection,
+                provider,
+                providerTransactionId
+            );
+
+            if (!transactionExists) {
+                throw this.notFoundError('Transaction not found');
+            }
+
+            const amount = await transactionRepository.getTransactionAmountWithConnection(
+                connection,
+                provider,
+                providerTransactionId
+            );
+
+            if (!(Number(amount) < 0)) {
+                throw this.validationError('Transaction must be an expense');
+            }
+
+            try {
+                await transactionRepository.createPlanningTransactionLinkWithConnection(
+                    connection,
+                    currentItem.id,
+                    provider,
+                    providerTransactionId
+                );
+            } catch (error) {
+                if (error?.code !== 'ER_DUP_ENTRY') {
+                    throw error;
+                }
+            }
+
+            const completedItem = await this.buildItem(userId, {
+                status: 'completed',
+                actual_amount: Math.abs(Number(amount))
+            }, currentItem);
+            const updatedItem = await planningRepository.updateItemWithConnection(
+                connection,
+                userId,
+                currentItem.id,
+                completedItem
+            );
+
+            if (!updatedItem) {
+                throw this.notFoundError('Planning item not found');
+            }
+
+            await connection.commit();
+
+            return {
+                item: this.formatItem(updatedItem),
+                linked: await this.getLinkedTransactions(userId, currentItem.id)
+            };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    async unlinkTransaction(userId, itemId, data) {
+        const {item} = await this.getItemWithPeriod(userId, itemId);
+        const provider = this.requireProvider(data.provider);
+        const providerTransactionId = this.requireString(data.providerTransactionId ?? data.provider_transaction_id, 'providerTransactionId');
+        const deleted = await transactionRepository.deletePlanningTransactionLink(
+            item.id,
+            provider,
+            providerTransactionId
+        );
+
+        if (!deleted) {
+            throw this.notFoundError('Planning transaction link not found');
+        }
+
+        return this.getLinkedTransactions(userId, item.id);
+    }
+
+    async getItemWithPeriod(userId, itemId) {
+        const item = await planningRepository.findItemById(
+            userId,
+            this.requireId(itemId, 'item id')
+        );
+
+        if (!item) {
+            throw this.notFoundError('Planning item not found');
+        }
+
+        const period = await planningRepository.findPeriodById(userId, item.periodId);
+
+        if (!period) {
+            throw this.notFoundError('Planning period not found');
+        }
+
+        return {item, period};
+    }
+
+    sumLinkedAmount(transactions) {
+        return this.roundMoney(
+            transactions.reduce((sum, transaction) => sum + Math.abs(this.toMoney(transaction.amount)), 0)
+        );
+    }
+
+    formatMatchedTransaction(transaction) {
+        const amount = this.toMoney(transaction.amount);
+        const timestamp = Number(transaction.timestamp) || null;
+
+        return {
+            provider: transaction.provider,
+            providerTransactionId: transaction.providerTransactionId,
+            timestamp,
+            date: timestamp ? new Date(timestamp).toISOString() : null,
+            amount,
+            expenseAmount: this.roundMoney(Math.abs(amount)),
+            description: transaction.description || 'Transaction',
+            category: transaction.category || null,
+            linked: Boolean(transaction.linked),
+            linkId: transaction.linkId === undefined ? null : Number(transaction.linkId),
+            linkedAt: transaction.linkedAt ? this.formatDateTime(transaction.linkedAt) : null
+        };
+    }
+
+    formatSuggestedTransaction(transaction, item) {
+        const formatted = this.formatMatchedTransaction(transaction);
+        const signals = this.scoreSuggestionSignals(formatted, transaction, item);
+        const score = this.roundMoney(
+            (signals.merchant * SMART_MATCH_WEIGHTS.merchant)
+            + (signals.category * SMART_MATCH_WEIGHTS.category)
+            + (signals.date * SMART_MATCH_WEIGHTS.date)
+            + (signals.amount * SMART_MATCH_WEIGHTS.amount)
+        );
+
+        return {
+            ...formatted,
+            score,
+            confidence: score >= 72 ? 'high' : 'medium',
+            signals: {
+                merchant: this.roundMoney(signals.merchant),
+                category: this.roundMoney(signals.category),
+                date: this.roundMoney(signals.date),
+                amount: this.roundMoney(signals.amount)
+            }
+        };
+    }
+
+    scoreSuggestionSignals(transaction, rawTransaction, item) {
+        return {
+            merchant: this.getMerchantScore(item, transaction),
+            category: rawTransaction.categoryMatched ? 1 : 0,
+            date: this.getDateScore(item, transaction),
+            amount: this.getAmountScore(item, transaction)
+        };
+    }
+
+    isUsefulSuggestion(candidate) {
+        const normalMatch = candidate.score >= SMART_MATCH_MIN_SCORE && (
+            candidate.signals.merchant >= 0.35
+            || candidate.signals.category > 0
+            || (candidate.signals.merchant >= 0.2 && candidate.signals.amount >= 0.5)
+        );
+        const strongCategoryMatch = candidate.signals.category === 1
+            && candidate.signals.date >= 0.8
+            && candidate.signals.amount >= 0.5;
+
+        return normalMatch || strongCategoryMatch;
+    }
+
+    getMerchantScore(item, transaction) {
+        const planText = this.normalizeSearchText([
+            item.title,
+            item.description
+        ].filter(Boolean).join(' '));
+        const transactionText = this.normalizeSearchText(transaction.description);
+
+        if (!planText || !transactionText) {
+            return 0;
+        }
+
+        if (transactionText.includes(planText) || planText.includes(transactionText)) {
+            return 1;
+        }
+
+        const directScore = this.getTokenMatchScore(
+            this.tokenizeSearchText(planText),
+            this.tokenizeSearchText(transactionText)
+        );
+        const transliteratedScore = this.getTokenMatchScore(
+            this.tokenizeMerchantText(planText, true),
+            this.tokenizeMerchantText(transactionText, true),
+            true
+        );
+
+        return Math.max(directScore, transliteratedScore);
+    }
+
+    getTokenMatchScore(planTokens, transactionTokens, includeTransliterationVariants = false) {
+        if (!planTokens.length || !transactionTokens.length) return 0;
+
+        const transactionTokenSet = new Set(
+            transactionTokens.flatMap(token => this.getMerchantTokenVariants(token, includeTransliterationVariants))
+        );
+        const matchedTokens = planTokens.filter(token => {
+            const tokenVariants = this.getMerchantTokenVariants(token, includeTransliterationVariants);
+
+            if (tokenVariants.some(tokenVariant => transactionTokenSet.has(tokenVariant))) return true;
+
+            return transactionTokens.some(candidate => candidate.includes(token) || token.includes(candidate));
+        });
+
+        return matchedTokens.length / planTokens.length;
+    }
+
+    tokenizeMerchantText(value, transliterate = false) {
+        const text = transliterate
+            ? this.transliterateCyrillicToLatin(value)
+            : value;
+
+        return this.tokenizeSearchText(text);
+    }
+
+    getMerchantTokenVariants(token, includeTransliterationVariants = false) {
+        if (!includeTransliterationVariants || !token.includes('y')) {
+            return [token];
+        }
+
+        return [token, token.replace(/y/g, 'i')];
+    }
+
+    getDateScore(item, transaction) {
+        if (!transaction.timestamp) return 0;
+
+        const plannedAt = new Date(`${this.formatDate(item.plannedAt)}T12:00:00`).getTime();
+        const diffDays = Math.abs(transaction.timestamp - plannedAt) / 86400000;
+
+        if (diffDays <= 1) return 1;
+        if (diffDays <= 3) return 0.8;
+        if (diffDays <= 7) return 0.55;
+        if (diffDays <= 14) return 0.3;
+
+        return 0.1;
+    }
+
+    getAmountScore(item, transaction) {
+        const plannedAmount = this.toMoney(item.plannedAmount);
+        const expenseAmount = Math.abs(this.toMoney(transaction.amount));
+
+        if (plannedAmount <= 0 || expenseAmount <= 0) {
+            return 0;
+        }
+
+        const diffRatio = Math.abs(plannedAmount - expenseAmount) / Math.max(plannedAmount, expenseAmount);
+
+        if (diffRatio <= 0.1) return 1;
+        if (diffRatio <= 0.25) return 0.8;
+        if (diffRatio <= 0.5) return 0.55;
+        if (diffRatio <= 0.8) return 0.25;
+
+        return 0.1;
+    }
+
+    normalizeSearchText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/[^a-zа-яіїєґ0-9]+/gi, ' ')
+            .trim();
+    }
+
+    tokenizeSearchText(value) {
+        return this.normalizeSearchText(value)
+            .split(/\s+/)
+            .filter(token => token.length >= 2);
+    }
+
+    transliterateCyrillicToLatin(value) {
+        return String(value || '')
+            .toLowerCase()
+            .split('')
+            .map(char => CYRILLIC_TO_LATIN[char] ?? char)
+            .join('');
+    }
+
     async buildItem(userId, data, currentItem) {
         const status = data.status ?? currentItem?.status ?? 'pending';
 
@@ -336,6 +754,16 @@ class PlanningService {
         const text = String(value).trim();
 
         return text === '' ? null : text;
+    }
+
+    requireProvider(value) {
+        const provider = this.requireString(value, 'provider');
+
+        if (!['mono', 'privat'].includes(provider)) {
+            throw this.validationError('provider is invalid');
+        }
+
+        return provider;
     }
 
     getRemainingDays(endDate) {
