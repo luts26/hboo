@@ -123,18 +123,20 @@ const _getCalendarFilters = (monthNumber = new Date().getMonth()) => {
 	return calendarTemplate
 }
 
-const createCalendar = (selectDate = new Date()) => {
+const createCalendar = (selectDate = new Date(), selectedRange = null) => {
 
 	let currentDate = new Date()
 	let dateFromSelect = new Date(selectDate)
 
 	let year = dateFromSelect.getFullYear()
 	let month = (dateFromSelect.getMonth() < 10) ? '0' + (dateFromSelect.getMonth() + 1) : dateFromSelect.getMonth() + 1
-	let day = currentDate.getDate()
+	let selectedTo = selectedRange?.to ? new Date(selectedRange.to) : null
+	let day = selectedTo && !Number.isNaN(selectedTo.getTime()) ? selectedTo.getDate() : currentDate.getDate()
 	let dayOfWeek = new Date(year, dateFromSelect.getMonth()).getDay()
 	let curentDay = 1
-	inputDatePicker = `${year}-${month}-${day}`
-	inputDatePickerFrom = `${year}-${month}-01`
+	const selectedMonth = `${year}-${month}`
+	inputDatePicker = selectedRange?.to || `${selectedMonth}-${String(day).padStart(2, '0')}`
+	inputDatePickerFrom = selectedRange?.from || `${selectedMonth}-01`
 	let monthDays = 32 - new Date(year, dateFromSelect.getMonth(), 32).getDate()
 	let calendarTemplate = `
 	<table>
@@ -165,16 +167,17 @@ const createCalendar = (selectDate = new Date()) => {
 	return calendarTemplate
 }
 
-const datePickerDefault = () => {
+const datePickerDefault = (selectedRange = null) => {
 
 	_setDatePickerStyle()
 
 	const $datePicker = document.querySelector('date-picker')
 	$datePicker.classList.add('date-picker-hide')
-	$datePicker.innerHTML = _getCalendarFilters()
-	$datePicker.querySelector('.calendar-table').innerHTML = createCalendar()
-	$datePicker.querySelector('.input-date-picker-from').value = inputDatePickerFrom ?? inputDatePicker
-	$datePicker.querySelector('.input-date-picker-to').value = inputDatePickerTo ?? inputDatePicker
+	const selectedDate = selectedRange?.from ? new Date(selectedRange.from) : new Date()
+	$datePicker.innerHTML = _getCalendarFilters(selectedDate.getMonth())
+	$datePicker.querySelector('.calendar-table').innerHTML = createCalendar(selectedDate, selectedRange)
+	$datePicker.querySelector('.input-date-picker-from').value = selectedRange?.from || inputDatePickerFrom || inputDatePicker
+	$datePicker.querySelector('.input-date-picker-to').value = selectedRange?.to || inputDatePickerTo || inputDatePicker
 
 	$datePicker.querySelector('#smonth').addEventListener('change', e => {
 		let month = Number(e.target.value) + 1

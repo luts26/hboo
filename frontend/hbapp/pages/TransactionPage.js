@@ -49,6 +49,7 @@ export default class TransactionPage extends AbstractClass {
 			this.unsubscribe = transactionStore.subscribe(state => {
 				this.handleStatusTransition(this.state, state)
 				this.state = state
+				this.syncAppliedDateRangeFromState(state)
 				if (!state.loading) this.refreshingBank = null
 					this.dataItems = state.data
 					this.$hbapp.innerHTML = this.getTemplate()
@@ -204,12 +205,12 @@ export default class TransactionPage extends AbstractClass {
 	}
 
 	afterCreate() {
-		if (this.$hbapp.querySelector('date-picker')) datePickerDefault()
+		if (this.$hbapp.querySelector('date-picker')) datePickerDefault(this.appliedDateRange || this.getDateRangeFromState())
 		this.syncAppliedDateRangeFromPage()
 	}
 
 	afterUpdate() {
-		if (this.$hbapp.querySelector('date-picker')) datePickerDefault()
+		if (this.$hbapp.querySelector('date-picker')) datePickerDefault(this.appliedDateRange || this.getDateRangeFromState())
 		this.syncAppliedDateRangeFromPage()
 	}
 
@@ -249,7 +250,7 @@ export default class TransactionPage extends AbstractClass {
 
 	getTransactionTitle(transaction = {}, bank = '') {
 		if (bank === 'mono') return transaction.description || 'Transaction'
-		return [transaction.details, transaction.categoryDetails].filter(Boolean).join(': ') || 'Transaction'
+		return [transaction.details, transaction.categoryDetails ?? transaction.category_details].filter(Boolean).join(': ') || 'Transaction'
 	}
 
 	getTransactionTimestamp(transaction = {}, bank = '') {
@@ -464,6 +465,27 @@ export default class TransactionPage extends AbstractClass {
 		const from = this.$hbapp.querySelector('.transaction-filters .input-date-picker-from')?.value || ''
 		const to = this.$hbapp.querySelector('.transaction-filters .input-date-picker-to')?.value || ''
 		if (from && to) this.appliedDateRange = {from, to}
+	}
+
+	getDateInputValue(value) {
+		const date = new Date(Number(value))
+		if (Number.isNaN(date.getTime())) return ''
+		return [
+			date.getFullYear(),
+			String(date.getMonth() + 1).padStart(2, '0'),
+			String(date.getDate()).padStart(2, '0')
+		].join('-')
+	}
+
+	getDateRangeFromState(state = this.state) {
+		const from = this.getDateInputValue(state.range?.dateFrom)
+		const to = this.getDateInputValue(state.range?.dateTo)
+		return from && to ? {from, to} : null
+	}
+
+	syncAppliedDateRangeFromState(state = this.state) {
+		const range = this.getDateRangeFromState(state)
+		if (range) this.appliedDateRange = range
 	}
 
 	getDefaultDateRange() {
@@ -809,6 +831,7 @@ export default class TransactionPage extends AbstractClass {
 					</div>
 				</div>
 			</div>
+			${this.getCoverageNoticeTemplate()}
 			${htmlTemplate}
 			${this.getFilterModalTemplate()}
 			${this.getRefreshConfirmTemplate()}
@@ -816,6 +839,15 @@ export default class TransactionPage extends AbstractClass {
 			</div>
 			</div>`
 		return htmlTemplate
+	}
+
+	getCoverageNoticeTemplate() {
+		const status = this.state.coverage?.status
+		if (!status || status === 'complete' || this.state.source === 'api') return ''
+		if (status === 'partial') {
+			return `<div class="data-status-detail mt-2">Cached partial transaction range. Some offline results may be incomplete.</div>`
+		}
+		return `<div class="data-status-detail mt-2">This transaction range has not been cached yet.</div>`
 	}
 
 	getBankControlsTemplate({banks = this.filterBank, toggleAction = 'toggle-bank', extraClass = ''} = {}) {
@@ -896,7 +928,10 @@ export default class TransactionPage extends AbstractClass {
 		let dt = this.$hbapp.querySelector('.transaction-filters .input-date-picker-to').value
 
 		const state = await this.refresh(`?date_from=${new Date(df).getTime()}&date_to=${new Date(dt).getTime()}`)
-		if (!state?.error) this.appliedDateRange = {from: df, to: dt}
+		if (state?.loaded) {
+			this.appliedDateRange = {from: df, to: dt}
+			transactionStore.saveSelectedRange(state.range)
+		}
 	}
 
 	toggleBankFilter(bank) {
@@ -975,8 +1010,9 @@ export default class TransactionPage extends AbstractClass {
 
 		if (datesChanged) {
 			const state = await this.refresh(`?date_from=${new Date(draft.from).getTime()}&date_to=${new Date(draft.to).getTime()}`)
-			if (state?.error) return
+			if (!state?.loaded) return
 			this.appliedDateRange = {from: draft.from, to: draft.to}
+			transactionStore.saveSelectedRange(state.range)
 		}
 
 		this.selectedCategoryId = draft.categoryId

@@ -184,6 +184,11 @@ export default class IndexedDbClient {
 		return requestToPromise(db.transaction(storeName, 'readonly').objectStore(storeName).getAll(query))
 	}
 
+	async getAllFromIndex(storeName, indexName, query = null) {
+		const db = await this.openDatabase()
+		return requestToPromise(db.transaction(storeName, 'readonly').objectStore(storeName).index(indexName).getAll(query))
+	}
+
 	async put(storeName, value) {
 		const db = await this.openDatabase()
 		const tx = db.transaction(storeName, 'readwrite')
@@ -220,6 +225,7 @@ export default class IndexedDbClient {
 		const helpers = {
 			get: (storeName, key) => requestToPromise(getStore(storeName).get(key)),
 			getAll: (storeName, query = null) => requestToPromise(getStore(storeName).getAll(query)),
+			getAllFromIndex: (storeName, indexName, query = null) => requestToPromise(getStore(storeName).index(indexName).getAll(query)),
 			put: (storeName, value) => requestToPromise(getStore(storeName).put(value)),
 			delete: (storeName, key) => requestToPromise(getStore(storeName).delete(key))
 		}

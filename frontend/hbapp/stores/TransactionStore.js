@@ -2,12 +2,86 @@ import TransactionApiService from '../services/TransactionApiService.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
 
 const cloneData = data => data ? JSON.parse(JSON.stringify(data)) : null
+const FILTER_STORAGE_KEY = 'hboo-transaction-filter-v1'
+
+const getDefaultRange = () => {
+	const now = new Date()
+	const from = new Date(now.getFullYear(), now.getMonth(), 1)
+	from.setHours(0, 0, 0, 0)
+	return {
+		dateFrom: from.getTime(),
+		dateTo: now.getTime()
+	}
+}
+
+const getRangeFromQuery = query => {
+	const defaults = getDefaultRange()
+	const params = new URLSearchParams(String(query || '').replace(/^\?/, ''))
+	const dateFrom = params.has('date_from') ? Number(params.get('date_from')) : NaN
+	const dateTo = params.has('date_to') ? Number(params.get('date_to')) : NaN
+	return {
+		dateFrom: Number.isFinite(dateFrom) ? dateFrom : defaults.dateFrom,
+		dateTo: Number.isFinite(dateTo) ? dateTo : defaults.dateTo
+	}
+}
+
+const hasQueryDateRange = query => {
+	const params = new URLSearchParams(String(query || '').replace(/^\?/, ''))
+	return params.has('date_from')
+		&& params.has('date_to')
+		&& Number.isFinite(Number(params.get('date_from')))
+		&& Number.isFinite(Number(params.get('date_to')))
+}
+
+const getQueryFromRange = range => `?date_from=${Number(range.dateFrom)}&date_to=${Number(range.dateTo)}`
+
+const isValidRange = range => {
+	const dateFrom = Number(range?.dateFrom)
+	const dateTo = Number(range?.dateTo)
+	return Number.isFinite(dateFrom) && Number.isFinite(dateTo) && dateFrom <= dateTo
+}
+
+const getSavedRange = () => {
+	try {
+		const rawData = localStorage.getItem(FILTER_STORAGE_KEY)
+		if (!rawData) return null
+		const data = JSON.parse(rawData)
+		const range = {
+			dateFrom: Number(data?.dateFrom),
+			dateTo: Number(data?.dateTo)
+		}
+		return isValidRange(range) ? range : null
+	} catch {
+		return null
+	}
+}
+
+const saveTransactionRangePreference = range => {
+	if (!isValidRange(range)) return null
+	const data = {
+		version: 1,
+		dateFrom: Number(range.dateFrom),
+		dateTo: Number(range.dateTo),
+		updatedAt: Date.now()
+	}
+	localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(data))
+	return data
+}
+
+const getInitialRange = query => {
+	if (hasQueryDateRange(query)) return getRangeFromQuery(query)
+	return getSavedRange() || getDefaultRange()
+}
+
+const isOffline = () => {
+	return typeof navigator !== 'undefined' && navigator.onLine === false
+}
 
 class TransactionStore {
 
-	constructor() {
-		this.apiService = new TransactionApiService()
-		this.repository = new TransactionLocalRepository()
+	constructor({apiService = new TransactionApiService(), repository = new TransactionLocalRepository()} = {}) {
+		this.apiService = apiService
+		this.repository = repository
 		this.listeners = new Set()
 		this.loadPromise = null
 		this.state = {
@@ -17,6 +91,8 @@ class TransactionStore {
 			loaded: false,
 			source: null,
 			stale: false,
+			coverage: null,
+			range: getDefaultRange(),
 			error: null
 		}
 	}
@@ -48,9 +124,9 @@ class TransactionStore {
 		this.notify()
 	}
 
-	hydrateFromCache() {
+	async hydrateFromCache(range = this.state.range) {
 		if (this.state.loaded || this.state.data) return this.getState()
-		const cache = this.repository.get()
+		const cache = await this.repository.getRange(range)
 		if (!cache) return this.getState()
 
 		this.setState({
@@ -59,6 +135,8 @@ class TransactionStore {
 			loaded: true,
 			source: 'cache',
 			stale: false,
+			coverage: cache.coverage || null,
+			range,
 			error: null
 		})
 		return this.getState()
@@ -66,20 +144,10 @@ class TransactionStore {
 
 	load(query = '') {
 		if (this.loadPromise) return this.loadPromise
+		const range = getInitialRange(query)
+		const requestQuery = query || getQueryFromRange(range)
 
-		const cache = this.repository.get()
-		if (cache) {
-			this.setState({
-				data: cache.data,
-				updatedAt: cache.updatedAt,
-				loaded: true,
-				source: 'cache',
-				stale: false,
-				error: null
-			})
-		}
-
-		this.loadPromise = this.refresh(query)
+		this.loadPromise = this.refresh(requestQuery, {range})
 			.finally(() => {
 				this.loadPromise = null
 			})
@@ -87,49 +155,82 @@ class TransactionStore {
 		return this.loadPromise
 	}
 
-	async refresh(query = '') {
-		this.setState({loading: true})
+	async refresh(query = '', {range = getRangeFromQuery(query)} = {}) {
+		const cache = await this.repository.getRange(range)
+		const offline = isOffline()
+		if (cache) {
+			this.setState({
+				data: cache.data,
+				updatedAt: cache.updatedAt,
+				loading: !offline,
+				loaded: true,
+				source: 'cache',
+				stale: offline,
+				coverage: cache.coverage || null,
+				range,
+				error: null
+			})
+		} else {
+			this.setState({
+				data: {mono: [], privat: []},
+				updatedAt: null,
+				loading: !offline,
+				loaded: true,
+				source: 'cache',
+				stale: offline,
+				coverage: {status: 'not_fetched', complete: false, windows: []},
+				range,
+				error: null
+			})
+		}
+
+		if (offline) {
+			return this.getState()
+		}
 
 		try {
 			const data = await this.apiService.getTransactions(query)
-			const cache = this.repository.save(data)
+			const savedCache = await this.repository.saveRange(data, range)
 			this.setState({
-				data,
-				updatedAt: cache?.updatedAt || Date.now(),
+				data: savedCache?.data || data,
+				updatedAt: savedCache?.updatedAt || Date.now(),
 				loading: false,
 				loaded: true,
 				source: 'api',
 				stale: false,
+				coverage: savedCache?.coverage || {status: 'complete', complete: true, windows: []},
+				range,
 				error: null
 			})
 			return this.getState()
 		} catch (error) {
-			const cache = this.repository.get()
-			if (cache) {
-				this.setState({
-					data: cache.data,
-					updatedAt: cache.updatedAt,
-					loading: false,
-					loaded: true,
-					source: 'cache',
-					stale: true,
-					error
-				})
-				return this.getState()
-			}
-
+			const latestCache = await this.repository.getRange(range)
 			this.setState({
-				data: null,
-				updatedAt: null,
+				data: latestCache?.data || {mono: [], privat: []},
+				updatedAt: latestCache?.updatedAt || null,
 				loading: false,
-				loaded: false,
-				source: null,
-				stale: false,
+				loaded: true,
+				source: 'cache',
+				stale: true,
+				coverage: latestCache?.coverage || null,
+				range,
 				error
 			})
 			return this.getState()
 		}
 	}
+
+	saveSelectedRange(range = this.state.range) {
+		return saveTransactionRangePreference(range)
+	}
 }
 
+export {
+	FILTER_STORAGE_KEY,
+	TransactionStore,
+	getInitialRange,
+	getQueryFromRange,
+	getRangeFromQuery,
+	saveTransactionRangePreference
+}
 export default new TransactionStore()
