@@ -25,6 +25,8 @@ export default class PlaningPage extends AbstractClass {
 		source: 'cache',
 		stale: false,
 		saveError: null,
+		syncStatus: 'idle',
+		syncError: null,
 		modal: null,
 		modalView: 'details',
 		selectedItemId: null,
@@ -36,7 +38,10 @@ export default class PlaningPage extends AbstractClass {
 	categoryLoadPromise = null
 	unsubscribe = null
 	dataStatusOpen = false
-	hasShownRestoredDirtyToast = false
+	hasShownOfflineToast = false
+	hasShownSyncErrorToast = false
+	hasShownConflictToast = false
+	wasOfflinePending = false
 
 	constructor(hbapp) {
 		super(hbapp)
@@ -47,7 +52,7 @@ export default class PlaningPage extends AbstractClass {
 		this.$hbapp.innerHTML = this.getLoadingTemplate()
 		this.loadCategories()
 		this.unsubscribe = planningStore.subscribe(state => {
-			this.handleDirtyFeedback(this.state, state)
+			this.handleSyncFeedback(this.state, state)
 			this.state = {
 				currentPeriod: state.currentPeriod,
 				summary: state.summary,
@@ -59,6 +64,8 @@ export default class PlaningPage extends AbstractClass {
 				source: state.source,
 				stale: state.stale,
 				saveError: state.saveError,
+				syncStatus: state.syncStatus,
+				syncError: state.syncError,
 				modal: this.state.modal,
 				modalView: this.state.modalView,
 				selectedItemId: this.state.selectedItemId,
@@ -190,17 +197,38 @@ export default class PlaningPage extends AbstractClass {
 		return DataStatus.render(viewModel)
 	}
 
-	handleDirtyFeedback(previousState, nextState) {
-		if (!nextState.dirty) return
-
-		if (!previousState.loaded && nextState.loaded && !this.hasShownRestoredDirtyToast) {
-			this.hasShownRestoredDirtyToast = true
-			Toast.show('Unsaved changes', {type: 'info', key: 'planning-unsaved-restored'})
+	handleSyncFeedback(previousState, nextState) {
+		if (nextState.syncStatus === 'offline') {
+			this.wasOfflinePending = true
+			if (!this.hasShownOfflineToast) {
+				this.hasShownOfflineToast = true
+				Toast.show('Offline — changes saved locally', {type: 'warning', key: 'planning-sync-offline'})
+			}
 			return
 		}
 
-		if (previousState.loaded && !previousState.dirty && nextState.dirty) {
-			Toast.show('Changes saved locally', {type: 'success', key: 'planning-local-saved'})
+		if (nextState.syncStatus === 'synced') {
+			if (this.wasOfflinePending) {
+				Toast.show('Changes synced', {type: 'success', key: 'planning-sync-recovered'})
+			}
+			this.wasOfflinePending = false
+			this.hasShownOfflineToast = false
+			this.hasShownSyncErrorToast = false
+			this.hasShownConflictToast = false
+			return
+		}
+
+		if (nextState.syncStatus === 'error') {
+			if (!this.hasShownSyncErrorToast && previousState.syncStatus !== 'error') {
+				this.hasShownSyncErrorToast = true
+				Toast.show('Sync failed — changes are saved locally', {type: 'error', key: 'planning-sync-error'})
+			}
+			return
+		}
+
+		if (nextState.syncStatus === 'conflict' && !this.hasShownConflictToast) {
+			this.hasShownConflictToast = true
+			Toast.show('Sync conflict — changes are saved locally', {type: 'error', key: 'planning-sync-conflict', duration: 12000})
 		}
 	}
 
@@ -689,19 +717,11 @@ export default class PlaningPage extends AbstractClass {
 	}
 
 	getTemplate() {
-		const saveLabel = this.state.saving ? 'Saving...' : 'Save'
-		const saveDisabled = this.state.saving ? ' disabled' : ''
-		const errorText = this.state.saveError ? `<div class="planing-sync-error">Save failed. Local changes are kept.</div>` : ''
-		const floatingSave = this.state.dirty
-			? `<button class="planing-floating-save" type="button"${saveDisabled}>${saveLabel}</button>`
-			: ''
-
 		return `<div class="${this.pageName}-container mt-2">
 			${this.getPageHeaderTemplate()}
 			<div class="planing-toolbar">
 				${this.getPeriodSummaryTemplate()}
 			</div>
-			${errorText}
 			<div class="planing-list">
 				<div class="planing-list-header">
 					<div class="planing-list-title">Planning items</div>
@@ -710,7 +730,6 @@ export default class PlaningPage extends AbstractClass {
 				${this.getItemsTemplate()}
 			</div>
 			${this.getModalTemplate()}
-			${floatingSave}
 		</div>`
 	}
 
@@ -903,15 +922,6 @@ export default class PlaningPage extends AbstractClass {
 		this.closeModal()
 	}
 
-	async saveToServer() {
-		try {
-			await planningStore.save()
-			Toast.show('Changes saved', {type: 'success', key: 'planning-save-success'})
-		} catch {
-			Toast.show('Saved locally. Sync failed.', {type: 'error', key: 'planning-save-failed'})
-		}
-	}
-
 	eventsRegister(event, eventKey) {
 		if (eventKey === 'click') {
 			if (event.target.closest('[data-action="toggle-data-status"]')) {
@@ -923,7 +933,6 @@ export default class PlaningPage extends AbstractClass {
 			if (event.target.classList.contains('planing-modal-backdrop')) return this.closeModal()
 			if (event.target.closest('.planing-period-summary')) return this.openModal('period')
 			if (event.target.closest('.planing-add-btn')) return this.openModal('add')
-			if (event.target.closest('.planing-floating-save')) return this.saveToServer()
 			if (event.target.closest('.planing-cancel-edit-btn')) return this.closeModal()
 			if (event.target.closest('.planing-detail .planing-edit-btn')) return this.openModal('edit', this.state.selectedItemId)
 			if (event.target.closest('.planing-period-form .planing-save-btn')) return this.savePeriod(event)

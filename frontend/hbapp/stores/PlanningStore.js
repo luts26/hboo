@@ -1,6 +1,7 @@
 import BalanceLocalRepository from '../services/BalanceLocalRepository.js'
 import PlanningApiService from '../services/PlanningApiService.js'
 import PlanningLocalRepository from '../services/PlanningLocalRepository.js'
+import PlanningSyncQueue from '../services/PlanningSyncQueue.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
 import {calculateSummary, endOfDay, startOfDay} from '../services/PlanningCalculator.js'
 
@@ -100,10 +101,13 @@ class PlanningStore {
 	constructor() {
 		this.repository = new PlanningLocalRepository()
 		this.apiService = new PlanningApiService()
+		this.syncQueue = new PlanningSyncQueue()
 		this.balanceRepository = new BalanceLocalRepository()
 		this.transactionRepository = new TransactionLocalRepository()
 		this.listeners = new Set()
 		this.loadPromise = null
+		this.syncPromise = null
+		this.syncDebounce = null
 		this.state = {
 			balance: null,
 			transactions: null,
@@ -123,10 +127,36 @@ class PlanningStore {
 			stale: false,
 			error: null,
 			saveError: null,
+			syncStatus: 'idle',
+			syncError: null,
 			lastUpdated: null,
 			transactionLinks: {},
 			smartSuggestions: {}
 		}
+		this.registerSyncTriggers()
+	}
+
+	registerSyncTriggers() {
+		if (typeof window === 'undefined') return
+		window.addEventListener('online', () => this.handleRecoverySignal('online'))
+		window.addEventListener('focus', () => this.handleRecoverySignal('focus'))
+		if (typeof document !== 'undefined') {
+			document.addEventListener('visibilitychange', () => {
+				if (document.visibilityState === 'visible') this.handleRecoverySignal('visible')
+			})
+		}
+	}
+
+	handleRecoverySignal(reason = 'recovery') {
+		if (this.syncDebounce) {
+			clearTimeout(this.syncDebounce)
+			this.syncDebounce = null
+		}
+
+		this.syncDebounce = setTimeout(() => {
+			this.syncDebounce = null
+			this.processSyncQueue({force: true, ignoreOffline: true, reason}).catch(() => {})
+		}, 100)
 	}
 
 	getState() {
@@ -308,6 +338,7 @@ class PlanningStore {
 			lastUpdated: Date.now()
 		})
 		this.refreshSmartSuggestions()
+		if (cachedState.dirty) await this.enqueueAutosync({reason: 'startup'})
 
 		try {
 			const period = await this.apiService.getCurrentPeriod()
@@ -342,7 +373,45 @@ class PlanningStore {
 			})
 		}
 
+		this.scheduleAutosync({reason: 'startup', delay: 500})
 		return this.getState()
+	}
+
+	isOffline() {
+		return typeof navigator !== 'undefined' && navigator.onLine === false
+	}
+
+	async enqueueAutosync({reason = 'local-change'} = {}) {
+		const operation = await this.syncQueue.enqueue({reason})
+		if (!operation) {
+			this.setState({syncStatus: 'error', syncError: new Error('Planning sync queue is unavailable')})
+			return null
+		}
+
+		if (operation.status === 'conflict') {
+			this.setState({syncStatus: 'conflict', syncError: operation.lastError || new Error('Planning sync conflict')})
+			return operation
+		}
+
+		this.setState({
+			syncStatus: this.isOffline() ? 'offline' : 'pending',
+			syncError: null
+		})
+		this.scheduleAutosync({reason})
+		return operation
+	}
+
+	scheduleAutosync({reason = 'local-change', delay = 600} = {}) {
+		if (this.syncDebounce) clearTimeout(this.syncDebounce)
+		if (this.isOffline()) {
+			if (this.state.dirty) this.setState({syncStatus: 'offline'})
+			return
+		}
+
+		this.syncDebounce = setTimeout(() => {
+			this.syncDebounce = null
+			this.processSyncQueue({reason}).catch(() => {})
+		}, delay)
 	}
 
 	async setPeriod(period) {
@@ -350,6 +419,7 @@ class PlanningStore {
 		await this.repository.updateCurrentPeriod(period, {markDirty})
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		if (markDirty) await this.enqueueAutosync({reason: 'period-update'})
 		return this.getState()
 	}
 
@@ -361,6 +431,7 @@ class PlanningStore {
 		await this.repository.createItem(data)
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		await this.enqueueAutosync({reason: 'item-create'})
 		return this.getState()
 	}
 
@@ -370,6 +441,7 @@ class PlanningStore {
 		await this.repository.updateItem(id, data, {markDirty})
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		if (markDirty) await this.enqueueAutosync({reason: 'item-update'})
 		return this.getState()
 	}
 
@@ -377,6 +449,7 @@ class PlanningStore {
 		await this.repository.setStatus(id, status)
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		await this.enqueueAutosync({reason: 'item-status'})
 		return this.getState()
 	}
 
@@ -402,6 +475,7 @@ class PlanningStore {
 		await this.repository.removeItem(id)
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		await this.enqueueAutosync({reason: 'item-delete'})
 		return this.getState()
 	}
 
@@ -635,7 +709,74 @@ class PlanningStore {
 		}
 	}
 
+	async processSyncQueue({force = false, ignoreOffline = false, reason = 'autosync'} = {}) {
+		if (this.syncPromise) return this.syncPromise
+		if (!ignoreOffline && this.isOffline()) {
+			if (this.state.dirty) this.setState({syncStatus: 'offline'})
+			return this.getState()
+		}
+
+		this.syncPromise = this.processSyncQueueInternal({force, reason})
+			.finally(() => {
+				this.syncPromise = null
+			})
+
+		return this.syncPromise
+	}
+
+	async processSyncQueueInternal({force = false, reason = 'autosync'} = {}) {
+		if (!this.state.loaded && this.loadPromise) {
+			await this.loadPromise
+		}
+
+		const operation = await this.syncQueue.getOperation()
+		if (!operation) {
+			if (!this.state.dirty && this.state.syncStatus !== 'idle') {
+				this.setState({syncStatus: 'synced', syncError: null})
+			}
+			return this.getState()
+		}
+
+		if (operation.status === 'conflict') {
+			this.setState({syncStatus: 'conflict', syncError: operation.lastError || new Error('Planning sync conflict')})
+			return this.getState()
+		}
+
+		if (operation.status === 'paused') {
+			this.setState({syncStatus: 'paused', syncError: operation.lastError || new Error('Planning sync paused')})
+			return this.getState()
+		}
+
+		if (!force && operation.nextAttemptAt && Number(operation.nextAttemptAt) > Date.now()) {
+			this.setState({syncStatus: 'error', syncError: operation.lastError || new Error('Planning sync retry delayed')})
+			return this.getState()
+		}
+
+		const syncingOperation = await this.syncQueue.markSyncing(operation)
+		this.setState({syncStatus: 'syncing', syncError: null})
+
+		try {
+			await this.syncCurrentPlanningState()
+			await this.syncQueue.complete(syncingOperation)
+			this.setState({syncStatus: 'synced', syncError: null})
+			return this.getState()
+		} catch (error) {
+			const failedOperation = await this.syncQueue.markError(syncingOperation, error)
+			this.setState({
+				syncStatus: failedOperation.status,
+				syncError: error,
+				saveError: error
+			})
+			return this.getState()
+		}
+	}
+
 	async save() {
+		await this.enqueueAutosync({reason: 'manual-save'})
+		return this.processSyncQueue({force: true})
+	}
+
+	async syncCurrentPlanningState() {
 		if (this.state.saving) return this.getState()
 		const plan = this.getSavePlan()
 

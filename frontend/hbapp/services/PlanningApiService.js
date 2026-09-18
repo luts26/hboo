@@ -11,44 +11,96 @@ const toApiDate = value => {
 
 export default class PlanningApiService {
 
+	async request(path, {method = 'GET', data = undefined} = {}) {
+		const requestData = {
+			method,
+			headers: api.getHeaders()
+		}
+		if (data !== undefined) requestData.body = JSON.stringify(data)
+
+		const response = await fetch(`${api.apiurl}${path}`, requestData)
+		if ([200, 201].indexOf(response.status) !== -1) {
+			return response.json()
+		}
+
+		const error = new Error('Planning API request failed')
+		error.status = response.status
+		error.statusCode = response.status
+		throw error
+	}
+
 	async getCurrentPeriod() {
-		return api.get('/planning/period/current')
+		return this.request('/planning/period/current')
 	}
 
 	async getPeriodItems(periodId) {
-		return api.get(`/planning/period/${encodeURIComponent(periodId)}/items`)
+		return this.request(`/planning/period/${encodeURIComponent(periodId)}/items`)
 	}
 
 	async getPeriodStatistics(periodId) {
-		return api.get(`/planning/period/${encodeURIComponent(periodId)}/statistics`)
+		return this.request(`/planning/period/${encodeURIComponent(periodId)}/statistics`)
 	}
 
 	async createPeriod(period) {
-		return api.post('/planning/period', {
-			start_date: toApiDate(period.dateFrom),
-			end_date: toApiDate(period.dateTo),
-			budget_amount: Number(period.periodBudget) || 0
+		return this.request('/planning/period', {
+			method: 'POST',
+			data: {
+				start_date: toApiDate(period.dateFrom),
+				end_date: toApiDate(period.dateTo),
+				budget_amount: Number(period.periodBudget) || 0
+			}
 		})
 	}
 
 	async updatePeriod(period) {
-		return api.put(`/planning/period/${encodeURIComponent(period.id)}`, {
-			start_date: toApiDate(period.dateFrom),
-			end_date: toApiDate(period.dateTo),
-			budget_amount: Number(period.periodBudget) || 0
+		return this.request(`/planning/period/${encodeURIComponent(period.id)}`, {
+			method: 'PUT',
+			data: {
+				start_date: toApiDate(period.dateFrom),
+				end_date: toApiDate(period.dateTo),
+				budget_amount: Number(period.periodBudget) || 0
+			}
 		})
 	}
 
 	async createItem(item, periodId) {
-		return api.post('/planning/item', this.mapItemToApi(item, periodId))
+		return this.request('/planning/item', {
+			method: 'POST',
+			data: this.mapItemToApi(item, periodId)
+		})
 	}
 
 	async updateItem(item) {
-		return api.put(`/planning/item/${encodeURIComponent(item.id)}`, this.mapItemToApi(item, item.periodId))
+		return this.request(`/planning/item/${encodeURIComponent(item.id)}`, {
+			method: 'PUT',
+			data: this.mapItemToApi(item, item.periodId)
+		})
 	}
 
 	async deleteItem(itemId) {
-		return api.delete(`/planning/item/${encodeURIComponent(itemId)}`)
+		const response = await fetch(`${api.apiurl}/planning/item/${encodeURIComponent(itemId)}`, {
+			method: 'DELETE',
+			headers: api.getHeaders()
+		})
+
+		if ([200, 201].indexOf(response.status) !== -1) {
+			return response.json()
+		}
+
+		if (response.status === 404) {
+			const body = await response.json().catch(() => null)
+			if (body?.error === 'Planning item not found') {
+				return {
+					deleted: true,
+					alreadyAbsent: true
+				}
+			}
+		}
+
+		const error = new Error('Planning item delete failed')
+		error.status = response.status
+		error.statusCode = response.status
+		throw error
 	}
 
 	async getTransactionCandidates(itemId) {
