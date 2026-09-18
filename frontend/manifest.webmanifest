@@ -1,0 +1,30 @@
+{
+	"name": "Home Bookkeeping",
+	"short_name": "HBOO",
+	"start_url": "/planing",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#ebf5fc",
+	"theme_color": "#ebf5fc",
+	"description": "Local-first personal finance planning application",
+	"icons": [
+		{
+			"src": "/hbapp/assets/images/app-icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/hbapp/assets/images/app-icon-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/hbapp/assets/images/app-icon-round-transparent.png",
+			"sizes": "1094x1082",
+			"type": "image/png",
+			"purpose": "any"
+		}
+	]
+}
