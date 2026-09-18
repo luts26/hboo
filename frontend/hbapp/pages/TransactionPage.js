@@ -154,6 +154,7 @@ export default class TransactionPage extends AbstractClass {
 	}
 
 	getPageHeaderTemplate() {
+		return ''
 		return `<div class="page-compact-header">
 			<h3 class="page-title-chip">Transactions</h3>
 			${this.getDataStatusTemplate()}
@@ -499,7 +500,7 @@ export default class TransactionPage extends AbstractClass {
 		const range = this.appliedDateRange || this.getCurrentDateRange()
 		return `<div class="transaction-filter-summary-card">
 			<div class="transaction-filter-summary-top">
-				<div class="transaction-filter-period">${this.escapeHtml(this.formatCompactDate(range.from))} — ${this.escapeHtml(this.formatCompactDate(range.to))}</div>
+				<div class="transaction-filter-period">Period: ${this.escapeHtml(this.formatCompactDate(range.from))} - ${this.escapeHtml(this.formatCompactDate(range.to))}</div>
 				<button class="transaction-filter-open" type="button" data-action="open-filter-modal">Filters</button>
 			</div>
 			<div class="transaction-filter-summary-state">
@@ -773,7 +774,7 @@ export default class TransactionPage extends AbstractClass {
 			tcashback += this.sumTransactionsByDate.privat.cashback
 			tcommission += this.sumTransactionsByDate.privat.commission
 		}
-		htmlTemplate = `<div class="${this.pageName}-container mt-3 mb-3">
+		htmlTemplate = `<div class="${this.pageName}-container mt-3">
 			${this.getPageHeaderTemplate()}
 			${this.getMobileFilterSummaryTemplate()}
 			

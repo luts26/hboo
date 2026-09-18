@@ -126,6 +126,7 @@ export default class BalancePage extends AbstractClass {
 	}
 
 	getPageHeaderTemplate() {
+		return ''
 		return `<div class="page-compact-header">
 			<h3 class="page-title-chip">Balance</h3>
 			${this.getDataStatusTemplate()}

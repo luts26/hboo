@@ -2,7 +2,7 @@ const config = {
 
 	appName: 'Home B00kkeeping APP',
 	// appAlias: 'HBuh',
-	appAlias: 'hB00',
+	appAlias: 'HB00',
 	version: '1.3.8',
 	author: 'rajul',
 	startDevTime: '1688063381301',

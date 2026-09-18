@@ -1064,9 +1064,9 @@ img.pb-icon {
 	scroll-margin-top: 1rem;
 }
 
-.transaction-list-container {
+/*.transaction-list-container {
 	padding-bottom: 4.75rem;
-}
+}*/
 
 .transaction-floating-filter {
 	background: #ebf5fc;
@@ -2894,7 +2894,7 @@ textarea.planing-textarea {
 
 .planing-list {
 	margin-top: 2rem;
-	padding-bottom: 4.5rem;
+	padding-bottom: 2rem;
 }
 
 .planing-list-header {
@@ -3076,12 +3076,12 @@ textarea.planing-textarea {
 }
 
 .planing-item-actions {
-	align-items: stretch;
-	display: flex;
-	flex: 0 0 auto;
-	flex-direction: column;
-	gap: .45rem;
-	justify-content: flex-end;
+/*	align-items: stretch;*/
+/*	display: flex;
+	flex: 0 0 auto;*/
+/*	flex-direction: column;*/
+/*	gap: .45rem;*/
+/*	justify-content: flex-end;*/
 }
 
 .planing-item-meta strong,
@@ -3690,9 +3690,9 @@ textarea.planing-textarea {
 		font-size: 12pt;
 	}
 
-	.transaction-list-container {
+/*	.transaction-list-container {
 		padding-bottom: calc(6rem + env(safe-area-inset-bottom));
-	}
+	}*/
 
 	.transaction-day-card {
 		margin-left: 0;

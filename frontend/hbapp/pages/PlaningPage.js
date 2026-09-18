@@ -205,6 +205,7 @@ export default class PlaningPage extends AbstractClass {
 	}
 
 	getPageHeaderTemplate() {
+		return ''
 		return `<div class="page-compact-header">
 			<h3 class="page-title-chip">Planning</h3>
 			${this.getDataStatusTemplate()}
@@ -645,7 +646,7 @@ export default class PlaningPage extends AbstractClass {
 					<div class="app-modal-actions planing-modal-actions planing-detail-actions">
 						<button class="planing-remove-btn" type="button">Delete</button>
 						${statusActions}
-						<button class="planing-transaction-btn" type="button" data-action="planning-transactions-open" data-itemid="${item.id}">Transactions</button>
+						<button class="planing-transaction-btn d-none" type="button" data-action="planning-transactions-open" data-itemid="${item.id}">Transactions</button>
 						<button class="planing-edit-btn" type="button">Edit</button>
 					</div>
 			</div>`
@@ -695,7 +696,7 @@ export default class PlaningPage extends AbstractClass {
 			? `<button class="planing-floating-save" type="button"${saveDisabled}>${saveLabel}</button>`
 			: ''
 
-		return `<div class="${this.pageName}-container mt-3 mb-3">
+		return `<div class="${this.pageName}-container mt-3">
 			${this.getPageHeaderTemplate()}
 			<div class="planing-toolbar">
 				${this.getPeriodSummaryTemplate()}
@@ -939,8 +940,8 @@ export default class PlaningPage extends AbstractClass {
 			if (actionTarget?.dataset.action === 'planning-shopping-back') return this.setModalView('details')
 			if (actionTarget?.dataset.action === 'planning-checklist-toggle') return this.toggleChecklistItem(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-smart-confirm') return this.confirmSmartSuggestion(actionTarget)
-			if (actionTarget?.dataset.action === 'planning-transaction-link') return this.linkPlanningTransaction(actionTarget)
-			if (actionTarget?.dataset.action === 'planning-transaction-unlink') return this.unlinkPlanningTransaction(actionTarget)
+			// if (actionTarget?.dataset.action === 'planning-transaction-link') return this.linkPlanningTransaction(actionTarget)
+			// if (actionTarget?.dataset.action === 'planning-transaction-unlink') return this.unlinkPlanningTransaction(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-checklist-add') return this.addChecklistFormRow(event)
 			if (actionTarget?.dataset.action === 'planning-checklist-remove') return this.removeChecklistFormRow(event)
 			if (event.target.closest('.planing-remove-btn')) return this.removePlanningItem(event)
