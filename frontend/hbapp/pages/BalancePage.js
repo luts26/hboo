@@ -185,7 +185,7 @@ export default class BalancePage extends AbstractClass {
 				<span class="font-weight-bold">Current:</span>
 				<span>${this.formatAmount(totals.current)}</span>
 			</div>
-			<div class="total-cache-time card-time mt-1" title="Local aggregate/cache calculation time">
+			<div class="total-cache-time card-time" title="Local aggregate/cache calculation time">
 				Updated: ${this.formatCacheUpdateTime(this.state.updatedAt)}
 			</div>
 		</div>`
@@ -234,7 +234,7 @@ export default class BalancePage extends AbstractClass {
 
 		return `<div class="card bank-card ${provider.key}-card" data-bank="${provider.key}">
 			${this.getBankAccountsTemplate(provider)}
-			<div class="d-flex justify-content-between card-time mt-1">
+			<div class="d-flex justify-content-between card-time">
 				<span>Last update:</span>
 				<span>${updateLabel}</span>
 			</div>
@@ -263,7 +263,7 @@ export default class BalancePage extends AbstractClass {
 		if (!this.state.loaded && this.state.loading && !this.state.data) return this.getLoadingTemplate()
 		const providers = this.getProviders()
 
-		return `<div class="${this.pageName}-container mt-3">
+		return `<div class="${this.pageName}-container mt-2">
 			${this.getPageHeaderTemplate()}
 			${this.getTotalTemplate(providers)}
 			${providers.map(provider => this.renderBankCard(provider)).join('')}

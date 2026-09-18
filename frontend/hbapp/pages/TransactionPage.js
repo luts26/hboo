@@ -774,7 +774,7 @@ export default class TransactionPage extends AbstractClass {
 			tcashback += this.sumTransactionsByDate.privat.cashback
 			tcommission += this.sumTransactionsByDate.privat.commission
 		}
-		htmlTemplate = `<div class="${this.pageName}-container mt-3">
+		htmlTemplate = `<div class="${this.pageName}-container mt-2">
 			${this.getPageHeaderTemplate()}
 			${this.getMobileFilterSummaryTemplate()}
 			

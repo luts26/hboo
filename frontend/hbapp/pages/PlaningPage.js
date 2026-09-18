@@ -696,7 +696,7 @@ export default class PlaningPage extends AbstractClass {
 			? `<button class="planing-floating-save" type="button"${saveDisabled}>${saveLabel}</button>`
 			: ''
 
-		return `<div class="${this.pageName}-container mt-3">
+		return `<div class="${this.pageName}-container mt-2">
 			${this.getPageHeaderTemplate()}
 			<div class="planing-toolbar">
 				${this.getPeriodSummaryTemplate()}

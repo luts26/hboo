@@ -1494,7 +1494,7 @@ img.pb-icon {
 	color: #778ba5;
 	cursor: pointer;
 	display: inline-flex;
-	font-size: 15pt;
+	font-size: 13pt;
 	font-weight: 800;
 	gap: .6rem;
 	padding: .0;
@@ -1507,8 +1507,8 @@ img.pb-icon {
 }
 
 .bank-refresh-trigger img {
-	max-height: 28px;
-	max-width: 34px;
+	max-height: 25px;
+	max-width: 24px;
 	object-fit: contain;
 	border-radius: 5px;
 }
@@ -1795,8 +1795,8 @@ img.pb-icon {
 	border: 1px solid #f7f7f7;
 	background: #ebf5fc;
 	padding: 1.5rem 2rem 1.2rem;
-	font-size: 15pt;
-	margin: 3.5rem;
+	font-size: 14pt;
+	margin: 3rem 2rem;
 	position: relative;
 	border-radius: 20px;
 }
@@ -1851,6 +1851,7 @@ img.pb-icon {
 	box-shadow: -6px -6px 10px rgba(255,255,255,1),
 				6px 6px 10px rgba(0,0,0,.15);
 	cursor: pointer;
+	font-size: 12pt;
 }
 
 .mono-card .card-title,
@@ -1906,8 +1907,8 @@ img.pb-icon {
 	color: #32a3b1;
 	box-shadow: inset -2px -2px 4px rgb(255, 255, 255), inset 2px 2px 4px rgba(0,0,0,.1);
 	border-radius: 15px;
-	margin: 20px 10px;
-	padding: 15px 30px;
+	margin: 15px 10px;
+	padding: 10px 20px;
 }
 
 .transaction-container .card-row {
@@ -2337,7 +2338,7 @@ img.pb-icon {
 	display: flex;
 	gap: .75rem;
 	justify-content: space-between;
-	padding: .32rem 0;
+	padding: .1rem 0;
 }
 
 .financial-summary-row span {
@@ -2365,7 +2366,7 @@ img.pb-icon {
 	display: grid;
 	gap: .55rem;
 	grid-template-columns: minmax(0, 1fr) 44px minmax(82px, auto);
-	padding: .28rem 0;
+	padding: .1rem 0;
 }
 
 .financial-summary-stat-row em {
@@ -3636,6 +3637,23 @@ textarea.planing-textarea {
 		top: auto;
 	}
 
+	.financial-summary-title {
+		padding: .5rem 1rem .5rem;
+		font-size: 12pt;
+	}
+
+	.financial-summary-kpi-value {
+		font-size: 18pt;
+	}
+
+	.summary-card-content {
+		padding: .5rem 1.15rem .8rem;
+	}
+
+	.financial-summary-compact-value {
+		font-size: 16pt;
+	}
+
 	.transaction-bank-controls {
 		gap: .5rem;
 	}
@@ -3785,10 +3803,31 @@ textarea.planing-textarea {
 	}
 
 	.card {
-		margin: 2.5rem .6rem 3rem;
-		padding-left: .8rem;
-		padding-right: .8rem;
-		padding-bottom: .8rem;
+		margin: 2.5rem .6rem 0;
+		padding: .8rem .8rem .6rem;
+		font-size: 11pt;
+	}
+
+	.total-card {
+		margin-top: 2rem;
+	}
+
+	.card-time {
+		font-size: 8pt;
+	}
+
+	.mono-card .card-title,
+	.privat-card .card-title {
+		padding-bottom: .02rem;
+	}
+
+	.bank-refresh-trigger {
+		font-size: 11pt;
+	}
+
+	.bank-refresh-trigger img {
+		width: 22px;
+		height: 22px;
 	}
 
 	.card:last-child {
@@ -3796,11 +3835,14 @@ textarea.planing-textarea {
 	}
 
 	.card-row {
-		padding: 8px 12px;
+		padding: 6px 12px;
+		margin: .65rem;
 	}
 
 	.card-title {
 		right: 36px;
+		padding: .3rem 1rem;
+		font-size: 11pt;
 	}
 
 	.planing-form-row {
