@@ -1,4 +1,5 @@
-const HBOO_APP_SHELL_CACHE = 'hboo-app-shell-v1'
+const HBOO_APP_VERSION = '2026-09-21-static-graph-v2'
+const HBOO_APP_SHELL_CACHE = `hboo-app-shell-${HBOO_APP_VERSION}`
 const HBOO_APP_SHELL_PREFIX = 'hboo-app-shell-'
 
 const REQUIRED_SHELL_ASSETS = [
@@ -7,49 +8,7 @@ const REQUIRED_SHELL_ASSETS = [
 	'/planing',
 	'/manifest.webmanifest',
 	'/hbapp/assets/styles/main.css?v=1',
-	'/hbapp/index.js?v=5',
-	'/hbapp/hbapp.js',
-	'/hbapp/router/router.js',
-	'/hbapp/config/config.js',
-	'/hbapp/components/container.js',
-	'/hbapp/components/content.js',
-	'/hbapp/components/DataStatus.js',
-	'/hbapp/components/FinancialSummary.js',
-	'/hbapp/components/footer.js',
-	'/hbapp/components/header.js',
-	'/hbapp/components/navigation.js',
-	'/hbapp/components/sidebar.js',
-	'/hbapp/components/Toast.js',
-	'/hbapp/data/categoriesData.js',
-	'/hbapp/data/planningCategoriesData.js',
-	'/hbapp/pages/AbstractClass.js',
-	'/hbapp/pages/BalancePage.js',
-	'/hbapp/pages/DepositPage.js',
-	'/hbapp/pages/HomePage.js',
-	'/hbapp/pages/LoginPage.js',
-	'/hbapp/pages/PlaningPage.js',
-	'/hbapp/pages/SettingsPage.js',
-	'/hbapp/pages/TransactionPage.js',
-	'/hbapp/stores/BalanceStore.js',
-	'/hbapp/stores/PlanningStore.js',
-	'/hbapp/stores/TransactionStore.js',
-	'/hbapp/services/AuthSession.js',
-	'/hbapp/services/BalanceApiService.js',
-	'/hbapp/services/BalanceLocalRepository.js',
-	'/hbapp/services/CategoryApiService.js',
-	'/hbapp/services/CategoryLocalRepository.js',
-	'/hbapp/services/IndexedDbClient.js',
-	'/hbapp/services/PlanningApiService.js',
-	'/hbapp/services/PlanningCalculator.js',
-	'/hbapp/services/PlanningLocalRepository.js',
-	'/hbapp/services/PlanningSyncQueue.js',
-	'/hbapp/services/ServiceWorkerRegistration.js',
-	'/hbapp/services/TransactionApiService.js',
-	'/hbapp/services/TransactionLocalRepository.js',
-	'/hbapp/mixins/apiQueriesHelper.js',
-	'/hbapp/mixins/calculatorHelper.js',
-	'/hbapp/mixins/calendarHelper.js',
-	'/hbapp/mixins/hbRangeHelper.js'
+	'/hbapp/index.js?v=6'
 ]
 
 const OPTIONAL_SHELL_ASSETS = [
@@ -83,16 +42,98 @@ const CACHEABLE_PATHS = new Set(
 	[...REQUIRED_SHELL_ASSETS, ...OPTIONAL_SHELL_ASSETS].map(asset => new URL(asset, self.location.origin).pathname)
 )
 
+const JS_STATIC_IMPORT_PATTERN = /(?:import\s+(?:[^'"]*?\s+from\s*)?|export\s+[^'"]*?\s+from\s*|import\s*\()\s*['"]([^'"]+)['"]/g
+const CSS_URL_PATTERN = /url\(\s*['"]?([^'")]+)['"]?\s*\)/g
+
+function isCacheableStaticUrl(url) {
+	return url.origin === self.location.origin
+		&& !url.pathname.startsWith('/api/')
+}
+
+function isFrontendStaticRequest(url) {
+	return isCacheableStaticUrl(url)
+		&& (
+			url.pathname.startsWith('/hbapp/')
+			|| url.pathname === '/manifest.webmanifest'
+		)
+}
+
+function shouldParseJavaScript(url) {
+	return url.pathname.endsWith('.js')
+}
+
+function shouldParseCss(url) {
+	return url.pathname.endsWith('.css')
+}
+
+function getStaticDependencies(text, baseUrl, pattern) {
+	const dependencies = []
+	let match
+
+	pattern.lastIndex = 0
+	while ((match = pattern.exec(text)) !== null) {
+		const specifier = match[1]
+		if (!specifier || specifier.startsWith('data:') || specifier.startsWith('#')) continue
+
+		try {
+			const dependencyUrl = new URL(specifier, baseUrl)
+			if (isCacheableStaticUrl(dependencyUrl)) dependencies.push(dependencyUrl)
+		} catch {
+			// Ignore malformed non-browser specifiers.
+		}
+	}
+
+	return dependencies
+}
+
+async function fetchFresh(url) {
+	const request = new Request(url.href, {
+		cache: 'reload',
+		credentials: 'same-origin'
+	})
+	const response = await fetch(request)
+	if (!response.ok) {
+		throw new Error(`Failed to cache ${url.pathname}: ${response.status}`)
+	}
+	return response
+}
+
+async function cacheStaticAsset(cache, url, visited) {
+	const cacheKey = `${url.pathname}${url.search}`
+	if (visited.has(cacheKey)) return
+	visited.add(cacheKey)
+	CACHEABLE_PATHS.add(url.pathname)
+
+	const response = await fetchFresh(url)
+	await cache.put(url.href, response.clone())
+
+	if (!shouldParseJavaScript(url) && !shouldParseCss(url)) return
+
+	const text = await response.text()
+	const dependencies = shouldParseJavaScript(url)
+		? getStaticDependencies(text, url, JS_STATIC_IMPORT_PATTERN)
+		: getStaticDependencies(text, url, CSS_URL_PATTERN)
+
+	await Promise.all(dependencies.map(dependency => cacheStaticAsset(cache, dependency, visited)))
+}
+
+async function cacheRequiredAssets(cache) {
+	const visited = new Set()
+	for (const asset of REQUIRED_SHELL_ASSETS) {
+		await cacheStaticAsset(cache, new URL(asset, self.location.origin), visited)
+	}
+}
+
 async function cacheOptionalAssets(cache) {
 	await Promise.allSettled(
-		OPTIONAL_SHELL_ASSETS.map(asset => cache.add(asset))
+		OPTIONAL_SHELL_ASSETS.map(asset => cacheStaticAsset(cache, new URL(asset, self.location.origin), new Set()))
 	)
 }
 
 self.addEventListener('install', event => {
 	event.waitUntil((async () => {
 		const cache = await caches.open(HBOO_APP_SHELL_CACHE)
-		await cache.addAll(REQUIRED_SHELL_ASSETS)
+		await cacheRequiredAssets(cache)
 		await cacheOptionalAssets(cache)
 		await self.skipWaiting()
 	})())
@@ -128,7 +169,7 @@ self.addEventListener('fetch', event => {
 		return
 	}
 
-	if (!CACHEABLE_PATHS.has(url.pathname)) return
+	if (!isFrontendStaticRequest(url) && !CACHEABLE_PATHS.has(url.pathname)) return
 
 	event.respondWith(
 		caches.match(request, {ignoreSearch: true})
