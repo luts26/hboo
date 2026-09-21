@@ -5,6 +5,10 @@ import DataStatus, { createDataStatusViewModel } from '../components/DataStatus.
 import Toast from '../components/Toast.js'
 import { datePickerDefault } from '../mixins/calendarHelper.js'
 import { hbRangeCreate } from '../mixins/hbRangeHelper.js'
+import {
+	getDateInputValue,
+	normalizeTransactionDateSelection
+} from '../services/TransactionDateRange.js'
 
 export default class TransactionPage extends AbstractClass {
 
@@ -69,8 +73,8 @@ export default class TransactionPage extends AbstractClass {
 		this.afterCreate()
 	}
 
-	refresh(query = '') {
-		return transactionStore.refresh(query)
+	refresh(query = '', options = {}) {
+		return transactionStore.refresh(query, options)
 	}
 
 	loadCategories() {
@@ -468,13 +472,7 @@ export default class TransactionPage extends AbstractClass {
 	}
 
 	getDateInputValue(value) {
-		const date = new Date(Number(value))
-		if (Number.isNaN(date.getTime())) return ''
-		return [
-			date.getFullYear(),
-			String(date.getMonth() + 1).padStart(2, '0'),
-			String(date.getDate()).padStart(2, '0')
-		].join('-')
+		return getDateInputValue(value)
 	}
 
 	getDateRangeFromState(state = this.state) {
@@ -926,8 +924,9 @@ export default class TransactionPage extends AbstractClass {
 	async filterByDate() {
 		let df = this.$hbapp.querySelector('.transaction-filters .input-date-picker-from').value
 		let dt = this.$hbapp.querySelector('.transaction-filters .input-date-picker-to').value
+		const range = normalizeTransactionDateSelection({from: df, to: dt})
 
-		const state = await this.refresh(`?date_from=${new Date(df).getTime()}&date_to=${new Date(dt).getTime()}`)
+		const state = await this.refresh('', {range})
 		if (state?.loaded) {
 			this.appliedDateRange = {from: df, to: dt}
 			transactionStore.saveSelectedRange(state.range)
@@ -1009,7 +1008,8 @@ export default class TransactionPage extends AbstractClass {
 		if (!datesChanged && !categoryChanged && !banksChanged) return this.closeFilterModal()
 
 		if (datesChanged) {
-			const state = await this.refresh(`?date_from=${new Date(draft.from).getTime()}&date_to=${new Date(draft.to).getTime()}`)
+			const range = normalizeTransactionDateSelection({from: draft.from, to: draft.to})
+			const state = await this.refresh('', {range})
 			if (!state?.loaded) return
 			this.appliedDateRange = {from: draft.from, to: draft.to}
 			transactionStore.saveSelectedRange(state.range)
@@ -1043,7 +1043,7 @@ export default class TransactionPage extends AbstractClass {
 		this.refreshingBank = this.refreshCandidate.bank
 		this.pendingManualRefresh = true
 		this.refreshCandidate = null
-		this.refresh(query)
+		this.refresh(query, {range: this.state.range})
 	}
 
 	openDayModal(day) {

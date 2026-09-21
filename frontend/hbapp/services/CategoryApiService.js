@@ -26,8 +26,8 @@ export default class CategoryApiService {
 		return this.loadCategories(language)
 	}
 
-	loadCategories(language = 'uk', options = {}) {
-		const cached = this.localRepository.get(language)
+	async loadCategories(language = 'uk', options = {}) {
+		const cached = await this.localRepository.getCached(language)
 
 		if (cached) {
 			this.refreshCategories(language, options).catch(() => {})
@@ -47,7 +47,10 @@ export default class CategoryApiService {
 						throw new Error('Invalid categories response')
 					}
 
-					this.localRepository.save(cacheKey, categories)
+					return this.localRepository.saveCached(cacheKey, categories)
+						.then(cache => cache?.items || categories)
+				})
+				.then(categories => {
 					return categories
 				})
 				.finally(() => {

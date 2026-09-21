@@ -86,6 +86,11 @@ const {
 	getQueryFromRange,
 	saveTransactionRangePreference
 } = await import('../hbapp/stores/TransactionStore.js')
+const {
+	getDateInputValue,
+	getDefaultTransactionRange,
+	normalizeTransactionDateSelection
+} = await import('../hbapp/services/TransactionDateRange.js')
 
 const makeRepo = client => new TransactionLocalRepository('hboo-transaction-cache-v1', {indexedDbClient: client})
 
@@ -136,7 +141,7 @@ const monoTxSeptember = {
 	...monoTx,
 	id: 5,
 	t_id: 'mono-september',
-	time: Math.floor(Date.parse('2026-09-10T12:00:00') / 1000),
+	time: Math.floor(new Date(2026, 8, 10, 12, 0, 0, 0).getTime() / 1000),
 	description: 'Mono September cached'
 }
 
@@ -408,7 +413,10 @@ test('online selected range renders local data first, then API refreshed data', 
 
 test('restored September range loads from cache after offline reload', async () => {
 	const repo = makeRepo(new FakeIndexedDbClient())
-	const septemberRange = {dateFrom: Date.parse('2026-09-01T00:00:00'), dateTo: Date.parse('2026-09-18T23:59:59')}
+	const septemberRange = {
+		dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 18, 23, 59, 59, 999).getTime()
+	}
 	await repo.saveRange({mono: [monoTxSeptember], privat: []}, septemberRange)
 	saveTransactionRangePreference(septemberRange)
 	let apiCalls = 0
@@ -433,8 +441,11 @@ test('restored September range loads from cache after offline reload', async () 
 
 test('startup online renders restored local range first and refreshes exact same API range', async () => {
 	const repo = makeRepo(new FakeIndexedDbClient())
-	const range = {dateFrom: 1000, dateTo: 1500000}
-	await repo.saveRange({mono: [monoTx], privat: []}, range)
+	const range = {
+		dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 18, 23, 59, 59, 999).getTime()
+	}
+	await repo.saveRange({mono: [monoTxSeptember], privat: []}, range)
 	saveTransactionRangePreference(range)
 	const states = []
 	let requestedQuery = null
@@ -453,11 +464,76 @@ test('startup online renders restored local range first and refreshes exact same
 	const state = await store.load('')
 	const localState = states.find(item => item.source === 'cache' && item.loading)
 
-	assert.equal(localState.data.mono[0].providerTransactionId, 'mono-1')
+	assert.equal(localState.data.mono[0].providerTransactionId, 'mono-september')
 	assert.equal(requestedQuery, getQueryFromRange(range))
 	assert.equal(state.source, 'api')
 	assert.equal(state.range.dateFrom, range.dateFrom)
 	assert.equal(state.range.dateTo, range.dateTo)
+})
+
+test('API, IndexedDB range lookup, saveRange and transactionWindows use identical boundaries', async () => {
+	const repo = makeRepo(new FakeIndexedDbClient())
+	const selectedRange = normalizeTransactionDateSelection({
+		from: '2026-09-01',
+		to: '2026-09-18'
+	}, {now: new Date(2026, 8, 21, 12, 0, 0, 0)})
+	const calls = {
+		apiQuery: null,
+		getRanges: [],
+		saveRanges: []
+	}
+	const originalGetRange = repo.getRange.bind(repo)
+	const originalSaveRange = repo.saveRange.bind(repo)
+	repo.getRange = async range => {
+		calls.getRanges.push({...range})
+		return originalGetRange(range)
+	}
+	repo.saveRange = async (data, range) => {
+		calls.saveRanges.push({...range})
+		return originalSaveRange(data, range)
+	}
+	const store = new TransactionStore({
+		repository: repo,
+		apiService: {
+			getTransactions: async query => {
+				calls.apiQuery = query
+				return {mono: [monoTxSeptember], privat: []}
+			}
+		}
+	})
+
+	navigator.onLine = true
+	const state = await store.refresh('', {range: selectedRange})
+	const params = new URLSearchParams(calls.apiQuery.replace(/^\?/, ''))
+	const windows = Array.from(repo.indexedDbClient.stores.transactionWindows.values())
+
+	assert.deepEqual(calls.getRanges[0], selectedRange)
+	assert.deepEqual(calls.saveRanges[0], selectedRange)
+	assert.equal(Number(params.get('date_from')), selectedRange.dateFrom)
+	assert.equal(Number(params.get('date_to')), selectedRange.dateTo)
+	assert.equal(state.range.dateFrom, selectedRange.dateFrom)
+	assert.equal(state.range.dateTo, selectedRange.dateTo)
+	assert.equal(windows.length, 2)
+	assert.ok(windows.every(window => window.dateFrom === selectedRange.dateFrom && window.dateTo === selectedRange.dateTo))
+})
+
+test('restored shifted filter preserves calendar dates and normalizes boundaries', () => {
+	const shiftedRange = {
+		dateFrom: new Date(2026, 8, 1, 3, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 18, 3, 0, 0, 0).getTime()
+	}
+	localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+		version: 1,
+		...shiftedRange,
+		updatedAt: 1
+	}))
+
+	const range = getInitialRange('')
+
+	assert.equal(getDateInputValue(range.dateFrom), '2026-09-01')
+	assert.equal(getDateInputValue(range.dateTo), '2026-09-18')
+	assert.equal(range.dateFrom, new Date(2026, 8, 1, 0, 0, 0, 0).getTime())
+	assert.equal(range.dateTo, new Date(2026, 8, 18, 23, 59, 59, 999).getTime())
 })
 
 test('startup offline with restored range does not require API', async () => {
@@ -492,6 +568,55 @@ test('no saved transaction range falls back to current month default', () => {
 
 	assert.equal(range.dateFrom, expectedFrom.getTime())
 	assert.ok(range.dateTo >= expectedFrom.getTime())
+})
+
+test('default current-month range starts at first local day boundary and ends at now', () => {
+	const now = new Date(2026, 8, 21, 14, 15, 16, 789)
+	const range = getDefaultTransactionRange(now)
+
+	assert.equal(range.dateFrom, new Date(2026, 8, 1, 0, 0, 0, 0).getTime())
+	assert.equal(range.dateTo, now.getTime())
+})
+
+test('historical from date normalizes to local start of day', () => {
+	const now = new Date(2026, 8, 21, 14, 15, 16, 789)
+	const range = normalizeTransactionDateSelection({from: '2026-09-10', to: '2026-09-12'}, {now})
+
+	assert.equal(range.dateFrom, new Date(2026, 8, 10, 0, 0, 0, 0).getTime())
+})
+
+test('historical to date normalizes to local end of day', () => {
+	const now = new Date(2026, 8, 21, 14, 15, 16, 789)
+	const range = normalizeTransactionDateSelection({from: '2026-09-10', to: '2026-09-12'}, {now})
+
+	assert.equal(range.dateTo, new Date(2026, 8, 12, 23, 59, 59, 999).getTime())
+})
+
+test('today to date normalizes to now instead of day start or end', () => {
+	const now = new Date(2026, 8, 21, 14, 15, 16, 789)
+	const range = normalizeTransactionDateSelection({from: '2026-09-01', to: '2026-09-21'}, {now})
+
+	assert.equal(range.dateTo, now.getTime())
+	assert.notEqual(range.dateTo, new Date(2026, 8, 21, 0, 0, 0, 0).getTime())
+	assert.notEqual(range.dateTo, new Date(2026, 8, 21, 23, 59, 59, 999).getTime())
+})
+
+test('DST-sensitive dates use local calendar construction', () => {
+	const now = new Date(2026, 9, 27, 12, 0, 0, 0)
+	const range = normalizeTransactionDateSelection({from: '2026-10-25', to: '2026-10-25'}, {now})
+	const from = new Date(range.dateFrom)
+	const to = new Date(range.dateTo)
+
+	assert.equal(range.dateFrom, new Date(2026, 9, 25, 0, 0, 0, 0).getTime())
+	assert.equal(range.dateTo, new Date(2026, 9, 25, 23, 59, 59, 999).getTime())
+	assert.equal(from.getFullYear(), 2026)
+	assert.equal(from.getMonth(), 9)
+	assert.equal(from.getDate(), 25)
+	assert.equal(from.getHours(), 0)
+	assert.equal(to.getHours(), 23)
+	assert.equal(to.getMinutes(), 59)
+	assert.equal(to.getSeconds(), 59)
+	assert.equal(to.getMilliseconds(), 999)
 })
 
 test('invalid saved transaction range safely falls back to default range', () => {

@@ -1,4 +1,8 @@
 import IndexedDbClient from './IndexedDbClient.js'
+import {
+	getDefaultTransactionRange,
+	normalizeTransactionRange
+} from './TransactionDateRange.js'
 
 const STORAGE_KEY = 'hboo-transaction-cache-v1'
 const STORAGE_VERSION = 1
@@ -22,24 +26,10 @@ const toOptionalString = value => {
 	return String(value)
 }
 
-const getDefaultRange = () => {
-	const now = new Date()
-	const from = new Date(now.getFullYear(), now.getMonth(), 1)
-	from.setHours(0, 0, 0, 0)
-	return {
-		dateFrom: from.getTime(),
-		dateTo: now.getTime()
-	}
-}
+const getDefaultRange = getDefaultTransactionRange
 
 const normalizeRange = range => {
-	const fallback = getDefaultRange()
-	const dateFrom = Number(range?.dateFrom ?? fallback.dateFrom)
-	const dateTo = Number(range?.dateTo ?? fallback.dateTo)
-	return {
-		dateFrom: Number.isFinite(dateFrom) ? dateFrom : fallback.dateFrom,
-		dateTo: Number.isFinite(dateTo) ? dateTo : fallback.dateTo
-	}
+	return normalizeTransactionRange(range, {normalizeTimestamps: false})
 }
 
 const getMonoTimestamp = transaction => {

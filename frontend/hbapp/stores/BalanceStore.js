@@ -5,9 +5,9 @@ const cloneData = data => data ? JSON.parse(JSON.stringify(data)) : null
 
 class BalanceStore {
 
-	constructor() {
-		this.apiService = new BalanceApiService()
-		this.repository = new BalanceLocalRepository()
+	constructor({apiService = new BalanceApiService(), repository = new BalanceLocalRepository()} = {}) {
+		this.apiService = apiService
+		this.repository = repository
 		this.listeners = new Set()
 		this.loadPromise = null
 		this.state = {
@@ -48,9 +48,9 @@ class BalanceStore {
 		this.notify()
 	}
 
-	hydrateFromCache() {
+	async hydrateFromCache() {
 		if (this.state.loaded || this.state.data) return this.getState()
-		const cache = this.repository.get()
+		const cache = await this.repository.getLatest()
 		if (!cache) return this.getState()
 
 		this.setState({
@@ -67,7 +67,16 @@ class BalanceStore {
 	load(queryParam = '') {
 		if (this.loadPromise) return this.loadPromise
 
-		const cache = this.repository.get()
+		this.loadPromise = this.loadFromSources(queryParam)
+			.finally(() => {
+				this.loadPromise = null
+			})
+
+		return this.loadPromise
+	}
+
+	async loadFromSources(queryParam = '') {
+		const cache = await this.repository.getLatest()
 		if (cache) {
 			this.setState({
 				data: cache.data,
@@ -79,12 +88,7 @@ class BalanceStore {
 			})
 		}
 
-		this.loadPromise = this.refresh(queryParam)
-			.finally(() => {
-				this.loadPromise = null
-			})
-
-		return this.loadPromise
+		return this.refresh(queryParam)
 	}
 
 	async refresh(queryParam = '') {
@@ -92,9 +96,9 @@ class BalanceStore {
 
 		try {
 			const data = await this.apiService.getBalance(queryParam)
-			const cache = this.repository.save(data)
+			const cache = await this.repository.saveLatest(data)
 			this.setState({
-				data,
+				data: cache?.data || data,
 				updatedAt: cache?.updatedAt || Date.now(),
 				loading: false,
 				loaded: true,
@@ -104,7 +108,7 @@ class BalanceStore {
 			})
 			return this.getState()
 		} catch (error) {
-			const cache = this.repository.get()
+			const cache = await this.repository.getLatest()
 			if (cache) {
 				this.setState({
 					data: cache.data,
@@ -132,4 +136,5 @@ class BalanceStore {
 	}
 }
 
+export {BalanceStore}
 export default new BalanceStore()

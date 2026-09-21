@@ -1,28 +1,24 @@
 import TransactionApiService from '../services/TransactionApiService.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
+import {
+	getDefaultTransactionRange,
+	normalizeTransactionRange
+} from '../services/TransactionDateRange.js'
 
 const cloneData = data => data ? JSON.parse(JSON.stringify(data)) : null
 const FILTER_STORAGE_KEY = 'hboo-transaction-filter-v1'
 
-const getDefaultRange = () => {
-	const now = new Date()
-	const from = new Date(now.getFullYear(), now.getMonth(), 1)
-	from.setHours(0, 0, 0, 0)
-	return {
-		dateFrom: from.getTime(),
-		dateTo: now.getTime()
-	}
-}
+const getDefaultRange = getDefaultTransactionRange
 
 const getRangeFromQuery = query => {
 	const defaults = getDefaultRange()
 	const params = new URLSearchParams(String(query || '').replace(/^\?/, ''))
 	const dateFrom = params.has('date_from') ? Number(params.get('date_from')) : NaN
 	const dateTo = params.has('date_to') ? Number(params.get('date_to')) : NaN
-	return {
+	return normalizeTransactionRange({
 		dateFrom: Number.isFinite(dateFrom) ? dateFrom : defaults.dateFrom,
 		dateTo: Number.isFinite(dateTo) ? dateTo : defaults.dateTo
-	}
+	}, {normalizeTimestamps: false})
 }
 
 const hasQueryDateRange = query => {
@@ -34,6 +30,13 @@ const hasQueryDateRange = query => {
 }
 
 const getQueryFromRange = range => `?date_from=${Number(range.dateFrom)}&date_to=${Number(range.dateTo)}`
+
+const getRequestQuery = (query = '', range = getDefaultRange()) => {
+	const params = new URLSearchParams(String(query || '').replace(/^\?/, ''))
+	params.set('date_from', String(Number(range.dateFrom)))
+	params.set('date_to', String(Number(range.dateTo)))
+	return `?${params.toString()}`
+}
 
 const isValidRange = range => {
 	const dateFrom = Number(range?.dateFrom)
@@ -50,7 +53,7 @@ const getSavedRange = () => {
 			dateFrom: Number(data?.dateFrom),
 			dateTo: Number(data?.dateTo)
 		}
-		return isValidRange(range) ? range : null
+		return isValidRange(range) ? normalizeTransactionRange(range) : null
 	} catch {
 		return null
 	}
@@ -145,7 +148,7 @@ class TransactionStore {
 	load(query = '') {
 		if (this.loadPromise) return this.loadPromise
 		const range = getInitialRange(query)
-		const requestQuery = query || getQueryFromRange(range)
+		const requestQuery = getRequestQuery(query, range)
 
 		this.loadPromise = this.refresh(requestQuery, {range})
 			.finally(() => {
@@ -156,6 +159,8 @@ class TransactionStore {
 	}
 
 	async refresh(query = '', {range = getRangeFromQuery(query)} = {}) {
+		range = normalizeTransactionRange(range, {normalizeTimestamps: false})
+		const requestQuery = getRequestQuery(query, range)
 		const cache = await this.repository.getRange(range)
 		const offline = isOffline()
 		if (cache) {
@@ -189,7 +194,7 @@ class TransactionStore {
 		}
 
 		try {
-			const data = await this.apiService.getTransactions(query)
+			const data = await this.apiService.getTransactions(requestQuery)
 			const savedCache = await this.repository.saveRange(data, range)
 			this.setState({
 				data: savedCache?.data || data,
@@ -231,6 +236,7 @@ export {
 	getInitialRange,
 	getQueryFromRange,
 	getRangeFromQuery,
+	getRequestQuery,
 	saveTransactionRangePreference
 }
 export default new TransactionStore()
