@@ -7,7 +7,6 @@ const container = {
 		let containerHtml = `<section class="app-layout">
 			<div class="app-main-column">
 				<div class="app-header-slot"></div>
-				<div class="app-navigation-slot"></div>
 				${content.getHtml()}
 			</div>
 			${sidebar.getHtml(config)}

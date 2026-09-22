@@ -2,7 +2,6 @@ import router from './router/router.js'
 import config from './config/config.js'
 import header from './components/header.js'
 import container from './components/container.js'
-import navigation from './components/navigation.js'
 import footer from './components/footer.js'
 // import {yCalc} from './mixins/calculatorHelper.js'
 import planningStore from './stores/PlanningStore.js'
@@ -10,6 +9,7 @@ import balanceStore from './stores/BalanceStore.js'
 import transactionStore from './stores/TransactionStore.js'
 import FinancialSummary from './components/FinancialSummary.js'
 import {clearAuthState, getAuthenticatedUserId, getAuthToken} from './services/AuthSession.js'
+import {resolveWorkspaceSwipe} from './services/WorkspaceNavigationGesture.js'
 
 const hbapp = {
 
@@ -38,7 +38,6 @@ const hbapp = {
 		this.hbapp.innerHTML = ''
 		container.setContent(this.hbapp, config)
 		header.setContent(this.hbapp, config)
-		navigation.setNavigation(this.hbapp)
 		this.mountFinancialSummary()
 		// yCalc()
 		// footer.setContent(this.hbapp, config)
@@ -76,6 +75,17 @@ const hbapp = {
 		this.hbapp.querySelectorAll('.financial-summary-root').forEach(root => {
 			const summary = new FinancialSummary(root)
 			summary.render(this.financialSummaryViewModel)
+		})
+		this.updateSidebarActiveRoute()
+	},
+
+	updateSidebarActiveRoute(path = router.getCurrentPath()) {
+		const activePath = (path || router.defaultUrlPath).replace(/^\//, '')
+		this.hbapp.querySelectorAll('[data-summary-nav]').forEach(item => {
+			const isActive = item.dataset.summaryNav === activePath
+			item.classList.toggle('financial-summary-link-active', isActive)
+			if (isActive) item.setAttribute('aria-current', 'page')
+			else item.removeAttribute('aria-current')
 		})
 	},
 
@@ -119,6 +129,7 @@ const hbapp = {
 	setMobileView(view = 'content') {
 		this.mobileView = view === 'sidebar' ? 'sidebar' : 'content'
 		this.hbapp.classList.toggle('mobile-summary-open', this.mobileView === 'sidebar')
+		this.hbapp.querySelector('.app-name')?.setAttribute('aria-expanded', this.mobileView === 'sidebar' ? 'true' : 'false')
 	},
 
 	navigateAppRoute(route, hash = '') {
@@ -127,7 +138,7 @@ const hbapp = {
 		this.closeHeaderMenu()
 		router.redirectRouter(nextPath)
 		this.setMobileView('content')
-		navigation.updateActiveRoute(route)
+		this.updateSidebarActiveRoute(route)
 		if (route === 'settings' && this.pageObject?.pageName === 'settings' && this.pageObject.showSectionFromHash) {
 			this.pageObject.showSectionFromHash()
 		}
@@ -138,6 +149,9 @@ const hbapp = {
 	},
 
 	shouldIgnoreViewSwipe(target) {
+		if (this.mobileView === 'sidebar') {
+			return Boolean(target.closest('[data-no-view-swipe], input, textarea, select, button, a, label, [contenteditable="true"], .header-utility-menu'))
+		}
 		return Boolean(target.closest('[data-no-view-swipe], input, textarea, select, button, a, label, [contenteditable="true"], .header, .navigation, .header-utility-menu'))
 	},
 
@@ -156,13 +170,18 @@ const hbapp = {
 	handleViewSwipeEnd(event) {
 		if (!this.viewSwipe || !this.isMobileSwipeEnabled()) return
 		const changedTouch = event.changedTouches ? event.changedTouches[0] : event
-		const deltaX = changedTouch.clientX - this.viewSwipe.x
-		const deltaY = changedTouch.clientY - this.viewSwipe.y
+		const action = resolveWorkspaceSwipe(this.viewSwipe, {
+			x: changedTouch.clientX,
+			y: changedTouch.clientY
+		}, {
+			mobileView: this.mobileView,
+			viewportWidth: window.innerWidth
+		})
 		this.viewSwipe = null
 
-		if (Math.abs(deltaX) < 80 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.5) return
-		if (this.mobileView === 'content' && deltaX < 0) this.setMobileView('sidebar')
-		else if (this.mobileView === 'sidebar' && deltaX > 0) this.setMobileView('content')
+		if (!action) return
+		if (action === 'open') this.setMobileView('sidebar')
+		else if (action === 'close') this.setMobileView('content')
 	},
 
 	setEventListeners() {
@@ -176,6 +195,10 @@ const hbapp = {
 			if (e.target.closest('[data-summary-nav]')) {
 				const navPath = e.target.closest('[data-summary-nav]').dataset.summaryNav
 				this.navigateAppRoute(navPath)
+				return
+			}
+			if (e.target.closest('[data-action="sync-placeholder"]')) {
+				this.closeHeaderMenu()
 				return
 			}
 			if (e.target.closest('[data-action="header-menu-toggle"]')) {
@@ -199,8 +222,7 @@ const hbapp = {
 				let sparam = e.target.dataset.sparam
 				if (!sparam) {
 					this.closeHeaderMenu()
-					this.hbapp.classList.toggle('mobile-summary-open')
-					this.mobileView = this.hbapp.classList.contains('mobile-summary-open') ? 'sidebar' : 'content'
+					this.setMobileView(this.mobileView === 'sidebar' ? 'content' : 'sidebar')
 					return
 				}
 				if (sparam === 'out') {
@@ -220,20 +242,14 @@ const hbapp = {
 					})
 				}
 			}
-			if (e.target.closest('.navigation')) {
-				e.preventDefault()
-				const navLink = e.target.closest('a[data-navpath]')
-				this.closeHeaderMenu()
-				navigation.eventNavigationHandler(e)
-				this.mobileView = this.hbapp.classList.contains('mobile-summary-open') ? 'sidebar' : 'content'
-				if (navLink?.dataset.navpath === 'settings' && this.pageObject?.pageName === 'settings' && this.pageObject.showSectionFromHash) {
-					this.pageObject.showSectionFromHash()
-				}
-				return
-			}
 			if (e.target.closest('.app-name')) {
 				this.closeHeaderMenu()
 				this.setMobileView(this.mobileView === 'sidebar' ? 'content' : 'sidebar')
+				return
+			}
+			if (this.mobileView === 'sidebar' && this.isMobileSwipeEnabled() && e.target.closest('.app-main-column')) {
+				this.closeHeaderMenu()
+				this.setMobileView('content')
 				return
 			}
 			if (e.target.closest('.theme-toggler')) {
@@ -285,7 +301,7 @@ const hbapp = {
 			this.pageObject = new pageObject(this.hbrouter)
 			this.renderFinancialSummary()
 		}
-		navigation.updateActiveRoute(router.getCurrentPath())
+		this.updateSidebarActiveRoute(router.getCurrentPath())
 		this.setPageTitle()
 	},
 

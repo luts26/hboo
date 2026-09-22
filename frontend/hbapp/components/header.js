@@ -33,7 +33,10 @@ const header = {
 			<div class="header-container d-flex align-items-center">
 				<div class="transactions-today-date text-center"></div>
 				<div class="label-header">
-					<div class="app-name" title="Open settings">${appName}</div>
+					<div class="app-name" title="Open workspace navigation" role="button" aria-expanded="false">
+						${appName}
+						<span class="workspace-attention-marker" aria-hidden="true"></span>
+					</div>
 					<nav class="sub-menu">
 						<ul>
 							<li data-sparam="abank">add bank</li>

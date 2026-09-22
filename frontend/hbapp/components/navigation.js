@@ -1,8 +1,10 @@
 import router from '../router/router.js'
 
 const primaryItems = [
-	{path: 'balance', label: 'Balance'},
-	{path: 'transaction', label: 'Transactions'}
+	{path: 'home', label: 'Home'},
+	{path: 'planing', label: 'Planning'},
+	{path: 'transaction', label: 'Transactions'},
+	{path: 'balance', label: 'Balance'}
 ]
 
 const secondaryItems = [
@@ -15,7 +17,9 @@ const getRoutePath = path => path === '/' ? 'home' : path.replace(/^\//, '')
 const getNavItemHtml = (item, activePath, extraClass = '') => {
 	const activeClass = item.path === activePath ? ' active-link' : ''
 	return `<li class="items-list-item ${item.path}-nav-link${activeClass}${extraClass}">
-		<a class="item-link" href="/${item.path}" data-navpath="${item.path}">${item.label}</a>
+		<a class="item-link" href="/${item.path}" data-navpath="${item.path}">
+			<span>${item.label}</span>
+		</a>
 	</li>`
 }
 
@@ -33,22 +37,22 @@ const navigation = {
 		const secondaryHtml = secondaryItems.map(item => getNavItemHtml(item, activePath)).join('')
 		const moreActiveClass = secondaryItems.some(item => item.path === activePath) ? ' active-link' : ''
 
-		return `<nav class="navigation navigation-desktop d-none">
+		return `<nav class="navigation navigation-desktop" aria-label="Workspace navigation">
 			<ul class="items-list">
 				${primaryHtml}
 				<li class="items-list-item more-nav-link${moreActiveClass}">
-					<button class="item-link navigation-more-toggle" type="button">More</button>
+					<button class="item-link navigation-more-toggle" type="button"><span>More</span></button>
 					<ul class="navigation-more-menu">
 						${secondaryHtml}
 					</ul>
 				</li>
 			</ul>
 		</nav>
-		<nav class="navigation navigation-mobile d-none">
+		<nav class="navigation navigation-mobile" aria-label="Mobile workspace navigation">
 			<ul class="items-list">
 				${primaryHtml}
 				<li class="items-list-item more-nav-link${moreActiveClass}">
-					<button class="item-link navigation-more-toggle" type="button">More</button>
+					<button class="item-link navigation-more-toggle" type="button"><span>More</span></button>
 					<ul class="navigation-more-menu">
 						${secondaryHtml}
 					</ul>
