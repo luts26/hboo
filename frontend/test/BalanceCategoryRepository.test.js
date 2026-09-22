@@ -326,6 +326,44 @@ test('offline cached categories are returned without API dependency', async () =
 	}
 })
 
+test('Planning route with cached categories uses local data without network refresh', async () => {
+	const repo = makeCategoryRepo(new FakeIndexedDbClient())
+	await repo.saveCached('uk', [categoryUk])
+	const service = new CategoryApiService(repo)
+	const originalFetch = globalThis.fetch
+	let fetchCount = 0
+	globalThis.fetch = async () => {
+		fetchCount += 1
+		throw new Error('network should not be used')
+	}
+	try {
+		const items = await service.loadCategories('uk')
+		assert.equal(items[0].name, 'Продукти')
+		assert.equal(fetchCount, 0)
+	} finally {
+		globalThis.fetch = originalFetch
+	}
+})
+
+test('Transactions route with cached categories uses local data without network refresh', async () => {
+	const repo = makeCategoryRepo(new FakeIndexedDbClient())
+	await repo.saveCached('uk', [categoryUk])
+	const service = new CategoryApiService(repo)
+	const originalFetch = globalThis.fetch
+	let fetchCount = 0
+	globalThis.fetch = async () => {
+		fetchCount += 1
+		throw new Error('network should not be used')
+	}
+	try {
+		const items = await service.getCategories('uk')
+		assert.equal(items[0].name, 'Продукти')
+		assert.equal(fetchCount, 0)
+	} finally {
+		globalThis.fetch = originalFetch
+	}
+})
+
 test('never-cached language does not use another language fallback', async () => {
 	const repo = makeCategoryRepo(new FakeIndexedDbClient())
 	await repo.saveCached('en', [categoryEn])
@@ -336,6 +374,58 @@ test('never-cached language does not use another language fallback', async () =>
 	}
 	try {
 		await assert.rejects(() => service.loadCategories('uk'))
+	} finally {
+		globalThis.fetch = originalFetch
+	}
+})
+
+test('missing categories cache fetches from API and persists result', async () => {
+	const repo = makeCategoryRepo(new FakeIndexedDbClient())
+	const service = new CategoryApiService(repo)
+	const originalFetch = globalThis.fetch
+	let fetchCount = 0
+	globalThis.fetch = async (url, request = {}) => {
+		fetchCount += 1
+		assert.equal(request.headers.Authorization, undefined)
+		assert.match(String(url), /\/api\/categories\?lang=uk/)
+		return {
+			status: 200,
+			json: async () => [categoryUk]
+		}
+	}
+	try {
+		const items = await service.loadCategories('uk')
+		const cache = await repo.getCached('uk')
+		assert.equal(fetchCount, 1)
+		assert.equal(items[0].name, 'Продукти')
+		assert.equal(cache.items[0].name, 'Продукти')
+	} finally {
+		globalThis.fetch = originalFetch
+	}
+})
+
+test('cached categories for wrong language fetch and store requested language separately', async () => {
+	const repo = makeCategoryRepo(new FakeIndexedDbClient())
+	await repo.saveCached('en', [categoryEn])
+	const service = new CategoryApiService(repo)
+	const originalFetch = globalThis.fetch
+	let fetchCount = 0
+	globalThis.fetch = async url => {
+		fetchCount += 1
+		assert.match(String(url), /\/api\/categories\?lang=uk/)
+		return {
+			status: 200,
+			json: async () => [categoryUk]
+		}
+	}
+	try {
+		const items = await service.loadCategories('uk')
+		const uk = await repo.getCached('uk')
+		const en = await repo.getCached('en')
+		assert.equal(fetchCount, 1)
+		assert.equal(items[0].name, 'Продукти')
+		assert.equal(uk.items[0].name, 'Продукти')
+		assert.equal(en.items[0].name, 'Food')
 	} finally {
 		globalThis.fetch = originalFetch
 	}

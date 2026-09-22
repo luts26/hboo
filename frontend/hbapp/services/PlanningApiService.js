@@ -12,13 +12,15 @@ const toApiDate = value => {
 export default class PlanningApiService {
 
 	async request(path, {method = 'GET', data = undefined} = {}) {
+		const headers = api.getHeaders()
 		const requestData = {
 			method,
-			headers: api.getHeaders()
+			headers
 		}
 		if (data !== undefined) requestData.body = JSON.stringify(data)
 
 		const response = await fetch(`${api.apiurl}${path}`, requestData)
+		api.observeResponseAuth(response, headers)
 		if ([200, 201].indexOf(response.status) !== -1) {
 			return response.json()
 		}
@@ -78,10 +80,12 @@ export default class PlanningApiService {
 	}
 
 	async deleteItem(itemId) {
+		const headers = api.getHeaders()
 		const response = await fetch(`${api.apiurl}/planning/item/${encodeURIComponent(itemId)}`, {
 			method: 'DELETE',
-			headers: api.getHeaders()
+			headers
 		})
+		api.observeResponseAuth(response, headers)
 
 		if ([200, 201].indexOf(response.status) !== -1) {
 			return response.json()
@@ -123,14 +127,16 @@ export default class PlanningApiService {
 	}
 
 	async unlinkTransaction(itemId, transaction) {
+		const headers = api.getHeaders()
 		const response = await fetch(`${api.apiurl}/planning/item/${encodeURIComponent(itemId)}/transactions`, {
 			method: 'DELETE',
-			headers: api.getHeaders(),
+			headers,
 			body: JSON.stringify({
 				provider: transaction.provider,
 				providerTransactionId: transaction.providerTransactionId
 			})
 		})
+		api.observeResponseAuth(response, headers)
 
 		if ([200, 201].indexOf(response.status) === -1) {
 			throw new Error('Unable to unlink transaction')

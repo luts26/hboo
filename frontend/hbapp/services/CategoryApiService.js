@@ -4,9 +4,10 @@ import CategoryLocalRepository, {isValidCategories} from './CategoryLocalReposit
 const refreshRequests = new Map()
 
 const fetchCategories = async language => {
+	const headers = api.getPublicHeaders()
 	const response = await fetch(`${api.apiurl}/categories?lang=${encodeURIComponent(language)}`, {
 		method: 'GET',
-		headers: api.getHeaders()
+		headers
 	})
 
 	if (![200, 201].includes(response.status)) {
@@ -30,7 +31,7 @@ export default class CategoryApiService {
 		const cached = await this.localRepository.getCached(language)
 
 		if (cached) {
-			this.refreshCategories(language, options).catch(() => {})
+			if (options.refresh === true) this.refreshCategories(language, options).catch(() => {})
 			return Promise.resolve(cached.items)
 		}
 

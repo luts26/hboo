@@ -3,6 +3,7 @@ import PlanningApiService from '../services/PlanningApiService.js'
 import PlanningLocalRepository from '../services/PlanningLocalRepository.js'
 import PlanningSyncQueue from '../services/PlanningSyncQueue.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
+import networkStatusService from '../services/NetworkStatusService.js'
 import {calculateSummary, endOfDay, startOfDay} from '../services/PlanningCalculator.js'
 
 const getDefaultPeriod = () => {
@@ -105,6 +106,7 @@ class PlanningStore {
 		this.balanceRepository = new BalanceLocalRepository()
 		this.transactionRepository = new TransactionLocalRepository()
 		this.listeners = new Set()
+		this.unsubscribeNetworkStatus = null
 		this.loadPromise = null
 		this.syncPromise = null
 		this.syncDebounce = null
@@ -138,7 +140,13 @@ class PlanningStore {
 
 	registerSyncTriggers() {
 		if (typeof window === 'undefined') return
-		window.addEventListener('online', () => this.handleRecoverySignal('online'))
+		let previousNetwork = networkStatusService.getState().network
+		this.unsubscribeNetworkStatus = networkStatusService.subscribe(state => {
+			if (previousNetwork === 'offline' && state.network === 'online') {
+				this.handleRecoverySignal('online')
+			}
+			previousNetwork = state.network
+		})
 		window.addEventListener('focus', () => this.handleRecoverySignal('focus'))
 		if (typeof document !== 'undefined') {
 			document.addEventListener('visibilitychange', () => {
@@ -378,7 +386,7 @@ class PlanningStore {
 	}
 
 	isOffline() {
-		return typeof navigator !== 'undefined' && navigator.onLine === false
+		return networkStatusService.isOffline()
 	}
 
 	async enqueueAutosync({reason = 'local-change'} = {}) {

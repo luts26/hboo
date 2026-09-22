@@ -9,6 +9,7 @@ import balanceStore from './stores/BalanceStore.js'
 import transactionStore from './stores/TransactionStore.js'
 import FinancialSummary from './components/FinancialSummary.js'
 import {clearAuthState, getAuthenticatedUserId, getAuthToken} from './services/AuthSession.js'
+import connectionSyncStatus from './services/ConnectionSyncStatus.js'
 import {resolveWorkspaceSwipe} from './services/WorkspaceNavigationGesture.js'
 
 const hbapp = {
@@ -24,6 +25,7 @@ const hbapp = {
 	unsubscribeFinancialSummary: null,
 	unsubscribeBalanceSummary: null,
 	unsubscribeTransactionSummary: null,
+	unsubscribeConnectionSyncStatus: null,
 	defaultTemplate: false,
 	mobileView: 'content',
 	viewSwipe: null,
@@ -39,10 +41,35 @@ const hbapp = {
 		container.setContent(this.hbapp, config)
 		header.setContent(this.hbapp, config)
 		this.mountFinancialSummary()
+		this.mountConnectionSyncStatus()
 		// yCalc()
 		// footer.setContent(this.hbapp, config)
 		this.hbrouter = this.hbapp.querySelector('#hbrouter')
 		this.defaultTemplate = true
+	},
+
+	mountConnectionSyncStatus: function() {
+		if (this.unsubscribeConnectionSyncStatus) this.unsubscribeConnectionSyncStatus()
+		this.unsubscribeConnectionSyncStatus = connectionSyncStatus.subscribe(state => {
+			this.renderConnectionSyncStatus(state)
+		})
+	},
+
+	renderConnectionSyncStatus: function(state = connectionSyncStatus.getState()) {
+		this.hbapp.querySelectorAll('.hboo-sync-card').forEach(card => {
+			card.dataset.syncPresentation = state.presentation
+			card.dataset.syncTone = state.tone
+			card.setAttribute('aria-label', `HBOO Sync: ${state.title}. ${state.detail}`)
+			const title = card.querySelector('[data-hboo-sync-title]')
+			const detail = card.querySelector('[data-hboo-sync-detail]')
+			if (title) title.textContent = state.title
+			if (detail) detail.textContent = state.detail
+		})
+		this.hbapp.querySelectorAll('.workspace-attention-marker').forEach(marker => {
+			marker.dataset.syncPresentation = state.presentation
+			marker.dataset.syncTone = state.tone
+			marker.setAttribute('title', `HBOO Sync: ${state.title}`)
+		})
 	},
 
 	mountFinancialSummary: function() {
@@ -197,7 +224,7 @@ const hbapp = {
 				this.navigateAppRoute(navPath)
 				return
 			}
-			if (e.target.closest('[data-action="sync-placeholder"]')) {
+			if (e.target.closest('[data-action="hboo-sync-status"]')) {
 				this.closeHeaderMenu()
 				return
 			}

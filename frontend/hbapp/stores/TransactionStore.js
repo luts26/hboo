@@ -1,5 +1,6 @@
 import TransactionApiService from '../services/TransactionApiService.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
+import networkStatusService from '../services/NetworkStatusService.js'
 import {
 	getDefaultTransactionRange,
 	normalizeTransactionRange
@@ -77,7 +78,7 @@ const getInitialRange = query => {
 }
 
 const isOffline = () => {
-	return typeof navigator !== 'undefined' && navigator.onLine === false
+	return networkStatusService.isOffline()
 }
 
 class TransactionStore {

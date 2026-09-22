@@ -1588,6 +1588,7 @@ img.pb-icon {
 	background: rgba(119,139,165,.5);
 	border: 2px solid #ebf5fc;
 	border-radius: 50%;
+	box-sizing: border-box;
 	box-shadow: 0 0 0 2px rgba(119,139,165,.08);
 	height: .5rem;
 	position: absolute;
@@ -2382,10 +2383,56 @@ img.pb-icon {
 .hboo-sync-marker {
 	background: #9baabd;
 	border-radius: 50%;
+	box-sizing: border-box;
 	box-shadow: 0 0 0 3px rgba(155,170,189,.14);
 	display: inline-block;
 	height: .52rem;
 	width: .52rem;
+}
+
+.hboo-sync-card[data-sync-tone="synced"] .hboo-sync-marker,
+.workspace-attention-marker[data-sync-tone="synced"] {
+	background: #22a06b;
+	box-shadow: 0 0 0 3px rgba(34,160,107,.12);
+}
+
+.hboo-sync-card[data-sync-tone="syncing"] .hboo-sync-marker,
+.workspace-attention-marker[data-sync-tone="syncing"] {
+	animation: hboo-sync-pulse 1.15s ease-in-out infinite;
+	background: #3498db;
+	box-shadow: 0 0 0 3px rgba(52,152,219,.14);
+}
+
+.hboo-sync-card[data-sync-tone="pending"] .hboo-sync-marker,
+.workspace-attention-marker[data-sync-tone="pending"] {
+	background: #7c8fa8;
+	box-shadow: 0 0 0 3px rgba(124,143,168,.14);
+}
+
+.hboo-sync-card[data-sync-tone="offline"] .hboo-sync-marker,
+.workspace-attention-marker[data-sync-tone="offline"] {
+	background: transparent;
+	border: 2px solid #7c8fa8;
+	box-shadow: 0 0 0 3px rgba(124,143,168,.1);
+}
+
+.hboo-sync-card[data-sync-tone="attention"] .hboo-sync-marker,
+.workspace-attention-marker[data-sync-tone="attention"] {
+	background: #d97706;
+	box-shadow: 0 0 0 3px rgba(217,119,6,.14);
+}
+
+@keyframes hboo-sync-pulse {
+	0%,
+	100% {
+		opacity: .58;
+		transform: scale(.92);
+	}
+
+	50% {
+		opacity: 1;
+		transform: scale(1.08);
+	}
 }
 
 .hboo-sync-copy {
