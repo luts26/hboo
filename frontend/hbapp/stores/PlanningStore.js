@@ -1,6 +1,7 @@
 import BalanceLocalRepository from '../services/BalanceLocalRepository.js'
 import PlanningApiService from '../services/PlanningApiService.js'
 import PlanningLocalRepository from '../services/PlanningLocalRepository.js'
+import {markPlanningSyncSucceeded, readPlanningSyncMetadata} from '../services/PlanningSyncMetadata.js'
 import PlanningSyncQueue from '../services/PlanningSyncQueue.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
 import networkStatusService from '../services/NetworkStatusService.js'
@@ -110,6 +111,7 @@ class PlanningStore {
 		this.loadPromise = null
 		this.syncPromise = null
 		this.syncDebounce = null
+		const syncMetadata = readPlanningSyncMetadata()
 		this.state = {
 			balance: null,
 			transactions: null,
@@ -131,6 +133,7 @@ class PlanningStore {
 			saveError: null,
 			syncStatus: 'idle',
 			syncError: null,
+			lastSuccessfulSyncAt: syncMetadata.lastSuccessfulSyncAt,
 			lastUpdated: null,
 			transactionLinks: {},
 			smartSuggestions: {}
@@ -766,7 +769,12 @@ class PlanningStore {
 		try {
 			await this.syncCurrentPlanningState()
 			await this.syncQueue.complete(syncingOperation)
-			this.setState({syncStatus: 'synced', syncError: null})
+			const syncMetadata = markPlanningSyncSucceeded()
+			this.setState({
+				syncStatus: 'synced',
+				syncError: null,
+				lastSuccessfulSyncAt: syncMetadata.lastSuccessfulSyncAt
+			})
 			return this.getState()
 		} catch (error) {
 			const failedOperation = await this.syncQueue.markError(syncingOperation, error)

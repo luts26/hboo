@@ -11,6 +11,11 @@ import {
 } from '../hbapp/services/AuthSession.js'
 import {deriveConnectionSyncState} from '../hbapp/services/ConnectionSyncStatus.js'
 import {NetworkStatusService} from '../hbapp/services/NetworkStatusService.js'
+import {
+	markPlanningSyncSucceeded,
+	readPlanningSyncMetadata,
+	writePlanningSyncMetadata
+} from '../hbapp/services/PlanningSyncMetadata.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(__dirname, '..')
@@ -61,6 +66,19 @@ test('online authenticated clean planning presents as synced', () => {
 	assert.equal(state.detail, 'All changes synced')
 })
 
+test('connection status carries Planning sync timestamp without formatting route freshness', () => {
+	const state = derive({
+		planningState: {
+			syncStatus: 'synced',
+			dirty: false,
+			lastSuccessfulSyncAt: 1789106400000
+		}
+	})
+
+	assert.equal(state.lastSuccessfulSyncAt, 1789106400000)
+	assert.equal(state.secondaryDetail, undefined)
+})
+
 test('online syncing presents as syncing with pending count when dirty', () => {
 	const state = derive({planningState: {syncStatus: 'syncing', dirty: true}})
 
@@ -104,11 +122,12 @@ test('online auth required presents sign in to sync', () => {
 })
 
 test('sync error presents sync error while keeping local changes', () => {
-	const state = derive({planningState: {syncStatus: 'error', dirty: true}})
+	const state = derive({planningState: {syncStatus: 'error', dirty: true, lastSuccessfulSyncAt: 1789106400000}})
 
 	assert.equal(state.presentation, 'error')
 	assert.equal(state.title, 'Sync error')
 	assert.equal(state.detail, 'Changes kept locally')
+	assert.equal(state.lastSuccessfulSyncAt, 1789106400000)
 })
 
 test('conflict has highest presentation priority', () => {
@@ -367,6 +386,28 @@ test('successful public response does not restore rejected API auth state', () =
 	assert.equal(getAuthState().apiAuthStatus, API_AUTH_STATUS.REJECTED)
 })
 
+test('Planning sync metadata persists last successful sync locally per user', () => {
+	localStorage.clear()
+	setAuthState({token: 'token', user: {id: 7, username: 'demo'}})
+
+	const metadata = markPlanningSyncSucceeded(1789106400000)
+	const restored = readPlanningSyncMetadata(7)
+
+	assert.equal(metadata.lastSuccessfulSyncAt, 1789106400000)
+	assert.equal(restored.lastSuccessfulSyncAt, 1789106400000)
+})
+
+test('public and authenticated API activity does not update Planning sync metadata', () => {
+	localStorage.clear()
+	setAuthState({token: 'token', user: {id: 8, username: 'demo'}})
+	writePlanningSyncMetadata({lastSuccessfulSyncAt: 1789106400000}, 8)
+
+	api.observeResponseAuth({status: 200}, {})
+	api.observeResponseAuth({status: 200}, {Authorization: 'Bearer token'})
+
+	assert.equal(readPlanningSyncMetadata(8).lastSuccessfulSyncAt, 1789106400000)
+})
+
 test('network status service emits offline to online transition', () => {
 	const listeners = new Map()
 	const windowRef = {
@@ -409,4 +450,18 @@ test('API auth rejection is centralized outside feature stores', () => {
 	assert.doesNotMatch(planningStoreSource, /markApiAuthRejected/)
 	assert.match(authSessionSource, /markApiAuthRejected/)
 	assert.match(apiSource, /observeAuthenticatedResponse/)
+})
+
+test('Planning sync timestamp is updated only from PlanningStore sync completion path', () => {
+	const apiSource = fs.readFileSync(path.join(frontendRoot, 'hbapp/mixins/apiQueriesHelper.js'), 'utf8')
+	const balanceStoreSource = fs.readFileSync(path.join(frontendRoot, 'hbapp/stores/BalanceStore.js'), 'utf8')
+	const transactionStoreSource = fs.readFileSync(path.join(frontendRoot, 'hbapp/stores/TransactionStore.js'), 'utf8')
+	const categorySource = fs.readFileSync(path.join(frontendRoot, 'hbapp/services/CategoryApiService.js'), 'utf8')
+	const planningStoreSource = fs.readFileSync(path.join(frontendRoot, 'hbapp/stores/PlanningStore.js'), 'utf8')
+
+	assert.doesNotMatch(apiSource, /markPlanningSyncSucceeded/)
+	assert.doesNotMatch(balanceStoreSource, /markPlanningSyncSucceeded/)
+	assert.doesNotMatch(transactionStoreSource, /markPlanningSyncSucceeded/)
+	assert.doesNotMatch(categorySource, /markPlanningSyncSucceeded/)
+	assert.match(planningStoreSource, /syncQueue\.complete\(syncingOperation\)[\s\S]*markPlanningSyncSucceeded/)
 })

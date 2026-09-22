@@ -10,6 +10,7 @@ import transactionStore from './stores/TransactionStore.js'
 import FinancialSummary from './components/FinancialSummary.js'
 import {clearAuthState, getAuthenticatedUserId, getAuthToken} from './services/AuthSession.js'
 import connectionSyncStatus from './services/ConnectionSyncStatus.js'
+import {deriveSectionFreshness} from './services/SectionFreshness.js'
 import {resolveWorkspaceSwipe} from './services/WorkspaceNavigationGesture.js'
 
 const hbapp = {
@@ -20,6 +21,7 @@ const hbapp = {
 	hbrouter: null,
 	pageObject: undefined,
 	financialSummaryViewModel: null,
+	planningState: planningStore.getState(),
 	balanceSummaryState: balanceStore.getState(),
 	transactionSummaryState: transactionStore.getState(),
 	unsubscribeFinancialSummary: null,
@@ -56,14 +58,23 @@ const hbapp = {
 	},
 
 	renderConnectionSyncStatus: function(state = connectionSyncStatus.getState()) {
+		const freshness = deriveSectionFreshness({
+			route: router.getCurrentPath() || router.defaultUrlPath,
+			balanceState: this.balanceSummaryState,
+			transactionState: this.transactionSummaryState,
+			planningState: this.planningState
+		})
 		this.hbapp.querySelectorAll('.hboo-sync-card').forEach(card => {
 			card.dataset.syncPresentation = state.presentation
 			card.dataset.syncTone = state.tone
-			card.setAttribute('aria-label', `HBOO Sync: ${state.title}. ${state.detail}`)
+			card.classList.toggle('hboo-sync-card-no-freshness', !freshness)
+			card.setAttribute('aria-label', `HBOO Sync: ${state.title}. ${state.detail}${freshness ? `. ${freshness.text}` : ''}`)
 			const title = card.querySelector('[data-hboo-sync-title]')
 			const detail = card.querySelector('[data-hboo-sync-detail]')
+			const secondary = card.querySelector('[data-hboo-sync-secondary]')
 			if (title) title.textContent = state.title
 			if (detail) detail.textContent = state.detail
+			if (secondary) secondary.textContent = freshness?.text || ''
 		})
 		this.hbapp.querySelectorAll('.workspace-attention-marker').forEach(marker => {
 			marker.dataset.syncPresentation = state.presentation
@@ -78,6 +89,7 @@ const hbapp = {
 		if (this.unsubscribeTransactionSummary) this.unsubscribeTransactionSummary()
 
 		this.unsubscribeFinancialSummary = planningStore.subscribe(state => {
+			this.planningState = state
 			this.renderFinancialSummary(planningStore.getSummaryViewModel(state))
 		})
 		this.unsubscribeBalanceSummary = balanceStore.subscribe(state => {
@@ -114,6 +126,7 @@ const hbapp = {
 			if (isActive) item.setAttribute('aria-current', 'page')
 			else item.removeAttribute('aria-current')
 		})
+		this.renderConnectionSyncStatus()
 	},
 
 	logoutApp() {

@@ -2366,7 +2366,8 @@ img.pb-icon {
 }
 
 .hboo-sync-state,
-.hboo-sync-copy {
+.hboo-sync-copy,
+.hboo-sync-secondary {
 	padding-left: 1.15rem;
 	padding-right: 1.15rem;
 }
@@ -2439,8 +2440,23 @@ img.pb-icon {
 	color: #9baabd;
 	font-size: 10.5pt;
 	line-height: 1.35;
-	padding-bottom: 1.15rem;
+	padding-bottom: .35rem;
 	padding-top: .45rem;
+}
+
+.hboo-sync-card-no-freshness .hboo-sync-copy {
+	padding-bottom: 1.15rem;
+}
+
+.hboo-sync-secondary {
+	color: #9baabd;
+	font-size: 9.5pt;
+	line-height: 1.35;
+	padding-bottom: 1.15rem;
+}
+
+.hboo-sync-secondary:empty {
+	display: none;
 }
 
 .financial-summary-card {
@@ -2665,7 +2681,8 @@ img.pb-icon {
 
 .dark-theme .hboo-sync-placeholder,
 .dark-theme .hboo-sync-state,
-.dark-theme .hboo-sync-copy {
+.dark-theme .hboo-sync-copy,
+.dark-theme .hboo-sync-secondary {
 	color: #ddd;
 }
 

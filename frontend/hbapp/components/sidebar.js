@@ -10,6 +10,7 @@ const sidebar = {
 					<span data-hboo-sync-title>Synced</span>
 				</div>
 				<div class="hboo-sync-copy" data-hboo-sync-detail>All changes synced</div>
+				<div class="hboo-sync-secondary" data-hboo-sync-secondary></div>
 			</button>
 			<div class="text-center copy-date">
 				${config.appAlias}

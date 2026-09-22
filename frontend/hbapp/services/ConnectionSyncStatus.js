@@ -26,6 +26,7 @@ const deriveConnectionSyncState = ({
 	const network = networkState.network || (networkState.online === false ? 'offline' : 'online')
 	const syncStatus = planningState.syncStatus || 'idle'
 	const pendingCount = getPendingCount(planningState)
+	const lastSuccessfulSyncAt = Number(planningState.lastSuccessfulSyncAt) || null
 	const apiAuthStatus = authState.apiAuthStatus || authState.apiStatus || API_AUTH_STATUS.UNKNOWN
 	const hasAuth = Boolean(authState.authenticated || (authState.token && authState.userId))
 	const isAuthRejected = apiAuthStatus === API_AUTH_STATUS.REJECTED
@@ -82,6 +83,7 @@ const deriveConnectionSyncState = ({
 		apiAuthStatus,
 		sync,
 		pendingCount,
+		lastSuccessfulSyncAt,
 		presentation,
 		tone,
 		title,
