@@ -10,27 +10,32 @@ const getMetadataKey = (userId = getAuthenticatedUserId()) => {
 
 const readPlanningSyncMetadata = (userId = getAuthenticatedUserId()) => {
 	const storage = getStorage()
-	if (!storage) return {lastSuccessfulSyncAt: null}
+	if (!storage) return {lastSuccessfulSyncAt: null, lastSuccessfulServerCheckAt: null}
 
 	try {
 		const rawData = storage.getItem(getMetadataKey(userId))
 		const data = rawData ? JSON.parse(rawData) : null
 		const lastSuccessfulSyncAt = Number(data?.lastSuccessfulSyncAt)
+		const lastSuccessfulServerCheckAt = Number(data?.lastSuccessfulServerCheckAt)
 
 		return {
 			lastSuccessfulSyncAt: Number.isFinite(lastSuccessfulSyncAt) && lastSuccessfulSyncAt > 0
 				? lastSuccessfulSyncAt
+				: null,
+			lastSuccessfulServerCheckAt: Number.isFinite(lastSuccessfulServerCheckAt) && lastSuccessfulServerCheckAt > 0
+				? lastSuccessfulServerCheckAt
 				: null
 		}
 	} catch {
-		return {lastSuccessfulSyncAt: null}
+		return {lastSuccessfulSyncAt: null, lastSuccessfulServerCheckAt: null}
 	}
 }
 
 const writePlanningSyncMetadata = (metadata = {}, userId = getAuthenticatedUserId()) => {
 	const storage = getStorage()
 	const nextMetadata = {
-		lastSuccessfulSyncAt: Number(metadata.lastSuccessfulSyncAt) || null
+		lastSuccessfulSyncAt: Number(metadata.lastSuccessfulSyncAt) || null,
+		lastSuccessfulServerCheckAt: Number(metadata.lastSuccessfulServerCheckAt) || null
 	}
 
 	if (!storage) return nextMetadata
@@ -39,11 +44,24 @@ const writePlanningSyncMetadata = (metadata = {}, userId = getAuthenticatedUserI
 }
 
 const markPlanningSyncSucceeded = (timestamp = Date.now(), userId = getAuthenticatedUserId()) => {
-	return writePlanningSyncMetadata({lastSuccessfulSyncAt: Number(timestamp) || Date.now()}, userId)
+	const previous = readPlanningSyncMetadata(userId)
+	return writePlanningSyncMetadata({
+		...previous,
+		lastSuccessfulSyncAt: Number(timestamp) || Date.now()
+	}, userId)
+}
+
+const markPlanningServerCheckSucceeded = (timestamp = Date.now(), userId = getAuthenticatedUserId()) => {
+	const previous = readPlanningSyncMetadata(userId)
+	return writePlanningSyncMetadata({
+		...previous,
+		lastSuccessfulServerCheckAt: Number(timestamp) || Date.now()
+	}, userId)
 }
 
 export {
 	getMetadataKey,
+	markPlanningServerCheckSucceeded,
 	markPlanningSyncSucceeded,
 	readPlanningSyncMetadata,
 	writePlanningSyncMetadata

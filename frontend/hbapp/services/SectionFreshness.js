@@ -53,14 +53,14 @@ const formatFreshnessTime = (timestamp, now = Date.now()) => {
 const getSectionTimestamp = (route, states = {}) => {
 	if (route === 'balance') return getTimestamp(states.balanceState?.updatedAt)
 	if (route === 'transaction') return getTimestamp(states.transactionState?.updatedAt)
-	if (route === 'planing') return getTimestamp(states.planningState?.lastSuccessfulSyncAt)
+	if (route === 'planing') return getTimestamp(states.planningState?.lastSuccessfulServerCheckAt)
 	return null
 }
 
 const getSectionLabel = route => {
 	if (route === 'balance') return 'Balance updated'
 	if (route === 'transaction') return 'Transactions updated'
-	if (route === 'planing') return 'Planning synced'
+	if (route === 'planing') return 'Planning checked'
 	return null
 }
 

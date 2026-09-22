@@ -1,11 +1,18 @@
 import BalanceLocalRepository from '../services/BalanceLocalRepository.js'
 import PlanningApiService from '../services/PlanningApiService.js'
 import PlanningLocalRepository from '../services/PlanningLocalRepository.js'
-import {markPlanningSyncSucceeded, readPlanningSyncMetadata} from '../services/PlanningSyncMetadata.js'
+import {
+	markPlanningServerCheckSucceeded,
+	markPlanningSyncSucceeded,
+	readPlanningSyncMetadata
+} from '../services/PlanningSyncMetadata.js'
 import PlanningSyncQueue from '../services/PlanningSyncQueue.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
 import networkStatusService from '../services/NetworkStatusService.js'
+import {API_AUTH_STATUS, getAuthState} from '../services/AuthSession.js'
 import {calculateSummary, endOfDay, startOfDay} from '../services/PlanningCalculator.js'
+
+const SERVER_REVALIDATION_MIN_INTERVAL_MS = 15 * 1000
 
 const getDefaultPeriod = () => {
 	const now = new Date()
@@ -37,21 +44,27 @@ const toAmount = value => {
 	return Number.isFinite(amount) ? Math.round((amount + Number.EPSILON) * 100) / 100 : null
 }
 
+const toPlanningDateKey = value => {
+	if (!value) return toDateKey(Date.now())
+	if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10)
+	return toDateKey(value)
+}
+
 const normalizeComparableItem = item => ({
-	categoryId: item.categoryId ? String(item.categoryId) : null,
-	title: item.title || item.desc || 'Planning expense',
-	description: item.desc || '',
-	plannedAmount: toAmount(item.sum) || 0,
-	actualAmount: toAmount(item.actualAmount),
+	categoryId: (item.categoryId ?? item.category_id) ? String(item.categoryId ?? item.category_id) : null,
+	title: item.title || item.desc || item.description || 'Planning expense',
+	description: item.desc ?? item.description ?? '',
+	plannedAmount: toAmount(item.sum ?? item.plannedAmount ?? item.planned_amount) || 0,
+	actualAmount: toAmount(item.actualAmount ?? item.actual_amount),
 	status: item.status || 'pending',
-	plannedAt: toDateKey(item.date || Date.now()),
-	transactionId: item.transactionId || null
+	plannedAt: toPlanningDateKey(item.date ?? item.plannedAt ?? item.planned_at ?? Date.now()),
+	transactionId: item.transactionId ?? item.transaction_id ?? null
 })
 
 const normalizeComparablePeriod = period => ({
-	startDate: toDateKey(period?.dateFrom || Date.now()),
-	endDate: toDateKey(period?.dateTo || Date.now()),
-	budgetAmount: toAmount(period?.periodBudget) || 0
+	startDate: toPlanningDateKey(period?.dateFrom ?? period?.startDate ?? period?.start_date ?? Date.now()),
+	endDate: toPlanningDateKey(period?.dateTo ?? period?.endDate ?? period?.end_date ?? Date.now()),
+	budgetAmount: toAmount(period?.periodBudget ?? period?.budgetAmount ?? period?.budget_amount) || 0
 })
 
 const isPlanningItemChanged = (current, snapshot) => {
@@ -98,19 +111,147 @@ const getCurrentActualSpent = state => {
 	return getStatisticsActualSpent(state.serverSnapshot.statistics)
 }
 
+const getComparablePlanningState = ({period, currentPeriod, items = [], planningItems = []} = {}) => {
+	const planningPeriod = period || currentPeriod || null
+	const planningItemsSource = items.length ? items : planningItems
+	const comparablePeriod = planningPeriod ? normalizeComparablePeriod(planningPeriod) : null
+	const comparableItems = planningItemsSource
+		.map(item => ({
+			id: String(item.id || ''),
+			...normalizeComparableItem(item)
+		}))
+		.sort((left, right) => left.id.localeCompare(right.id))
+
+	return JSON.stringify({
+		period: comparablePeriod,
+		items: comparableItems
+	})
+}
+
+const isSamePlanningState = (left, right) => {
+	if (!left || !right) return false
+	return getComparablePlanningState(left) === getComparablePlanningState(right)
+}
+
+const isSamePlanningPeriod = (left, right) => {
+	if (!left || !right) return false
+	return JSON.stringify(normalizeComparablePeriod(left)) === JSON.stringify(normalizeComparablePeriod(right))
+}
+
+const toPersistedItemMap = (items = []) => {
+	const map = new Map()
+	items.forEach(item => {
+		if (isTemporaryId(item.id)) return
+		map.set(String(item.id), item)
+	})
+	return map
+}
+
+const getPlanningChangeSet = (base = {}, target = {}) => {
+	const baseItemsById = toPersistedItemMap(base.items)
+	const targetItemsById = toPersistedItemMap(target.items || target.planningItems)
+	const createdIds = new Set()
+	const createdTempIds = new Set()
+	const updatedIds = new Set()
+	const deletedIds = new Set()
+
+	;(target.items || target.planningItems || []).forEach(item => {
+		if (isTemporaryId(item.id)) {
+			createdTempIds.add(String(item.id))
+			return
+		}
+
+		const id = String(item.id)
+		const baseItem = baseItemsById.get(id)
+		if (!baseItem) {
+			createdIds.add(id)
+			return
+		}
+
+		if (isPlanningItemChanged(item, baseItem)) {
+			updatedIds.add(id)
+		}
+	})
+
+	baseItemsById.forEach((item, id) => {
+		if (!targetItemsById.has(id)) deletedIds.add(id)
+	})
+
+	return {
+		createdIds,
+		createdTempIds,
+		updatedIds,
+		deletedIds,
+		periodChanged: Boolean(base.period && target.period && isPlanningPeriodChanged(target.period, base.period))
+	}
+}
+
+const intersectSets = (left, right) => {
+	const ids = []
+	left.forEach(id => {
+		if (right.has(id)) ids.push(id)
+	})
+	return ids
+}
+
+const analyzePlanningChanges = (base = {}, local = {}, remote = {}) => {
+	const localChanges = getPlanningChangeSet(base, local)
+	const remoteChanges = getPlanningChangeSet(base, remote)
+	const conflicts = []
+
+	intersectSets(localChanges.updatedIds, remoteChanges.updatedIds).forEach(id => {
+		conflicts.push({type: 'item-update-update', itemId: id})
+	})
+	intersectSets(localChanges.updatedIds, remoteChanges.deletedIds).forEach(id => {
+		conflicts.push({type: 'item-update-delete', itemId: id})
+	})
+	intersectSets(localChanges.deletedIds, remoteChanges.updatedIds).forEach(id => {
+		conflicts.push({type: 'item-delete-update', itemId: id})
+	})
+
+	if (
+		localChanges.periodChanged
+		&& remoteChanges.periodChanged
+		&& !isSamePlanningPeriod(local.period || local.currentPeriod, remote.period || remote.currentPeriod)
+	) {
+		conflicts.push({type: 'period-update-update'})
+	}
+
+	return {
+		local: localChanges,
+		remote: remoteChanges,
+		conflicts
+	}
+}
+
+const hasUsableApiAuth = () => {
+	const authState = getAuthState()
+	if (!authState?.token || !authState?.user?.id) return false
+	return authState.apiAuthStatus !== API_AUTH_STATUS.REJECTED
+}
+
 class PlanningStore {
 
-	constructor() {
-		this.repository = new PlanningLocalRepository()
-		this.apiService = new PlanningApiService()
-		this.syncQueue = new PlanningSyncQueue()
-		this.balanceRepository = new BalanceLocalRepository()
-		this.transactionRepository = new TransactionLocalRepository()
+	constructor({
+		repository = new PlanningLocalRepository(),
+		apiService = new PlanningApiService(),
+		syncQueue = new PlanningSyncQueue(),
+		balanceRepository = new BalanceLocalRepository(),
+		transactionRepository = new TransactionLocalRepository(),
+		autoRegisterSyncTriggers = true
+	} = {}) {
+		this.repository = repository
+		this.apiService = apiService
+		this.syncQueue = syncQueue
+		this.balanceRepository = balanceRepository
+		this.transactionRepository = transactionRepository
 		this.listeners = new Set()
 		this.unsubscribeNetworkStatus = null
 		this.loadPromise = null
 		this.syncPromise = null
 		this.syncDebounce = null
+		this.serverRevalidationPromise = null
+		this.pendingServerRevalidation = null
 		const syncMetadata = readPlanningSyncMetadata()
 		this.state = {
 			balance: null,
@@ -134,11 +275,12 @@ class PlanningStore {
 			syncStatus: 'idle',
 			syncError: null,
 			lastSuccessfulSyncAt: syncMetadata.lastSuccessfulSyncAt,
+			lastSuccessfulServerCheckAt: syncMetadata.lastSuccessfulServerCheckAt,
 			lastUpdated: null,
 			transactionLinks: {},
 			smartSuggestions: {}
 		}
-		this.registerSyncTriggers()
+		if (autoRegisterSyncTriggers) this.registerSyncTriggers()
 	}
 
 	registerSyncTriggers() {
@@ -167,6 +309,7 @@ class PlanningStore {
 		this.syncDebounce = setTimeout(() => {
 			this.syncDebounce = null
 			this.processSyncQueue({force: true, ignoreOffline: true, reason}).catch(() => {})
+			this.revalidateFromServer({reason}).catch(() => {})
 		}, 100)
 	}
 
@@ -319,7 +462,10 @@ class PlanningStore {
 
 	async load({force = false} = {}) {
 		if (this.loadPromise && !force) return this.loadPromise
-		if (this.state.loaded && !force) return Promise.resolve(this.getState())
+		if (this.state.loaded && !force) {
+			this.revalidateFromServer({reason: 'load'}).catch(() => {})
+			return Promise.resolve(this.getState())
+		}
 
 		this.setState({loading: true, error: null, saveError: null})
 		this.loadPromise = this.fetchData()
@@ -341,7 +487,7 @@ class PlanningStore {
 		this.applyPlanningState(cachedState, {
 			balance: bankData.balance,
 			transactions: bankData.transactions,
-			loading: true,
+			loading: false,
 			loaded: true,
 			source: 'cache',
 			stale: false,
@@ -351,40 +497,8 @@ class PlanningStore {
 		this.refreshSmartSuggestions()
 		if (cachedState.dirty) await this.enqueueAutosync({reason: 'startup'})
 
-		try {
-			const period = await this.apiService.getCurrentPeriod()
-			const [items, statistics] = await Promise.all([
-				this.apiService.getPeriodItems(period.id),
-				this.apiService.getPeriodStatistics(period.id).catch(() => null)
-			])
-			const latestLocalState = await this.repository.getPlanningState()
-			const planningState = await this.repository.replaceFromServer({
-				period,
-				items,
-				statistics
-			}, {
-				preserveDirty: latestLocalState.dirty
-			})
-
-			this.applyPlanningState(planningState, {
-				loading: false,
-				source: 'api',
-				stale: false,
-				error: null,
-				lastUpdated: Date.now()
-			})
-			this.refreshSmartSuggestions()
-		} catch (error) {
-			this.setState({
-				loading: false,
-				source: 'cache',
-				stale: true,
-				error,
-				lastUpdated: Date.now()
-			})
-		}
-
 		this.scheduleAutosync({reason: 'startup', delay: 500})
+		this.revalidateFromServer({reason: 'load'}).catch(() => {})
 		return this.getState()
 	}
 
@@ -720,6 +834,18 @@ class PlanningStore {
 		}
 	}
 
+	getSavePlanSource(planningState) {
+		return {
+			...this.state,
+			period: planningState.currentPeriod,
+			currentPeriod: planningState.currentPeriod,
+			planningItems: planningState.items,
+			items: planningState.items,
+			serverSnapshot: planningState.serverSnapshot,
+			deletedItemIds: planningState.deletedItemIds || []
+		}
+	}
+
 	async processSyncQueue({force = false, ignoreOffline = false, reason = 'autosync'} = {}) {
 		if (this.syncPromise) return this.syncPromise
 		if (!ignoreOffline && this.isOffline()) {
@@ -730,6 +856,11 @@ class PlanningStore {
 		this.syncPromise = this.processSyncQueueInternal({force, reason})
 			.finally(() => {
 				this.syncPromise = null
+				if (this.pendingServerRevalidation) {
+					const pending = this.pendingServerRevalidation
+					this.pendingServerRevalidation = null
+					this.revalidateFromServer(pending).catch(() => {})
+				}
 			})
 
 		return this.syncPromise
@@ -775,6 +906,7 @@ class PlanningStore {
 				syncError: null,
 				lastSuccessfulSyncAt: syncMetadata.lastSuccessfulSyncAt
 			})
+			this.revalidateFromServer({reason: 'after-push', force: true}).catch(() => {})
 			return this.getState()
 		} catch (error) {
 			const failedOperation = await this.syncQueue.markError(syncingOperation, error)
@@ -794,7 +926,9 @@ class PlanningStore {
 
 	async syncCurrentPlanningState() {
 		if (this.state.saving) return this.getState()
-		const plan = this.getSavePlan()
+		const localPlanningState = await this.repository.getPlanningState()
+		const planSource = this.getSavePlanSource(localPlanningState)
+		const plan = this.getSavePlan(planSource)
 
 		this.setState({saving: true, saveError: null})
 
@@ -810,6 +944,8 @@ class PlanningStore {
 				})
 				return this.getState()
 			}
+
+			await this.assertPlanningPushPreflight({plan, localPlanningState})
 
 			let period = plan.period
 
@@ -849,7 +985,7 @@ class PlanningStore {
 				this.apiService.getPeriodItems(periodId),
 				this.apiService.getPeriodStatistics(periodId).catch(() => null)
 			])
-			const localChecklistById = new Map(this.state.planningItems.map(item => [String(item.id), item.checklist]))
+			const localChecklistById = new Map(planSource.planningItems.map(item => [String(item.id), item.checklist]))
 			createdItems.forEach((createdItem, index) => {
 				const localItem = plan.creates[index]
 				if (localItem?.checklist) localChecklistById.set(String(createdItem.id), localItem.checklist)
@@ -885,6 +1021,216 @@ class PlanningStore {
 			throw error
 		}
 	}
+
+	isLocalOnlyInitialPlan(plan) {
+		const hasPersistedCreates = plan.creates.some(item => !isTemporaryId(item.id))
+		return plan.createPeriod
+			&& !plan.updatePeriod
+			&& !plan.updates.length
+			&& !plan.deletes.length
+			&& !hasPersistedCreates
+	}
+
+	createPlanningConflictError(message = 'Planning sync conflict') {
+		const error = new Error(message)
+		error.status = 409
+		error.statusCode = 409
+		return error
+	}
+
+	async fetchRemotePlanningStateForPreflight() {
+		try {
+			return await this.fetchRemotePlanningState()
+		} catch (error) {
+			const status = Number(error?.status || error?.statusCode)
+			if (status === 404) return null
+			throw error
+		}
+	}
+
+	async assertPlanningPushPreflight({plan, localPlanningState}) {
+		const base = localPlanningState.serverSnapshot
+		const remote = await this.fetchRemotePlanningStateForPreflight()
+
+		if (!base?.period) {
+			if (!remote?.period && this.isLocalOnlyInitialPlan(plan)) {
+				return true
+			}
+
+			if (remote?.period) await this.markServerRevalidationSucceeded()
+			throw this.createPlanningConflictError('Planning sync conflict: missing server snapshot')
+		}
+
+		if (!remote?.period) {
+			const remoteState = {period: base.period, items: []}
+			const localState = {
+				period: localPlanningState.currentPeriod,
+				items: localPlanningState.items
+			}
+			const analysis = analyzePlanningChanges(base, localState, remoteState)
+			if (analysis.conflicts.length) {
+				throw this.createPlanningConflictError('Planning sync conflict: remote Planning changed before push')
+			}
+			return true
+		}
+
+		const localState = {
+			period: localPlanningState.currentPeriod,
+			items: localPlanningState.items
+		}
+		const remoteState = {
+			period: remote.period,
+			items: remote.items
+		}
+		const analysis = analyzePlanningChanges(base, localState, remoteState)
+
+		await this.markServerRevalidationSucceeded()
+		if (analysis.conflicts.length) {
+			throw this.createPlanningConflictError('Planning sync conflict: remote Planning changed before push')
+		}
+
+		return true
+	}
+
+	shouldSkipServerRevalidation({force = false} = {}) {
+		if (force) return false
+		const lastCheck = Number(this.state.lastSuccessfulServerCheckAt) || 0
+		return lastCheck > 0 && Date.now() - lastCheck < SERVER_REVALIDATION_MIN_INTERVAL_MS
+	}
+
+	async fetchRemotePlanningState() {
+		const period = await this.apiService.getCurrentPeriod()
+		const [items, statistics] = await Promise.all([
+			this.apiService.getPeriodItems(period.id),
+			this.apiService.getPeriodStatistics(period.id).catch(() => null)
+		])
+
+		return {period, items, statistics}
+	}
+
+	async markServerRevalidationSucceeded() {
+		const syncMetadata = markPlanningServerCheckSucceeded()
+		this.setState({
+			lastSuccessfulServerCheckAt: syncMetadata.lastSuccessfulServerCheckAt,
+			lastUpdated: Date.now()
+		})
+		return syncMetadata
+	}
+
+	async markServerRevalidationConflict(error = new Error('Planning server revalidation conflict')) {
+		const operation = await this.syncQueue.enqueue({reason: 'server-revalidation-conflict'})
+		const conflictError = error
+		conflictError.status = 409
+		conflictError.statusCode = 409
+		const failedOperation = operation
+			? await this.syncQueue.markError(operation, conflictError)
+			: {status: 'conflict', lastError: conflictError}
+
+		this.setState({
+			syncStatus: failedOperation.status || 'conflict',
+			syncError: conflictError
+		})
+		return failedOperation
+	}
+
+	async revalidateFromServer({reason = 'revalidation', force = false} = {}) {
+		if (this.serverRevalidationPromise) return this.serverRevalidationPromise
+		if (this.isOffline() || !hasUsableApiAuth()) return this.getState()
+		if (this.syncPromise || this.state.saving || this.state.syncStatus === 'syncing') {
+			this.pendingServerRevalidation = {reason, force: true}
+			return this.getState()
+		}
+		if (this.shouldSkipServerRevalidation({force})) return this.getState()
+
+		this.serverRevalidationPromise = this.revalidateFromServerInternal({reason})
+			.finally(() => {
+				this.serverRevalidationPromise = null
+			})
+
+		return this.serverRevalidationPromise
+	}
+
+	async revalidateFromServerInternal() {
+		const remote = await this.fetchRemotePlanningState()
+		const latestLocalState = await this.repository.getPlanningState()
+		const base = latestLocalState.serverSnapshot
+		const localState = {
+			period: latestLocalState.currentPeriod,
+			items: latestLocalState.items
+		}
+		const remoteState = {
+			period: remote.period,
+			items: remote.items
+		}
+
+		if (!base?.period) {
+			if (latestLocalState.dirty && !isSamePlanningState(localState, remoteState)) {
+				await this.markServerRevalidationConflict()
+				return this.getState()
+			}
+
+			const planningState = await this.repository.markCleanFromState(remote)
+			this.applyPlanningState(planningState, {
+				source: 'api',
+				stale: false,
+				error: null,
+				saveError: null,
+				lastUpdated: Date.now()
+			})
+			await this.markServerRevalidationSucceeded()
+			this.refreshSmartSuggestions()
+			return this.getState()
+		}
+
+		const localMatchesBase = isSamePlanningState(localState, base)
+		const remoteMatchesBase = isSamePlanningState(remoteState, base)
+
+		if (localMatchesBase && remoteMatchesBase) {
+			await this.markServerRevalidationSucceeded()
+			return this.getState()
+		}
+
+		if (localMatchesBase && !remoteMatchesBase) {
+			const currentLocalState = await this.repository.getPlanningState()
+			const currentLocalMatchesBase = isSamePlanningState({
+				period: currentLocalState.currentPeriod,
+				items: currentLocalState.items
+			}, base)
+
+			if (!currentLocalMatchesBase || currentLocalState.dirty) {
+				await this.markServerRevalidationConflict()
+				return this.getState()
+			}
+
+			const planningState = await this.repository.replaceFromServer(remote)
+			this.applyPlanningState(planningState, {
+				source: 'api',
+				stale: false,
+				error: null,
+				saveError: null,
+				lastUpdated: Date.now()
+			})
+			await this.markServerRevalidationSucceeded()
+			this.refreshSmartSuggestions()
+			return this.getState()
+		}
+
+		if (!localMatchesBase && remoteMatchesBase) {
+			await this.markServerRevalidationSucceeded()
+			return this.getState()
+		}
+
+		await this.markServerRevalidationConflict()
+		return this.getState()
+	}
+}
+
+export {
+	analyzePlanningChanges,
+	PlanningStore,
+	getComparablePlanningState,
+	getPlanningChangeSet,
+	isSamePlanningState
 }
 
 export default new PlanningStore()

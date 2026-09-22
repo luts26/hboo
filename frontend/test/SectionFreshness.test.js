@@ -30,14 +30,14 @@ test('/transaction uses TransactionStore.updatedAt for freshness', () => {
 	assert.equal(freshness.text, 'Transactions updated 12 min ago')
 })
 
-test('/planing uses PlanningSyncMetadata lastSuccessfulSyncAt semantics', () => {
+test('/planing uses Planning server-check freshness semantics', () => {
 	const freshness = deriveSectionFreshness({
 		route: '/planing',
-		planningState: {lastSuccessfulSyncAt: minutesAgo(2)},
+		planningState: {lastSuccessfulServerCheckAt: minutesAgo(2)},
 		now: NOW
 	})
 
-	assert.equal(freshness.text, 'Planning synced 2 min ago')
+	assert.equal(freshness.text, 'Planning checked 2 min ago')
 })
 
 test('Balance snapshotAt is ignored in favor of updatedAt', () => {
