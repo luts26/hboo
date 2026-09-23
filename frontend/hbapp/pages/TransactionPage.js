@@ -3,6 +3,7 @@ import transactionStore from '../stores/TransactionStore.js'
 import CategoryApiService from '../services/CategoryApiService.js'
 import DataStatus, { createDataStatusViewModel } from '../components/DataStatus.js'
 import Toast from '../components/Toast.js'
+import overlayHost from '../services/OverlayHost.js'
 import { datePickerDefault } from '../mixins/calendarHelper.js'
 import { hbRangeCreate } from '../mixins/hbRangeHelper.js'
 import {
@@ -65,6 +66,7 @@ export default class TransactionPage extends AbstractClass {
 	destroy() {
 		if (this.unsubscribe) this.unsubscribe()
 		this.unsubscribe = null
+		this.clearOverlays()
 	}
 
 	renderFromStore() {
@@ -211,11 +213,30 @@ export default class TransactionPage extends AbstractClass {
 	afterCreate() {
 		if (this.$hbapp.querySelector('date-picker')) datePickerDefault(this.appliedDateRange || this.getDateRangeFromState())
 		this.syncAppliedDateRangeFromPage()
+		this.renderOverlays()
 	}
 
 	afterUpdate() {
 		if (this.$hbapp.querySelector('date-picker')) datePickerDefault(this.appliedDateRange || this.getDateRangeFromState())
 		this.syncAppliedDateRangeFromPage()
+		this.renderOverlays()
+	}
+
+	renderOverlays() {
+		this.renderOverlay('transaction-filter-modal', this.getFilterModalTemplate())
+		this.renderOverlay('transaction-refresh-modal', this.getRefreshConfirmTemplate())
+		this.renderOverlay('transaction-day-modal', this.getDayModalTemplate())
+	}
+
+	renderOverlay(key, html) {
+		if (html) overlayHost.render(key, html)
+		else overlayHost.clear(key)
+	}
+
+	clearOverlays() {
+		overlayHost.clear('transaction-filter-modal')
+		overlayHost.clear('transaction-refresh-modal')
+		overlayHost.clear('transaction-day-modal')
 	}
 
 	getTransactionCategory(transaction = {}) {
@@ -831,9 +852,6 @@ export default class TransactionPage extends AbstractClass {
 			</div>
 			${this.getCoverageNoticeTemplate()}
 			${htmlTemplate}
-			${this.getFilterModalTemplate()}
-			${this.getRefreshConfirmTemplate()}
-			${this.getDayModalTemplate()}
 			</div>
 			</div>`
 		return htmlTemplate

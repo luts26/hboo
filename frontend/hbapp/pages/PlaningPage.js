@@ -4,6 +4,7 @@ import {endOfDay, startOfDay} from '../services/PlanningCalculator.js'
 import CategoryApiService from '../services/CategoryApiService.js'
 import DataStatus, { createDataStatusViewModel } from '../components/DataStatus.js'
 import Toast from '../components/Toast.js'
+import overlayHost from '../services/OverlayHost.js'
 
 const statusOrder = {
 	pending: 0,
@@ -80,14 +81,17 @@ export default class PlaningPage extends AbstractClass {
 	render() {
 		if (!this.state.summary) {
 			this.$hbapp.innerHTML = this.getLoadingTemplate()
+			this.renderModal()
 			return
 		}
 		this.$hbapp.innerHTML = this.getTemplate()
+		this.renderModal()
 	}
 
 	destroy() {
 		if (this.unsubscribe) this.unsubscribe()
 		this.unsubscribe = null
+		overlayHost.clear('planning-modal')
 	}
 
 	loadCategories() {
@@ -729,8 +733,13 @@ export default class PlaningPage extends AbstractClass {
 				</div>
 				${this.getItemsTemplate()}
 			</div>
-			${this.getModalTemplate()}
 		</div>`
+	}
+
+	renderModal() {
+		const html = this.getModalTemplate()
+		if (html) overlayHost.render('planning-modal', html)
+		else overlayHost.clear('planning-modal')
 	}
 
 	openModal(modal, itemId = null) {

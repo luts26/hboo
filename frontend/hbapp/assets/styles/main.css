@@ -26,6 +26,11 @@ body.hboo-app-lock-open {
 	overflow: hidden;
 }
 
+body.hboo-overlay-open,
+body.hboo-overlay-open .app-main-column {
+	overflow: hidden;
+}
+
 :root {
 	--hboo-surface: #ebf5fc;
 	--hboo-surface-subtle: #dbe5ec;
@@ -548,13 +553,13 @@ button:disabled {
 	height: calc(100dvh - 2rem);
 	min-width: 0;
 	overflow-y: auto;
-	padding: 0 .25rem 1rem 1rem;
+	padding: 72px .25rem 1rem 1rem;
 	position: relative;
 	z-index: 2;
 }
 
 .app-header-slot {
-	min-height: 62px;
+	display: contents;
 }
 
 .content {
@@ -571,10 +576,10 @@ button:disabled {
 	width: calc(min(100vw, var(--app-layout-max-width)) - (var(--app-layout-padding-x) * 2) - var(--app-layout-gap) - var(--app-sidebar-width));
 	padding: .25rem .8rem;
 	position: fixed;
-	top: calc(.75rem + env(safe-area-inset-top));
+	top: 0;
 	background: #ebf5fc;
 	border: 1px solid #f7f7f7;
-	border-radius: 12px;
+	border-radius: 0 0 12px 12px;
 	z-index: 9999;
 }
 
@@ -3990,7 +3995,7 @@ textarea.planing-textarea {
 	}
 
 	.app-header-slot {
-		min-height: 64px;
+		display: contents;
 	}
 
 	.app-main-column {
@@ -3999,13 +4004,13 @@ textarea.planing-textarea {
 		box-shadow: -6px 0 18px rgba(70,70,70,.12);
 		height: 100dvh;
 		overflow-y: auto;
-		padding: calc(.65rem + env(safe-area-inset-top)) calc(.75rem + env(safe-area-inset-right)) calc(1.25rem + env(safe-area-inset-bottom)) calc(.75rem + env(safe-area-inset-left));
+		padding: calc(64px + .65rem) calc(.75rem + env(safe-area-inset-right)) calc(1.25rem + env(safe-area-inset-bottom)) calc(.75rem + env(safe-area-inset-left));
 		transition: transform .28s ease;
-		will-change: transform;
 	}
 
 	.mobile-summary-open .app-main-column {
 		transform: translateX(var(--workspace-reveal-width));
+		will-change: transform;
 	}
 
 	.header {
@@ -4015,7 +4020,7 @@ textarea.planing-textarea {
 		padding: .55rem .65rem;
 		position: fixed;
 		right: calc(.75rem + env(safe-area-inset-right));
-		top: calc(.65rem + env(safe-area-inset-top));
+		top: 0;
 		width: auto;
 	}
 
@@ -4271,8 +4276,8 @@ textarea.planing-textarea {
 
 	.card {
 		margin: 2.5rem .6rem 0;
-		padding: .8rem .8rem .6rem;
-		font-size: 11pt;
+		padding: 1rem 1rem .8rem;
+        font-size: 13pt;
 	}
 
 	.total-card {
@@ -4362,9 +4367,9 @@ textarea.planing-textarea {
 		width: calc(100vw - 24px);
 	}
 
-	.planing-list {
+	/*.planing-list {
 		padding-bottom: calc(6.75rem + env(safe-area-inset-bottom));
-	}
+	}*/
 
 	.planing-floating-save {
 		bottom: calc(4.75rem + env(safe-area-inset-bottom));

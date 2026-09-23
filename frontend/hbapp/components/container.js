@@ -5,12 +5,13 @@ const container = {
 
 	setContent: (hbapp, config) => {
 		let containerHtml = `<section class="app-layout">
+			<div class="app-header-slot"></div>
 			<div class="app-main-column">
-				<div class="app-header-slot"></div>
 				${content.getHtml()}
 			</div>
 			${sidebar.getHtml(config)}
-		</section>`
+		</section>
+		<div id="hboo-overlay-root"></div>`
 		hbapp.insertAdjacentHTML('beforeend', containerHtml)
 	}
 }
