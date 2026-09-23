@@ -278,13 +278,11 @@ Bank synchronization is performed through explicit backend refresh
 operations. The frontend remains usable with previously persisted data
 when bank integrations are unavailable.
 
-```{=html}
 <p align="center">
-```
-`<img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balance dashboard">`{=html}
-```{=html}
+  <img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balance dashboard">
 </p>
-```
+
+
 ### Transactions
 
 The Transactions module provides a unified view of persisted transaction
@@ -304,13 +302,11 @@ It supports:
 -   manual synchronization
 -   offline browsing of previously loaded transactions
 
-```{=html}
 <p align="center">
-```
-`<img src="docs/screenshots/transactions-desktop.png" width="90%" alt="HBOO transactions">`{=html}
-```{=html}
+  <img src="docs/screenshots/transactions-desktop.png" width="90%" alt="HBOO transactions">
 </p>
-```
+
+
 ### Financial Planning
 
 Financial planning is based on a **user-defined spending budget**, not
@@ -342,13 +338,11 @@ The Planning module supports:
 -   multi-device revalidation
 -   pre-push conflict protection
 
-```{=html}
 <p align="center">
-```
-`<img src="docs/screenshots/planning-desktop.png" width="90%" alt="HBOO financial planning">`{=html}
-```{=html}
+  <img src="docs/screenshots/planning-desktop.png" width="90%" alt="HBOO financial planning">
 </p>
-```
+
+
 ## Planning and Transaction Matching
 
 Planning items represent concrete expected expenses rather than category
@@ -543,15 +537,14 @@ services, repositories, and reusable UI components.
 
 HBOO is designed for both desktop and mobile usage.
 
-```{=html}
+
 <p align="center">
-```
-`<img src="docs/screenshots/balance-mobile.png" width="30%" alt="HBOO balance mobile">`{=html}
-`<img src="docs/screenshots/transactions-mobile.png" width="30%" alt="HBOO transactions mobile">`{=html}
-`<img src="docs/screenshots/planning-mobile.png" width="30%" alt="HBOO planning mobile">`{=html}
-```{=html}
+    <img src="docs/screenshots/balance-mobile.png" width="30%" alt="HBOO balance mobile">
+    <img src="docs/screenshots/transactions-mobile.png" width="30%" alt="HBOO transactions mobile">
+    <img src="docs/screenshots/planning-mobile.png" width="30%" alt="HBOO planning mobile">
 </p>
-```
+
+
 The installed PWA supports fullscreen operation and offline startup.
 Mobile navigation uses the same financial model and application
 architecture as desktop.
