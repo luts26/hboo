@@ -13,6 +13,8 @@ import connectionSyncStatus from './services/ConnectionSyncStatus.js'
 import {deriveSectionFreshness} from './services/SectionFreshness.js'
 import {resolveWorkspaceSwipe} from './services/WorkspaceNavigationGesture.js'
 import authModal from './components/AuthModal.js'
+import appLockSession from './services/AppLockSession.js'
+import appLockScreen from './components/AppLockScreen.js'
 
 const hbapp = {
 
@@ -32,6 +34,7 @@ const hbapp = {
 	defaultTemplate: false,
 	mobileView: 'content',
 	viewSwipe: null,
+	appLockMounted: false,
 
 	setColorTheme: function() {
 		document.querySelector('body').classList.toggle('dark-theme')
@@ -137,6 +140,13 @@ const hbapp = {
 		clearAuthState()
 		router.redirectRouter('/login')
 		window.location.reload()
+	},
+
+	mountAppLock() {
+		if (this.appLockMounted) return
+		this.appLockMounted = true
+		appLockScreen.mount()
+		appLockSession.start()
 	},
 
 	closeHeaderMenu() {
@@ -355,6 +365,7 @@ const hbapp = {
 	createProject: function() {
 
 		if (this.colorTheme) document.querySelector('body').classList.add(`${this.colorTheme}-theme`)
+		this.mountAppLock()
 
 		this.authToken = getAuthToken()
 		if (this.authToken && getAuthenticatedUserId()) this.setDefaultTemplate()

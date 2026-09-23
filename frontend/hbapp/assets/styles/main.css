@@ -22,6 +22,10 @@ body.hboo-auth-modal-open {
 	overflow: hidden;
 }
 
+body.hboo-app-lock-open {
+	overflow: hidden;
+}
+
 :root {
 	--hboo-surface: #ebf5fc;
 	--hboo-surface-subtle: #dbe5ec;
@@ -313,6 +317,78 @@ button:disabled {
 .auth-modal {
 	max-width: 480px;
 	width: min(480px, 100%);
+}
+
+.app-lock-screen {
+	align-items: center;
+	background: var(--hboo-surface);
+	bottom: 0;
+	color: var(--hboo-text);
+	display: flex;
+	justify-content: center;
+	left: 0;
+	min-height: 100dvh;
+	overflow: hidden;
+	padding: calc(1.25rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) calc(1.25rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
+	position: fixed;
+	right: 0;
+	top: 0;
+	z-index: 100006;
+}
+
+.app-lock-panel {
+	align-items: center;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	max-width: 360px;
+	text-align: center;
+	width: 100%;
+}
+
+.app-lock-brand {
+	color: #3498db;
+	font-size: 24pt;
+	font-weight: 900;
+	letter-spacing: 0;
+	line-height: 1;
+}
+
+.app-lock-panel h1 {
+	color: var(--hboo-text);
+	font-size: 18pt;
+	font-weight: 800;
+	line-height: 1.2;
+	margin: 0;
+}
+
+.app-lock-form {
+	display: flex;
+	flex-direction: column;
+	gap: .75rem;
+	width: 100%;
+}
+
+.app-lock-label {
+	font-size: 10.5pt;
+	font-weight: 700;
+	text-align: left;
+}
+
+.app-lock-pin {
+	text-align: center;
+}
+
+.app-lock-error,
+.settings-app-lock-error {
+	color: #c0392b;
+	font-size: 10.5pt;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.app-lock-submit {
+	width: 100%;
 }
 
 .transactions-today-date {
@@ -877,6 +953,65 @@ img.pb-icon {
 	justify-content: space-between;
 	margin-top: 1rem;
 	padding: 1rem;
+}
+
+.settings-card {
+	border-bottom: 1px solid rgba(119,139,165,.14);
+	padding-bottom: 1.25rem;
+}
+
+.settings-app-lock-row {
+	align-items: flex-start;
+	display: flex;
+	gap: 1rem;
+	justify-content: space-between;
+	margin-top: .75rem;
+}
+
+.settings-app-lock-status,
+.settings-app-lock-message {
+	font-size: 10.5pt;
+	font-weight: 700;
+	margin-top: .45rem;
+}
+
+.settings-app-lock-message {
+	color: #1f8f5f;
+}
+
+.settings-app-lock-actions,
+.settings-app-lock-form-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .6rem;
+	justify-content: flex-end;
+}
+
+.settings-app-lock-actions .btn,
+.settings-app-lock-form-actions .btn {
+	margin: 0;
+}
+
+.settings-app-lock-timeout {
+	align-items: center;
+	display: grid;
+	gap: .5rem;
+	grid-template-columns: minmax(120px, 1fr) minmax(160px, 220px);
+	margin-top: 1rem;
+}
+
+.settings-app-lock-timeout label {
+	font-weight: 700;
+}
+
+.settings-app-lock-form {
+	margin-top: 1rem;
+	max-width: 460px;
+}
+
+.settings-app-lock-form-actions {
+	justify-content: flex-start;
+	margin-top: .85rem;
 }
 
 .page-actions {
@@ -2858,7 +2993,8 @@ img.pb-icon {
 
 .dark-theme .hboo-button,
 .dark-theme .app-modal,
-.dark-theme .app-modal-actions button {
+.dark-theme .app-modal-actions button,
+.dark-theme .app-lock-screen {
 	background: #000;
 	border-color: transparent;
 	color: #ddd;
@@ -4054,6 +4190,24 @@ textarea.planing-textarea {
 	.app-modal {
 		max-height: calc(100dvh - 24px);
 		width: calc(100vw - 24px);
+	}
+
+	.settings-app-lock-row,
+	.settings-app-lock-timeout {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.settings-app-lock-actions,
+	.settings-app-lock-form-actions {
+		justify-content: stretch;
+		width: 100%;
+	}
+
+	.settings-app-lock-actions .btn,
+	.settings-app-lock-form-actions .btn {
+		flex: 1 1 100%;
+		width: 100%;
 	}
 
 	.toast-container {
