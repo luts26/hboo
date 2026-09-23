@@ -12,6 +12,11 @@ const extractRule = (source, selector) => {
 	const match = source.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\}`))
 	return match?.[1] || ''
 }
+const extractMobileRule = (source, selector) => {
+	const mediaStart = source.indexOf('@media screen and (max-width: 600px)')
+	const mediaSource = mediaStart === -1 ? source : source.slice(mediaStart)
+	return extractRule(mediaSource, selector)
+}
 
 test('mobile header is mounted outside transformed app-main-column', () => {
 	const containerSource = read('hbapp/components/container.js')
@@ -24,6 +29,24 @@ test('mobile header is mounted outside transformed app-main-column', () => {
 	assert.match(cssSource, /\.mobile-summary-open \.app-main-column\s*\{[\s\S]*transform:\s*translateX/)
 	assert.match(cssSource, /\.mobile-summary-open \.app-main-column\s*\{[\s\S]*will-change:\s*transform/)
 	assert.doesNotMatch(extractRule(cssSource, '.app-main-column'), /will-change:\s*transform/)
+})
+
+test('mobile sidebar starts below the fixed viewport header', () => {
+	const cssSource = read('hbapp/assets/styles/main.css')
+	const rootRule = extractMobileRule(cssSource, ':root')
+	const headerRule = extractMobileRule(cssSource, '.header')
+	const mainColumnRule = extractMobileRule(cssSource, '.app-main-column')
+	const sidebarRule = extractMobileRule(cssSource, '.sidebar')
+
+	assert.match(rootRule, /--mobile-header-height:\s*68px/)
+	assert.match(headerRule, /height:\s*var\(--mobile-header-height\)/)
+	assert.match(headerRule, /min-height:\s*var\(--mobile-header-height\)/)
+	assert.match(headerRule, /top:\s*0/)
+	assert.match(mainColumnRule, /padding:\s*calc\(var\(--mobile-header-height\) \+ \.65rem\)/)
+	assert.match(sidebarRule, /top:\s*var\(--mobile-header-height\)/)
+	assert.match(sidebarRule, /height:\s*calc\(100dvh - var\(--mobile-header-height\)\)/)
+	assert.doesNotMatch(sidebarRule, /top:\s*0/)
+	assert.doesNotMatch(sidebarRule, /height:\s*100dvh/)
 })
 
 test('viewport overlay root is a sibling of app layout, not inside app-main-column', () => {

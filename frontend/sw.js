@@ -1,4 +1,4 @@
-const HBOO_APP_VERSION = '2026-09-21-static-graph-v2'
+const HBOO_APP_VERSION = '2026-09-23-mobile-sidebar-header-v1'
 const HBOO_APP_SHELL_CACHE = `hboo-app-shell-${HBOO_APP_VERSION}`
 const HBOO_APP_SHELL_PREFIX = 'hboo-app-shell-'
 

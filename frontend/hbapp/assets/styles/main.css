@@ -3978,9 +3978,9 @@ textarea.planing-textarea {
 
 @media screen and (max-width: 600px) {
 
-	/*.header {
-		padding: .1rem 0 .4rem 0;
-	}*/
+	:root {
+		--mobile-header-height: 68px;
+	}
 
 	.app-layout,
 	.content-container {
@@ -4004,7 +4004,7 @@ textarea.planing-textarea {
 		box-shadow: -6px 0 18px rgba(70,70,70,.12);
 		height: 100dvh;
 		overflow-y: auto;
-		padding: calc(64px + .65rem) calc(.75rem + env(safe-area-inset-right)) calc(1.25rem + env(safe-area-inset-bottom)) calc(.75rem + env(safe-area-inset-left));
+		padding: calc(var(--mobile-header-height) + .65rem) calc(.75rem + env(safe-area-inset-right)) calc(1.25rem + env(safe-area-inset-bottom)) calc(.75rem + env(safe-area-inset-left));
 		transition: transform .28s ease;
 	}
 
@@ -4015,8 +4015,9 @@ textarea.planing-textarea {
 
 	.header {
 		font-size: 13pt;
+		height: var(--mobile-header-height);
 		left: calc(.75rem + env(safe-area-inset-left));
-		min-height: 64px;
+		min-height: var(--mobile-header-height);
 		padding: .55rem .65rem;
 		position: fixed;
 		right: calc(.75rem + env(safe-area-inset-right));
@@ -4226,13 +4227,13 @@ textarea.planing-textarea {
 		background: #ebf5fc;
 		bottom: 0;
 		display: block;
-		height: 100dvh;
+		height: calc(100dvh - var(--mobile-header-height));
 		left: 0;
 		overflow-x: hidden;
 		overflow-y: auto;
-		padding: calc(.9rem + env(safe-area-inset-top)) 1rem calc(1.5rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
+		padding: .9rem 1rem calc(1.5rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
 		position: fixed;
-		top: 0;
+		top: var(--mobile-header-height);
 		width: var(--workspace-reveal-width);
 		z-index: 1;
 	}
