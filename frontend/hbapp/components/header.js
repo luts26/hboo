@@ -35,7 +35,6 @@ const header = {
 				<div class="label-header">
 					<div class="app-name" title="Open workspace navigation" role="button" aria-expanded="false">
 						${appName}
-						<span class="workspace-attention-marker" aria-hidden="true"></span>
 					</div>
 					<nav class="sub-menu">
 						<ul>
@@ -47,6 +46,7 @@ const header = {
 							<li data-sparam="out">logout</li>
 						</ul>
 					</nav>
+					<span class="workspace-attention-marker" aria-hidden="true"></span>
 					${environmentBadgeHtml}
 				</div>
 				<div class="header-utility">

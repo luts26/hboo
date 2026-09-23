@@ -1,6 +1,6 @@
 const config = {
 
-	appName: 'Home B00kkeeping APP',
+	appName: 'Home B00kkeepıng APP',
 	// appAlias: 'HBuh',
 	appAlias: 'HB00',
 	version: '1.3.8',

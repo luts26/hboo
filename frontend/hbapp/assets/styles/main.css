@@ -1592,8 +1592,8 @@ img.pb-icon {
 	box-shadow: 0 0 0 2px rgba(119,139,165,.08);
 	height: .5rem;
 	position: absolute;
-	right: .2rem;
-	top: .2rem;
+	right: 3.48rem;
+	top: .1rem;
 	width: .5rem;
 }
 
@@ -1726,9 +1726,10 @@ img.pb-icon {
 	color: #a1bdff;
 	position: absolute;
 	font-size: 8.5pt;
-	bottom: 9px;
-	width: 198px;
-	right: 0;
+	bottom: 10px;
+	width: 180px;
+	right: 20px;
+	text-align: right;
 }
 
 .label-header:hover .sub-menu {
@@ -3794,10 +3795,12 @@ textarea.planing-textarea {
 	}
 
 	.header .app-name:after {
-		bottom: .35rem;
 		font-size: 7.5pt;
-		right: 5px;
-		width: 155px;
+		right: 11px;
+	}
+
+	.workspace-attention-marker {
+		right: 1.6rem;
 	}
 
 /*	.theme-toggler,*/
