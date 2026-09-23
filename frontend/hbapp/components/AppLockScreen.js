@@ -32,25 +32,26 @@ class AppLockScreen {
 	}
 
 	renderFromState(state) {
-		if (state.locked) this.render()
+		if (state.privacyCovered) this.render(state)
 		else this.remove()
 	}
 
-	render() {
+	render(state = this.session.getState()) {
 		if (!this.documentRef) return
+		const locked = state.locked === true
 		if (!this.root) {
 			this.root = this.documentRef.createElement('div')
-			this.root.className = 'app-lock-screen'
-			this.root.setAttribute('role', 'dialog')
-			this.root.setAttribute('aria-modal', 'true')
-			this.root.setAttribute('aria-labelledby', 'app-lock-title')
 			this.documentRef.body.append(this.root)
 			this.documentRef.body.classList.add('hboo-app-lock-open')
 		}
 
-		this.root.innerHTML = this.getTemplate()
+		this.root.className = locked ? 'app-lock-screen' : 'app-lock-screen app-lock-screen-shielded'
+		this.root.setAttribute('role', locked ? 'dialog' : 'status')
+		this.root.setAttribute('aria-modal', locked ? 'true' : 'false')
+		this.root.setAttribute('aria-labelledby', 'app-lock-title')
+		this.root.innerHTML = this.getTemplate({locked})
 		this.root.querySelector('[data-app-lock-form]')?.addEventListener('submit', this.handleSubmit)
-		setTimeout(() => this.focus(), 0)
+		if (locked) setTimeout(() => this.focus(), 0)
 	}
 
 	remove() {
@@ -63,7 +64,13 @@ class AppLockScreen {
 		this.documentRef.body.classList.remove('hboo-app-lock-open')
 	}
 
-	getTemplate() {
+	getTemplate({locked = true} = {}) {
+		if (!locked) {
+			return `<div class="app-lock-panel app-lock-privacy-panel">
+				<div class="app-lock-brand" aria-hidden="true">HBOO</div>
+				<h1 id="app-lock-title">Private</h1>
+			</div>`
+		}
 		return `<div class="app-lock-panel">
 			<div class="app-lock-brand" aria-hidden="true">HBOO</div>
 			<h1 id="app-lock-title">Locked</h1>
@@ -87,7 +94,7 @@ class AppLockScreen {
 		const now = Date.now()
 		if (now < this.unlockAvailableAt) {
 			this.error = 'Try again in a moment.'
-			this.render()
+			this.render({locked: true})
 			return false
 		}
 
@@ -97,7 +104,7 @@ class AppLockScreen {
 
 		this.loading = true
 		this.error = ''
-		this.render()
+		this.render({locked: true})
 
 		const verified = await this.service.verifyPin(pin)
 		this.loading = false
@@ -112,7 +119,7 @@ class AppLockScreen {
 		this.failedAttempts += 1
 		if (this.failedAttempts >= 5) this.unlockAvailableAt = Date.now() + 1000
 		this.error = 'Incorrect PIN'
-		this.render()
+		this.render({locked: true})
 		return false
 	}
 

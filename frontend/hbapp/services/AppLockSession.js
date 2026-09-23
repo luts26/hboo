@@ -16,7 +16,11 @@ class AppLockSession {
 		this.hiddenAt = null
 		this.started = false
 		this.locked = this.service.isEnabled()
+		this.shielded = false
 		this.handleVisibilityChange = () => this.onVisibilityChange()
+		this.handlePageHide = () => this.enterBackground()
+		this.handlePageShow = () => this.resumeFromBackground()
+		this.handleFocus = () => this.resumeFromBackground()
 	}
 
 	start() {
@@ -26,6 +30,11 @@ class AppLockSession {
 		if (this.documentRef) {
 			this.documentRef.addEventListener('visibilitychange', this.handleVisibilityChange)
 		}
+		if (this.windowRef) {
+			this.windowRef.addEventListener('pagehide', this.handlePageHide)
+			this.windowRef.addEventListener('pageshow', this.handlePageShow)
+			this.windowRef.addEventListener('focus', this.handleFocus)
+		}
 		this.notify()
 	}
 
@@ -34,6 +43,11 @@ class AppLockSession {
 		this.started = false
 		if (this.documentRef) {
 			this.documentRef.removeEventListener('visibilitychange', this.handleVisibilityChange)
+		}
+		if (this.windowRef) {
+			this.windowRef.removeEventListener('pagehide', this.handlePageHide)
+			this.windowRef.removeEventListener('pageshow', this.handlePageShow)
+			this.windowRef.removeEventListener('focus', this.handleFocus)
 		}
 	}
 
@@ -45,21 +59,32 @@ class AppLockSession {
 		return !this.isLocked()
 	}
 
+	isShielded() {
+		return this.service.isEnabled() && this.shielded
+	}
+
+	isPrivacyCovered() {
+		return this.isLocked() || this.isShielded()
+	}
+
 	lock() {
 		if (!this.service.isEnabled()) {
 			this.locked = false
+			this.shielded = false
 			this.notify()
 			return false
 		}
-		if (this.locked) return true
+		if (this.locked && !this.shielded) return true
 		this.locked = true
+		this.shielded = false
 		this.notify()
 		return true
 	}
 
 	unlock() {
-		if (!this.locked) return true
+		if (!this.locked && !this.shielded) return true
 		this.locked = false
+		this.shielded = false
 		this.hiddenAt = null
 		this.notify()
 		return true
@@ -69,6 +94,7 @@ class AppLockSession {
 		const enabled = this.service.isEnabled()
 		if (!enabled) {
 			this.locked = false
+			this.shielded = false
 			this.hiddenAt = null
 			this.notify()
 			return
@@ -87,7 +113,9 @@ class AppLockSession {
 		return {
 			enabled: this.service.isEnabled(),
 			locked: this.isLocked(),
-			unlocked: this.isUnlocked()
+			unlocked: this.isUnlocked(),
+			shielded: this.isShielded(),
+			privacyCovered: this.isPrivacyCovered()
 		}
 	}
 
@@ -99,16 +127,41 @@ class AppLockSession {
 	onVisibilityChange() {
 		if (!this.documentRef || !this.service.isEnabled()) return
 		if (this.documentRef.visibilityState === 'hidden') {
-			this.hiddenAt = this.clock()
+			this.enterBackground()
 			return
 		}
 		if (this.documentRef.visibilityState !== 'visible') return
+		this.resumeFromBackground()
+	}
+
+	enterBackground() {
+		if (!this.service.isEnabled()) return
+		if (this.hiddenAt === null) this.hiddenAt = this.clock()
+		if (this.locked) return
+		if (this.service.getLockTimeoutMs() === 0) {
+			this.lock()
+			return
+		}
+		if (this.shielded) return
+		this.shielded = true
+		this.notify()
+	}
+
+	resumeFromBackground() {
+		if (!this.service.isEnabled()) return
+		if (this.documentRef?.visibilityState === 'hidden') return
 		if (this.locked || this.hiddenAt === null) return
 
 		const hiddenFor = Math.max(0, this.clock() - this.hiddenAt)
 		const timeout = this.service.getLockTimeoutMs()
 		this.hiddenAt = null
-		if (timeout === 0 || hiddenFor >= timeout) this.lock()
+		if (timeout === 0 || hiddenFor >= timeout) {
+			this.lock()
+			return
+		}
+		if (!this.shielded) return
+		this.shielded = false
+		this.notify()
 	}
 }
 

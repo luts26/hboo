@@ -47,16 +47,40 @@ class FakeDocument {
 	}
 
 	addEventListener(eventName, listener) {
-		this.listeners.set(eventName, listener)
+		if (!this.listeners.has(eventName)) this.listeners.set(eventName, new Set())
+		this.listeners.get(eventName).add(listener)
 	}
 
-	removeEventListener(eventName) {
-		this.listeners.delete(eventName)
+	removeEventListener(eventName, listener) {
+		this.listeners.get(eventName)?.delete(listener)
 	}
 
 	setVisibility(visibilityState) {
 		this.visibilityState = visibilityState
-		this.listeners.get('visibilitychange')?.()
+		this.dispatch('visibilitychange')
+	}
+
+	dispatch(eventName) {
+		this.listeners.get(eventName)?.forEach(listener => listener())
+	}
+}
+
+class FakeWindow {
+	constructor() {
+		this.listeners = new Map()
+	}
+
+	addEventListener(eventName, listener) {
+		if (!this.listeners.has(eventName)) this.listeners.set(eventName, new Set())
+		this.listeners.get(eventName).add(listener)
+	}
+
+	removeEventListener(eventName, listener) {
+		this.listeners.get(eventName)?.delete(listener)
+	}
+
+	dispatch(eventName) {
+		this.listeners.get(eventName)?.forEach(listener => listener({type: eventName}))
 	}
 }
 
@@ -204,10 +228,13 @@ test('background less than timeout remains unlocked', async () => {
 	session.unlock()
 
 	documentRef.setVisibility('hidden')
+	assert.equal(session.isShielded(), true)
+	assert.equal(session.isLocked(), false)
 	now += 60 * 1000
 	documentRef.setVisibility('visible')
 
 	assert.equal(session.isUnlocked(), true)
+	assert.equal(session.isShielded(), false)
 })
 
 test('background greater than timeout locks', async () => {
@@ -221,10 +248,13 @@ test('background greater than timeout locks', async () => {
 	session.unlock()
 
 	documentRef.setVisibility('hidden')
+	assert.equal(session.isShielded(), true)
+	assert.equal(session.isLocked(), false)
 	now += 61 * 1000
 	documentRef.setVisibility('visible')
 
 	assert.equal(session.isLocked(), true)
+	assert.equal(session.isShielded(), false)
 })
 
 test('immediate timeout locks after hide and visible', async () => {
@@ -238,10 +268,131 @@ test('immediate timeout locks after hide and visible', async () => {
 	session.unlock()
 
 	documentRef.setVisibility('hidden')
+	assert.equal(session.isLocked(), true)
+	assert.equal(session.isShielded(), false)
 	now += 1
 	documentRef.setVisibility('visible')
 
 	assert.equal(session.isLocked(), true)
+})
+
+test('enabled App Lock activates privacy surface immediately when document is hidden', async () => {
+	const storage = new LocalStorageMock()
+	const service = await setupEnabledService(storage)
+	service.setLockTimeoutMs(5 * 60 * 1000)
+	const documentRef = new FakeDocument()
+	const session = new AppLockSession({service, documentRef})
+	session.start()
+	session.unlock()
+
+	documentRef.setVisibility('hidden')
+
+	assert.equal(session.getState().privacyCovered, true)
+	assert.equal(session.isShielded(), true)
+	assert.equal(session.isLocked(), false)
+})
+
+test('hidden then visible before timeout removes privacy surface without requiring PIN', async () => {
+	const storage = new LocalStorageMock()
+	const service = await setupEnabledService(storage)
+	service.setLockTimeoutMs(5 * 60 * 1000)
+	let now = 1000
+	const documentRef = new FakeDocument()
+	const session = new AppLockSession({service, documentRef, clock: () => now})
+	session.start()
+	session.unlock()
+
+	documentRef.setVisibility('hidden')
+	now += 10 * 1000
+	documentRef.setVisibility('visible')
+
+	assert.equal(session.isUnlocked(), true)
+	assert.equal(session.isShielded(), false)
+	assert.equal(session.getState().privacyCovered, false)
+})
+
+test('hidden then visible after timeout keeps privacy covered and requires PIN', async () => {
+	const storage = new LocalStorageMock()
+	const service = await setupEnabledService(storage)
+	service.setLockTimeoutMs(60 * 1000)
+	let now = 1000
+	const documentRef = new FakeDocument()
+	const session = new AppLockSession({service, documentRef, clock: () => now})
+	session.start()
+	session.unlock()
+
+	documentRef.setVisibility('hidden')
+	now += 2 * 60 * 1000
+	documentRef.setVisibility('visible')
+
+	assert.equal(session.isLocked(), true)
+	assert.equal(session.isShielded(), false)
+	assert.equal(session.getState().privacyCovered, true)
+})
+
+test('App Lock disabled does not activate privacy shield on lifecycle events', () => {
+	const service = createService(new LocalStorageMock())
+	const documentRef = new FakeDocument()
+	const windowRef = new FakeWindow()
+	const session = new AppLockSession({service, documentRef, windowRef})
+	session.start()
+
+	documentRef.setVisibility('hidden')
+	windowRef.dispatch('pagehide')
+	windowRef.dispatch('pageshow')
+	documentRef.setVisibility('visible')
+
+	assert.equal(session.isLocked(), false)
+	assert.equal(session.isShielded(), false)
+	assert.equal(session.getState().privacyCovered, false)
+})
+
+test('pagehide activates privacy shield before resume frame can expose financial UI', async () => {
+	const storage = new LocalStorageMock()
+	const service = await setupEnabledService(storage)
+	service.setLockTimeoutMs(5 * 60 * 1000)
+	const documentRef = new FakeDocument()
+	const windowRef = new FakeWindow()
+	const session = new AppLockSession({service, documentRef, windowRef})
+	session.start()
+	session.unlock()
+
+	windowRef.dispatch('pagehide')
+
+	assert.equal(session.isShielded(), true)
+	assert.equal(session.getState().privacyCovered, true)
+})
+
+test('repeated visibility and page lifecycle events do not create lock or unlock loops', async () => {
+	const storage = new LocalStorageMock()
+	const service = await setupEnabledService(storage)
+	service.setLockTimeoutMs(60 * 1000)
+	let now = 1000
+	const documentRef = new FakeDocument()
+	const windowRef = new FakeWindow()
+	const session = new AppLockSession({service, documentRef, windowRef, clock: () => now})
+	session.start()
+	session.unlock()
+
+	documentRef.setVisibility('hidden')
+	windowRef.dispatch('pagehide')
+	documentRef.setVisibility('hidden')
+	now += 30 * 1000
+	windowRef.dispatch('pageshow')
+	documentRef.setVisibility('visible')
+	windowRef.dispatch('focus')
+
+	assert.equal(session.isUnlocked(), true)
+	assert.equal(session.isShielded(), false)
+
+	documentRef.setVisibility('hidden')
+	now += 61 * 1000
+	documentRef.setVisibility('visible')
+	windowRef.dispatch('pageshow')
+	windowRef.dispatch('focus')
+
+	assert.equal(session.isLocked(), true)
+	assert.equal(session.isShielded(), false)
 })
 
 test('route preservation source covers /planing without redirect on lock or unlock', () => {
