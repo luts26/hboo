@@ -1,12 +1,48 @@
 # HBOO - Home Bookkeeping
 
-A personal finance application for managing bank balances, transactions, and financial plans.
+**Personal Finance & Planning**
 
-HBOO started as a personal project for working with my own financial data and gradually evolved from a simple bank balance viewer into a broader financial planning application.
+HBOO is a local-first personal finance application for managing bank
+balances, transactions, financial plans, and day-to-day spending
+decisions.
+
+The project started as a personal tool for working with my own financial
+data and gradually evolved from a simple bank balance viewer into a
+broader financial planning application.
+
+The main goal is not only to answer:
+
+> Where did my money go?
+
+but also:
+
+> How much can I safely spend today without breaking my financial plan?
+
+HBOO is developed as a real personal finance tool first. Product
+decisions are driven by actual usage, while the architecture is designed
+to keep the application useful even when the backend or bank
+integrations are temporarily unavailable.
+
+## Current Highlights
+
+-   Monobank and PrivatBank synchronization
+-   unified balances and transaction history
+-   financial planning with safe-to-spend calculations
+-   Actual Spending
+-   planned-expense to bank-transaction matching
+-   Smart Completion suggestions
+-   installable PWA with offline cold start
+-   IndexedDB-based local data storage
+-   offline Planning create/edit/complete/cancel flows
+-   durable Planning autosync queue
+-   multi-device revalidation and conflict protection
+-   unified network / API / sync status
+-   optional local PIN App Lock
+-   responsive desktop and mobile UI
 
 ## Repository Structure
 
-```text
+``` text
 frontend/
     Vanilla JavaScript HBOO client
 
@@ -26,20 +62,58 @@ compose.yaml
     DEV example environment configuration without secrets
 ```
 
+## Application Architecture
+
+``` text
+Browser / Installed PWA
+        |
+        | HTTPS
+        v
+      Nginx
+       |
+       +-- Frontend
+       |     +-- Router / Pages / Components
+       |     +-- Stores / Services
+       |     +-- IndexedDB local repositories
+       |     +-- Service Worker
+       |     +-- Planning sync queue
+       |
+       +-- /api/*
+              |
+              v
+        Node.js REST API
+          |          |
+          |          +-- Spring Bank Service
+          |                  +-- Monobank API
+          |                  +-- PrivatBank API
+          |
+          v
+        MySQL
+```
+
+The Node.js service is the primary backend used by the frontend. It
+handles authentication, application logic, planning synchronization,
+transaction normalization, and database access.
+
+The Spring Boot service acts as a dedicated bank integration layer. It
+communicates with external banking APIs and synchronizes balance and
+transaction data.
+
 ## DEV Local Environment
 
-`compose.yaml` is DEV-only. Running `docker compose up -d` from this repository
-must always mean the isolated development environment with synthetic data.
+`compose.yaml` is DEV-only. Running `docker compose up -d` from this
+repository must always mean the isolated development environment with
+synthetic data.
 
 Prerequisites:
 
-- Docker
-- Docker Compose
-- mkcert
+-   Docker
+-   Docker Compose
+-   mkcert
 
 DEV architecture:
 
-```text
+``` text
 https://dev.hboo.local
     -> hboo-dev-nginx
     -> frontend/
@@ -47,32 +121,27 @@ https://dev.hboo.local
     -> hboo-dev-mysql
     -> hboo_dev
     -> synthetic data only
+```
 
 Adminer:
 
-```text
+``` text
 http://dev.hboo.local:8080
 ```
-```
 
-The web document root is `frontend/`. Public URLs do not include `/frontend/`:
+The web document root is `frontend/`. Public URLs do not include
+`/frontend/`.
 
-```text
-https://dev.hboo.local/
-https://dev.hboo.local/hbapp/index.js
-https://dev.hboo.local/hbapp/assets/styles/main.css
-```
+Configure the DEV hostname. `127.0.0.2` keeps DEV ports separate from
+the REAL runtime on `127.0.0.1`.
 
-Configure the DEV hostname on the development machine. `127.0.0.2` keeps DEV
-ports separate from the REAL runtime on `127.0.0.1`.
-
-```bash
+``` bash
 sudo sh -c 'echo "127.0.0.2 dev.hboo.local" >> /etc/hosts'
 ```
 
 Generate local HTTPS certificates:
 
-```bash
+``` bash
 mkcert -install
 mkcert \
   -cert-file docker/nginx/certs/dev.hboo.local.pem \
@@ -80,32 +149,22 @@ mkcert \
   dev.hboo.local localhost 127.0.0.2
 ```
 
-Start the environment:
+Start and stop:
 
-```bash
+``` bash
 docker compose up -d
-```
-
-Open on the development machine:
-
-```text
-https://dev.hboo.local/
-```
-
-Stop the environment:
-
-```bash
 docker compose down
 ```
 
-Nginx configuration lives in `docker/nginx/conf.d/default.conf`. Local certificate instructions live in `docker/nginx/certs/README.md`; generated certificate files and private keys are ignored by Git.
+Open:
 
-The DEV Docker setup includes Nginx, the Node.js backend, and a local MySQL
-service for the existing HBOO database schema.
+``` text
+https://dev.hboo.local/
+```
 
 Default DEV host bindings:
 
-```text
+``` text
 dev.hboo.local -> 127.0.0.2
 HTTP            -> 127.0.0.2:80
 HTTPS           -> 127.0.0.2:443
@@ -114,26 +173,21 @@ MySQL           -> 127.0.0.2:3307
 Adminer         -> 127.0.0.2:8080
 ```
 
-The MySQL service uses the persistent Docker volume `hboo-dev-mysql-data`.
-`compose.yaml` always creates and uses `hboo_dev`; changing `DB_NAME` in a
-repository `.env` file must not select another database.
-DEV MySQL is Docker-only and contains synthetic data only.
+The MySQL service uses the persistent Docker volume
+`hboo-dev-mysql-data`. `compose.yaml` always creates and uses
+`hboo_dev`. DEV MySQL is Docker-only and contains synthetic data only.
 
-Local database dumps are imported explicitly and must not be committed. Public development data lives in sanitized schema/migration/seed files under `docker/mysql/`.
-
-```bash
-docker compose up -d mysql
-./docker/mysql/import-dump.sh docker/mysql/init/local-dev.sql
-```
-
-Additional database notes live in `docker/mysql/README.md`.
+Local database dumps must not be committed. Public development data
+lives in sanitized schema, migration, and seed files under
+`docker/mysql/`.
 
 ## REAL Runtime Template
 
-REAL is a deployment target, not the development working tree. Safe templates
-live under `docker/runtime-example/` and are intended to be copied manually to:
+REAL is a deployment target, not the development working tree. Safe
+templates live under `docker/runtime-example/` and are intended to be
+copied manually to a separate runtime directory:
 
-```text
+``` text
 ~/hboo-runtime/
     real.env
     compose.real.yaml
@@ -144,55 +198,15 @@ live under `docker/runtime-example/` and are intended to be copied manually to:
 
 Do not create or store REAL credentials in this repository.
 
-Proposed REAL architecture:
-
-```text
-https://hboo.local
-    -> hboo-real-nginx
-    -> ~/hboo-runtime/app/frontend
-    -> hboo-real-backend
-    -> hboo-real-mysql
-    -> real database
-    -> real bank integrations
-```
-
-REAL MySQL runs in a dedicated Docker container, not in the DEV Docker MySQL
-container. The REAL backend connects to it internally:
-
-```text
-DB_HOST=mysql
-DB_PORT=3306
-```
-
-The REAL MySQL service binds `127.0.0.1:3306:3306` temporarily so the
-host-running Spring bank service can connect to the real database.
-
-REAL Adminer:
-
-```text
-http://hboo.local:8080
-```
-
-REAL host bindings in the template:
-
-```text
-hboo.local -> 127.0.0.1
-HTTP       -> 127.0.0.1:80
-HTTPS      -> 127.0.0.1:443
-Backend    -> 127.0.0.1:3000
-MySQL      -> 127.0.0.1:3306
-Adminer    -> 127.0.0.1:8080
-```
-
-DEV and REAL can run simultaneously because DEV binds to `127.0.0.2` and REAL
-binds to `127.0.0.1`, with separate container names, networks, volumes, and
-hostnames.
+DEV and REAL use separate databases, container names, networks, volumes,
+hostnames, and loopback addresses.
 
 ## Source Isolation and Deployment
 
-The active development repository must not be mounted directly into REAL.
+The active development repository must not be mounted directly into
+REAL.
 
-```text
+``` text
 ~/projects/hboo/
     active DEV working copy
 
@@ -202,115 +216,107 @@ The active development repository must not be mounted directly into REAL.
 
 Development flow:
 
-```text
-feature branch / working tree
-    -> DEV environment
-    -> test using hboo_dev synthetic data
+``` text
+working tree
+    -> DEV
+    -> test with synthetic data
     -> commit
     -> merge into main
-    -> push main to GitHub
+    -> push
 ```
 
 Deployment flow:
 
-```text
-GitHub/main
-    -> ~/hboo-runtime/app
-    -> fetch/pull clean committed revision
+``` text
+main
+    -> clean REAL checkout
+    -> pull committed revision
     -> apply reviewed DB migrations if needed
-    -> rebuild/restart REAL services
-    -> smoke test hboo.local
+    -> recreate or rebuild affected services
+    -> smoke test
 ```
 
-Git receives code from the DEVELOPMENT working repository. REAL is a deployment
-target, not a source of commits. Never edit application source directly in REAL
-runtime and never push from production.
+Environment-only changes require recreating the affected container so it
+receives the new environment. Application image changes require
+rebuilding the corresponding image.
+
+REAL is a deployment target, not a source of commits.
 
 ## Database Migrations
 
-Migration flow:
-
-```text
+``` text
 create migration
     -> apply/test against hboo_dev
-    -> commit migration with application code
+    -> commit with application code
     -> push
     -> backup REAL database
     -> apply reviewed migration to REAL
     -> deploy compatible application version
 ```
 
-Do not execute REAL migrations from this repository. Before any allowed DEV DB
-operation, verify `DATABASE()` and `CURRENT_USER()` and stop if the selected
-database is not exactly `hboo_dev`.
-
-The project focuses not only on answering:
-
-> Where did my money go?
-
-but also:
-
-> How much can I safely spend today without breaking my financial plan?
-
-The product, architecture, financial model, and original frontend implementation were designed independently from scratch.
-
-## Screenshots
-
-<p align="center">
-  <img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balance dashboard">
-</p>
-
-<p align="center">
-  <strong>Bank balances and financial summary</strong>
-</p>
+Do not execute REAL migrations from the development environment. Before
+an allowed DEV DB operation, verify that the selected database is
+exactly `hboo_dev`.
 
 ## Features
 
 ### Bank Balances
 
-HBOO provides a unified overview of balances from multiple banking providers.
+HBOO provides a unified overview of balances from multiple banking
+providers:
 
-Current integrations include:
+-   Monobank
+-   PrivatBank
+-   aggregated total balance
+-   individual bank balances
+-   manual bank synchronization
+-   locally cached balance snapshots
+-   data freshness information
+-   offline access to the last known balance
 
-- Monobank
-- PrivatBank
-- aggregated total balance
-- individual bank balances
-- manual bank synchronization
-- locally cached balance data
-- Live / Cached / Offline data states
+Bank synchronization is performed through explicit backend refresh
+operations. The frontend remains usable with previously persisted data
+when bank integrations are unavailable.
 
-Bank synchronization is performed through explicit backend refresh operations.
-Manual synchronization is available from the UI, while selected data may also
-be refreshed automatically when no current data is available.
-
+```{=html}
+<p align="center">
+```
+`<img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balance dashboard">`{=html}
+```{=html}
+</p>
+```
 ### Transactions
 
-The Transactions module provides a unified view of transaction history from connected banks.
+The Transactions module provides a unified view of persisted transaction
+history from connected banks.
 
 It supports:
 
-- multiple banks
-- date filtering
-- category filtering
-- transaction grouping by day
-- daily totals
-- income / expense summaries
-- expandable transaction details
-- local transaction cache
-- manual synchronization
+-   multiple banks
+-   date and category filtering
+-   transaction grouping by day
+-   daily totals
+-   income / expense summaries
+-   expandable transaction details
+-   IndexedDB transaction cache
+-   local-first range queries
+-   persisted filter state
+-   manual synchronization
+-   offline browsing of previously loaded transactions
 
+```{=html}
 <p align="center">
-  <img src="docs/screenshots/transactions-desktop.png" width="90%" alt="HBOO transactions">
+```
+`<img src="docs/screenshots/transactions-desktop.png" width="90%" alt="HBOO transactions">`{=html}
+```{=html}
 </p>
-
+```
 ### Financial Planning
 
-Financial planning is based on a **user-defined spending budget**, not directly on the total bank balance.
+Financial planning is based on a **user-defined spending budget**, not
+directly on the total bank balance.
 
-For example:
-
-```text
+``` text
 Current bank balance       60,000 UAH
 
 Budget until salary        20,000 UAH
@@ -320,32 +326,59 @@ Other planned expenses      5,000 UAH
 Remaining budget             7,000 UAH
 ```
 
-This allows HBOO to answer a more useful question than simply displaying the current account balance:
-
-> How much of my money is actually safe to spend?
-
 The Planning module supports:
 
-- custom planning periods
-- period budget
-- planned expenses
-- expense categories
-- pending / completed / disabled states
-- remaining budget calculation
-- recommended daily spending
-- amount available today
+-   custom planning periods and period budgets
+-   planned expenses and categories
+-   pending / completed / disabled states
+-   remaining budget calculation
+-   recommended daily spending
+-   amount available today
+-   Actual Spending
+-   manual matching of planned items to bank transactions
+-   Smart Completion transaction suggestions
+-   offline create / edit / complete / cancel
+-   durable autosync after reconnect
+-   multi-device revalidation
+-   pre-push conflict protection
 
+```{=html}
 <p align="center">
-  <img src="docs/screenshots/planning-desktop.png" width="90%" alt="HBOO financial planning">
+```
+`<img src="docs/screenshots/planning-desktop.png" width="90%" alt="HBOO financial planning">`{=html}
+```{=html}
 </p>
+```
+## Planning and Transaction Matching
+
+Planning items represent concrete expected expenses rather than category
+budgets.
+
+HBOO can associate planned expenses with persisted bank transactions.
+This provides the foundation for Plan vs Fact analysis and prevents a
+completed expense from continuing to behave as a future reserve.
+
+Manual transaction linking remains available as a fallback.
+
+### Smart Completion
+
+Smart Completion suggests likely transactions for pending planning
+items.
+
+Candidate ranking uses signals such as merchant similarity, category,
+transaction date, and amount proximity. The matching strategy
+intentionally prefers missing an uncertain suggestion over presenting
+aggressive false positives.
+
+Suggestions are advisory. A transaction is not attached to a planning
+item until the user confirms it.
 
 ## Financial Summary
 
-Planning information is available outside the Planning page through a shared financial summary.
+Planning information is available outside the Planning page through a
+shared financial summary.
 
-The summary provides quick access to:
-
-```text
+``` text
 Available Today
 Recommended Limit
 Spent Today
@@ -354,244 +387,320 @@ Period Budget
 Planned
 Remaining
 Days Left
-
-Pending / Approved / Disabled plans
 ```
 
-This makes the planning state part of the overall application rather than an isolated calculator.
+This makes the planning state part of the overall application rather
+than an isolated calculator.
+
+## PWA and Offline Operation
+
+HBOO is an installable Progressive Web App.
+
+``` text
+App shell
+    -> Service Worker / Cache Storage
+
+Financial data
+    -> IndexedDB
+
+Planning changes
+    -> local state + durable sync queue
+
+Bank refresh
+    -> online-only integration
+```
+
+The Service Worker caches the static application graph required for
+startup. API requests remain network operations rather than static
+cached resources.
+
+Current offline capabilities include:
+
+-   PWA installation
+-   offline cold start
+-   Balance from the last known local snapshot
+-   cached Transactions
+-   cached Categories
+-   Planning read/create/edit/complete/cancel
+-   durable queued Planning synchronization
+-   automatic synchronization after connectivity or authentication
+    recovery
+
+Bank synchronization and Smart Completion remain online operations.
 
 ## Local-First Data Flow
 
-Balance and transaction data use a local-first architecture.
-
-```text
+``` text
 Page / Component
-        │
-        ▼
-      Store
-      /   \
-     ▼     ▼
-LocalRepository   ApiService
-     │                │
-     ▼                ▼
-Local cache         Backend
+       |
+       v
+     Store
+    /     \
+   v       v
+Local      API
+Repository Service
+   |       |
+   v       v
+IndexedDB Backend
 ```
 
-Previously loaded data can be displayed immediately from local storage while fresh data is requested from the backend.
+Local data can be rendered immediately, while network operations enrich
+or synchronize it when connectivity is available.
 
-If the backend is temporarily unavailable, the application can continue displaying the most recently cached financial data.
+## Planning Synchronization
 
-The UI receives normalized state such as:
+Planning uses a durable local synchronization queue. Local edits are
+preserved across page reloads and connectivity loss.
 
-```text
-data
-updatedAt
-loading
-source
-stale
-error
+The synchronization model distinguishes browser network availability,
+API authentication, pending local changes, active synchronization,
+errors, and conflicts.
+
+Before pushing dirty Planning state, HBOO compares:
+
+``` text
+BASE   = last known server snapshot
+LOCAL  = current IndexedDB state
+REMOTE = fresh server state
 ```
 
-This allows pages to distinguish between Live, Cached, Updating, and Offline states without owning synchronization logic.
+Independent changes can be merged through granular synchronization.
+Overlapping edits to the same persisted planning item are stopped as
+conflicts instead of silently overwriting remote data.
+
+Strong server-side revision/ETag concurrency control is a possible
+future improvement.
+
+## Connection and Sync Status
+
+The UI distinguishes states such as:
+
+``` text
+Synced
+Syncing...
+Offline
+Sign in to sync
+Sync error
+Sync conflict
+```
+
+Data freshness is also shown contextually for Balance, Transactions, and
+Planning.
+
+## Authentication and Local App Lock
+
+Backend authentication and local application access are separate
+concerns.
+
+If the API session expires, HBOO can continue using local data.
+Re-authentication does not discard the current route or offline state.
+
+HBOO can optionally protect the local UI with a PIN. The verifier is
+derived locally using Web Crypto PBKDF2 with SHA-256 and a random salt.
+The plaintext PIN is not persisted.
+
+App Lock supports configurable inactivity timeouts and a privacy shield
+while the application is backgrounded.
+
+App Lock is an **application UI access layer, not encryption at rest**.
+It does not make IndexedDB inaccessible to someone with access to the
+browser profile or device storage.
 
 ## Frontend Architecture
 
-The frontend is built with **vanilla JavaScript** without React, Vue, Angular, or another frontend framework.
+The frontend is built with **vanilla JavaScript** without React, Vue,
+Angular, or another frontend framework.
 
-This was an intentional decision in the original project. I wanted to design the application architecture and understand the underlying mechanisms directly rather than relying on framework abstractions.
+This was an intentional decision: to design the application architecture
+and work directly with browser mechanisms rather than relying on
+framework abstractions.
 
-Over time the application developed its own lightweight application structure:
-
-```text
+``` text
 HBOO
-│
-├── Application Core
-│
-├── Router
-│
-├── Pages
-│   ├── Balance
-│   ├── Transactions
-│   ├── Planning
-│   ├── Deposits
-│   └── Settings
-│
-├── Components
-│
-├── Stores
-│
-├── Services
-│
-├── Local Repositories
-│
-├── API Services
-│
-└── Reusable UI Helpers
+|
++-- Application Core
++-- Router
++-- Pages
+|   +-- Home
+|   +-- Balance
+|   +-- Transactions
+|   +-- Planning
+|   +-- Deposits
+|   +-- Settings
++-- Components
++-- Stores
++-- Services
++-- Local Repositories
++-- API Services
++-- Reusable UI Helpers
 ```
 
-The frontend includes concepts commonly provided by application frameworks:
-
-- routing
-- pages and components
-- shared application state
-- lifecycle-like behavior
-- centralized event delegation
-- stores
-- services
-- repositories
-- reusable UI components
-
-## Reusable UI
-
-Several UI elements were implemented as reusable, domain-independent building blocks rather than being tied directly to financial data.
-
-Examples include:
-
-- calendar / date picker
-- range controls
-- popup interactions
-- arithmetic calculator
-- navigation
-- delegated event handling
-
-The intention was to keep the application core and UI primitives reusable even if the domain or backend API changes.
-
-## Backend Architecture
-
-HBOO separates the main application API from external banking integrations.
-
-```text
-Browser
-   │
-   │ HTTPS
-   ▼
-Nginx
-   │
-   ├── Frontend
-   │
-   └── /api/*
-         │
-         ▼
-    Node.js REST API
-       │       │
-       │       └──── Spring Bank Service
-       │                  │
-       │                  ├── Monobank API
-       │                  └── PrivatBank API
-       │
-       ▼
-      MySQL
-```
-
-The Node.js service is the primary backend used by the frontend. It handles authentication, application logic, financial planning, transaction normalization, and database access.
-
-The Spring Boot service acts as a dedicated bank integration layer. It communicates with external banking APIs and synchronizes balance and transaction data.
-
-Bank synchronization uses explicit refresh operations. Imported transactions are protected against duplicate imports by provider transaction IDs.
-
-## From FIPL to HBOO Planning
-
-The current Planning functionality evolved from a separate standalone experiment called **FIPL (Financial Planner)**.
-
-FIPL was created as a rapid prototype to test period-based financial planning independently from the larger HBOO application.
-
-```text
-HBOO
-Balances + Transactions
-        │
-        ▼
-Need for forward-looking planning
-        │
-        ▼
-FIPL
-Standalone rapid prototype
-        │
-        ▼
-Product concept validated
-        │
-        ▼
-HBOO Planning
-Structured integration
-```
-
-The successful concepts are now being redesigned around HBOO's Store / Service / Repository architecture.
+The frontend includes routing, pages and components, shared application
+state, lifecycle-like behavior, centralized event delegation, stores,
+services, repositories, and reusable UI components.
 
 ## Mobile UI
 
 HBOO is designed for both desktop and mobile usage.
 
+```{=html}
 <p align="center">
-  <img src="docs/screenshots/balance-mobile.png" width="30%" alt="HBOO balance mobile">
-  <img src="docs/screenshots/transactions-mobile.png" width="30%" alt="HBOO transactions mobile">
-  <img src="docs/screenshots/planning-mobile.png" width="30%" alt="HBOO planning mobile">
+```
+`<img src="docs/screenshots/balance-mobile.png" width="30%" alt="HBOO balance mobile">`{=html}
+`<img src="docs/screenshots/transactions-mobile.png" width="30%" alt="HBOO transactions mobile">`{=html}
+`<img src="docs/screenshots/planning-mobile.png" width="30%" alt="HBOO planning mobile">`{=html}
+```{=html}
 </p>
+```
+The installed PWA supports fullscreen operation and offline startup.
+Mobile navigation uses the same financial model and application
+architecture as desktop.
 
-The mobile interface uses compact navigation and layouts while preserving access to the same financial information and planning functionality.
+## From FIPL to HBOO Planning
+
+The current Planning functionality evolved from a standalone experiment
+called **FIPL (Financial Planner)**.
+
+FIPL was a rapid prototype for period-based financial planning. Its
+successful concepts were later redesigned around HBOO's Store / Service
+/ Repository and local-first architecture.
 
 ## Tech Stack
 
 ### Frontend
 
-- JavaScript
-- ES Modules
-- HTML
-- CSS / SASS
-- Local Storage
-- Responsive Web Design
+-   JavaScript / ES Modules
+-   HTML
+-   CSS / SASS
+-   IndexedDB
+-   Local Storage for lightweight preferences and compatibility state
+-   Service Worker
+-   Web App Manifest / PWA
+-   Web Crypto
+-   Responsive Web Design
 
 ### Backend
 
-The backend stack currently includes:
+-   Node.js
+-   Native `node:http`
+-   MySQL / mysql2
+-   REST API
+-   Java / Spring Boot bank integration service
+-   Monobank API
+-   PrivatBank API
 
-- Node.js
-- Native `node:http`
-- MySQL / mysql2
-- REST API
-- Java / Spring Boot bank integration service
-- Monobank API
-- PrivatBank API
-
-The main backend intentionally uses Node.js without Express, NestJS, or an ORM.
+The main backend intentionally uses Node.js without Express, NestJS, or
+an ORM.
 
 ### Infrastructure
 
-- Docker
-- Docker Compose
-- Nginx
-- HTTPS
-- MySQL 8
+-   Docker
+-   Docker Compose
+-   Nginx
+-   HTTPS
+-   MySQL 8
+-   mkcert for local trusted HTTPS
+
+## Analytics Direction
+
+The next major product area is the Home analytics dashboard.
+
+The first analytics stage will use financial data that already exists in
+HBOO:
+
+``` text
+Home
++-- Current financial summary
++-- Income vs Expenses
+|   +-- 6 months
+|   +-- 1 year
++-- Spending by Category
+|   +-- current month
+|   +-- selected period
++-- Recent / upcoming planning context
+```
+
+A later receipt-processing layer can extend this into deeper drill-down:
+
+``` text
+Transactions
+    -> Categories
+    -> Purchases
+    -> Products
+    -> Price history / stores / quantities
+```
+
+This keeps the first analytics version useful with bank transaction data
+while leaving room for item-level purchase statistics later.
 
 ## Product Direction
 
-HBOO is primarily developed as a real personal finance tool rather than as a demonstration project.
+HBOO is primarily developed as a real personal finance tool rather than
+as a demonstration project.
 
-The current development strategy is to use the application in real financial workflows and let practical usage determine which features should be developed next.
+### Near-term
 
-Potential future areas include:
+-   Home analytics dashboard
+-   Income vs Expenses history for 6- and 12-month periods
+-   spending by category for selected periods
+-   Plan vs Fact analytics
+-   recurring planning items
+-   improved Planning conflict-resolution UI
+-   broader offline financial calculations
+-   migration tracking and deployment hardening
 
-- automatic matching of planned expenses with bank transactions
-- savings and financial goals
-- historical financial analytics
-- balance history
-- PWA push notifications for budget, planning, and spending alerts
-- receipt scanning and structured purchase extraction
-- item-level purchase and price history
-- spending pattern analysis
-- cash-flow forecasting
-- AI-assisted transaction and purchase categorization
-- AI-powered financial insights and budget optimization suggestions
-- natural-language queries about personal financial data
+### Future
+
+-   receipt scanning and structured purchase extraction
+-   item-level purchase analytics
+-   product and price history
+-   store-level spending insights
+-   savings and financial goals
+-   balance history
+-   cash-flow forecasting
+-   spending pattern analysis
+-   PWA notifications
+-   AI-assisted transaction and purchase categorization
+-   AI-powered financial insights and budget optimization suggestions
+-   natural-language queries about personal financial data
+
+## Security and Data Safety
+
+HBOO works with financial data, so DEV and REAL environments are
+intentionally isolated.
+
+-   no REAL credentials in Git
+-   no real bank tokens in DEV
+-   DEV uses synthetic financial data
+-   REAL uses a separate database and runtime
+-   generated certificates and private keys are not committed
+-   database migrations are reviewed before REAL execution
+-   transaction imports use provider transaction IDs to prevent
+    duplicate imports
+
+The repository contains safe development/runtime templates rather than
+production secrets.
 
 ## Project Background
 
-HBOO was originally designed and implemented independently from scratch before I started actively using AI coding assistants.
+HBOO was originally designed and implemented independently from scratch
+before I started actively using AI coding assistants.
 
-The original architecture, frontend core, routing, components, financial model, bank integration approach, and UI were therefore developed through the normal product and engineering process rather than generated from a predefined implementation.
+The original architecture, frontend core, routing, components, financial
+model, bank integration approach, and UI were developed through the
+normal product and engineering process rather than generated from a
+predefined implementation.
 
-Current development uses AI-assisted engineering where useful, while product decisions, architecture, code review, and validation remain developer-driven.
+Current development uses AI-assisted engineering where useful, while
+product decisions, architecture, code review, security boundaries, and
+validation remain developer-driven.
 
 ## Status
 
 **Active development**
 
-HBOO continues to evolve based on real-world personal usage.
+The current milestone is a local-first PWA with bank synchronization,
+offline financial data, durable Planning synchronization, and
+conflict-aware multi-device behavior.
+
+The next major product area is the Home analytics dashboard.
