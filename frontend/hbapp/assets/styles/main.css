@@ -18,6 +18,10 @@ body {
 	transition: initial;
 }
 
+body.hboo-auth-modal-open {
+	overflow: hidden;
+}
+
 :root {
 	--hboo-surface: #ebf5fc;
 	--hboo-surface-subtle: #dbe5ec;
@@ -209,6 +213,106 @@ button:disabled {
 	border-radius: var(--hboo-radius);
 	padding: .55rem .8rem;
 	box-shadow: var(--hboo-shadow-inset);
+}
+
+.auth-page-root {
+	width: 100%;
+}
+
+.auth-container {
+	border-radius: 10px;
+	box-shadow: -3px -3px 7px #ffffff73,
+				2px 2px 5px rgba(94,104,121,.288);
+	margin: 1em auto;
+	max-width: 420px;
+	padding: 20px 30px;
+	width: 86%;
+}
+
+.auth-container h1 {
+	margin-bottom: 0;
+}
+
+.auth-container h2 {
+	color: var(--hboo-text);
+	font-size: 15pt;
+	line-height: 1.2;
+	margin: .45rem 0 0;
+}
+
+.auth-form {
+	text-align: center;
+}
+
+.auth-modal-body .auth-container {
+	box-shadow: none;
+	margin: 0 auto;
+	max-width: 420px;
+	padding: .25rem 0 0;
+	width: 100%;
+}
+
+.auth-field {
+	align-items: stretch;
+	display: flex;
+	flex-direction: column;
+	gap: .4rem;
+	height: auto;
+	text-align: left;
+}
+
+.auth-field label {
+	color: var(--hboo-text);
+	font-size: 10pt;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+.auth-error {
+	color: #b45309;
+	font-size: 10.5pt;
+	line-height: 1.35;
+	margin-top: .8rem;
+	min-height: 1.2rem;
+	text-align: left;
+}
+
+.auth-error[hidden] {
+	display: none;
+}
+
+.auth-actions {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: .7rem;
+}
+
+.auth-actions .btn {
+	margin: 0;
+	width: 100%;
+}
+
+.auth-offline {
+	background: transparent;
+	border: none;
+	color: var(--hboo-text);
+	cursor: pointer;
+	font: inherit;
+	font-size: 10.5pt;
+	font-weight: 700;
+	min-height: 34px;
+	padding: .35rem;
+}
+
+.auth-offline:hover,
+.auth-offline:focus {
+	color: #3498db;
+	outline: none;
+}
+
+.auth-modal {
+	max-width: 480px;
+	width: min(480px, 100%);
 }
 
 .transactions-today-date {
@@ -2340,7 +2444,7 @@ img.pb-icon {
 	border-radius: 8px;
 	box-shadow: -5px -5px 10px rgba(255,255,255,.5), 5px 5px 10px rgba(0,0,0,.1);
 	color: #778ba5;
-	cursor: pointer;
+	cursor: default;
 	display: block;
 	font: inherit;
 	margin: 0 0 1rem;
@@ -2351,6 +2455,15 @@ img.pb-icon {
 
 .hboo-sync-placeholder:hover,
 .hboo-sync-placeholder:focus {
+	outline: none;
+}
+
+.hboo-sync-card-actionable {
+	cursor: pointer;
+}
+
+.hboo-sync-card-actionable:hover,
+.hboo-sync-card-actionable:focus {
 	box-shadow: inset -6px -6px 10px rgba(255,255,255,1), inset 6px 6px 20px rgba(0,0,0,.05);
 	outline: none;
 }

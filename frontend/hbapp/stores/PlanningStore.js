@@ -9,7 +9,7 @@ import {
 import PlanningSyncQueue from '../services/PlanningSyncQueue.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
 import networkStatusService from '../services/NetworkStatusService.js'
-import {API_AUTH_STATUS, getAuthState} from '../services/AuthSession.js'
+import {API_AUTH_STATUS, getAuthState, subscribeAuthState} from '../services/AuthSession.js'
 import {calculateSummary, endOfDay, startOfDay} from '../services/PlanningCalculator.js'
 
 const SERVER_REVALIDATION_MIN_INTERVAL_MS = 15 * 1000
@@ -247,6 +247,7 @@ class PlanningStore {
 		this.transactionRepository = transactionRepository
 		this.listeners = new Set()
 		this.unsubscribeNetworkStatus = null
+		this.unsubscribeAuthStatus = null
 		this.loadPromise = null
 		this.syncPromise = null
 		this.syncDebounce = null
@@ -298,6 +299,17 @@ class PlanningStore {
 				if (document.visibilityState === 'visible') this.handleRecoverySignal('visible')
 			})
 		}
+		let previousApiAuthStatus = getAuthState()?.apiAuthStatus || API_AUTH_STATUS.UNKNOWN
+		this.unsubscribeAuthStatus = subscribeAuthState(authState => {
+			const nextApiAuthStatus = authState?.apiAuthStatus || API_AUTH_STATUS.UNKNOWN
+			if (
+				previousApiAuthStatus === API_AUTH_STATUS.REJECTED
+				&& nextApiAuthStatus === API_AUTH_STATUS.AUTHENTICATED
+			) {
+				this.handleRecoverySignal('auth-restored')
+			}
+			previousApiAuthStatus = nextApiAuthStatus
+		})
 	}
 
 	handleRecoverySignal(reason = 'recovery') {
@@ -308,7 +320,7 @@ class PlanningStore {
 
 		this.syncDebounce = setTimeout(() => {
 			this.syncDebounce = null
-			this.processSyncQueue({force: true, ignoreOffline: true, reason}).catch(() => {})
+			this.processSyncQueue({force: true, reason}).catch(() => {})
 			this.revalidateFromServer({reason}).catch(() => {})
 		}, 100)
 	}
@@ -871,7 +883,7 @@ class PlanningStore {
 			await this.loadPromise
 		}
 
-		const operation = await this.syncQueue.getOperation()
+		let operation = await this.syncQueue.getOperation()
 		if (!operation) {
 			if (!this.state.dirty && this.state.syncStatus !== 'idle') {
 				this.setState({syncStatus: 'synced', syncError: null})
@@ -882,6 +894,15 @@ class PlanningStore {
 		if (operation.status === 'conflict') {
 			this.setState({syncStatus: 'conflict', syncError: operation.lastError || new Error('Planning sync conflict')})
 			return this.getState()
+		}
+
+		if (operation.status === 'paused') {
+			if (force && hasUsableApiAuth()) {
+				operation = await this.syncQueue.resumePaused(operation, {reason}) || operation
+			} else {
+				this.setState({syncStatus: 'paused', syncError: operation.lastError || new Error('Planning sync paused')})
+				return this.getState()
+			}
 		}
 
 		if (operation.status === 'paused') {

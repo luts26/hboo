@@ -65,12 +65,30 @@ const api = {
 		throw this.createHttpError(response)
 	},
 
+	publicRequest: async function(path, {method = 'GET', data = undefined, headers = {}} = {}) {
+		const requestHeaders = this.getPublicHeaders(headers)
+		const requestData = {
+			method,
+			headers: requestHeaders
+		}
+		if (data) requestData.body = JSON.stringify(data)
+		const response = await fetch(this.apiurl + path, requestData)
+		if ([200, 201].indexOf(response.status) !== -1) {
+			return response.json()
+		}
+		throw this.createHttpError(response)
+	},
+
 	get: async function(path, headers = {}) {
 		return this.request(path, {method: 'GET', headers})
 	},
 
 	post: async function(path, data, headers = {}) {
 		return this.request(path, {method: 'POST', data, headers})
+	},
+
+	postPublic: async function(path, data, headers = {}) {
+		return this.publicRequest(path, {method: 'POST', data, headers})
 	},
 
 	put: async function(path, data, headers = {}) {

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {setAuthState, getAuthState} from '../hbapp/services/AuthSession.js'
+import {AUTH_STORAGE_KEY, setAuthState, getAuthState} from '../hbapp/services/AuthSession.js'
 import PlanningApiService from '../hbapp/services/PlanningApiService.js'
 import {
 	analyzePlanningChanges,
@@ -181,6 +181,17 @@ class FakeQueue {
 		return this.operation
 	}
 
+	async resumePaused(operation, {reason} = {}) {
+		this.operation = {
+			...operation,
+			status: 'pending',
+			reason,
+			lastError: null,
+			nextAttemptAt: Date.now()
+		}
+		return this.operation
+	}
+
 	async markError(operation, error) {
 		const status = Number(error.status || error.statusCode)
 		this.operation = {
@@ -278,6 +289,27 @@ const createLoadedStore = options => {
 	return result
 }
 
+const createLiveLoadedStore = options => {
+	const repository = new FakeRepository(options.local)
+	const apiService = new FakeApi(options.remote, options.apiOptions || {})
+	const queue = options.queue || new FakeQueue()
+	const store = new PlanningStore({
+		repository,
+		apiService,
+		syncQueue: queue,
+		balanceRepository: {get: () => null},
+		transactionRepository: {get: () => null},
+		autoRegisterSyncTriggers: true
+	})
+	store.applyPlanningState(options.local, {
+		loaded: true,
+		loading: false,
+		dirty: Boolean(options.local.dirty),
+		syncStatus: options.local.dirty ? 'paused' : 'synced'
+	})
+	return {store, repository, apiService, queue}
+}
+
 const dirtyState = ({baseItems = [item()], localItems = baseItems, basePeriod = period(), localPeriod = basePeriod, deletedItemIds = []} = {}) => {
 	return toPlanningState({
 		period: localPeriod,
@@ -295,12 +327,68 @@ const syncPendingQueue = () => new FakeQueue({
 	attempts: 0
 })
 
+const syncPausedQueue = () => new FakeQueue({
+	operationId: 'planning.syncState:user:1',
+	status: 'paused',
+	attempts: 1,
+	lastError: {
+		message: 'Planning sync paused',
+		status: 401,
+		at: Date.now()
+	},
+	nextAttemptAt: null
+})
+
 globalThis.localStorage = new LocalStorageMock()
 globalThis.structuredClone ||= value => JSON.parse(JSON.stringify(value))
 
 const authenticate = () => {
 	localStorage.clear()
 	setAuthState({token: 'token', user: {id: 1, username: 'demo'}})
+}
+
+const rejectAuth = () => {
+	localStorage.clear()
+	setAuthState({token: 'stale-token', user: {id: 1, username: 'demo'}})
+	const authState = getAuthState()
+	localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+		...authState,
+		apiAuthStatus: 'rejected',
+		apiAuthRejectedToken: 'stale-token',
+		apiAuthRejectedStatus: 401
+	}))
+}
+
+const installLiveStoreGlobals = ({online = true} = {}) => {
+	const previousWindow = globalThis.window
+	const previousDocument = globalThis.document
+	const previousNavigator = globalThis.navigator
+	globalThis.window = {addEventListener: () => {}}
+	globalThis.document = {
+		visibilityState: 'visible',
+		addEventListener: () => {}
+	}
+	Object.defineProperty(globalThis, 'navigator', {
+		configurable: true,
+		value: {onLine: online}
+	})
+	return () => {
+		if (previousWindow === undefined) delete globalThis.window
+		else globalThis.window = previousWindow
+		if (previousDocument === undefined) delete globalThis.document
+		else globalThis.document = previousDocument
+		if (previousNavigator === undefined) delete globalThis.navigator
+		else Object.defineProperty(globalThis, 'navigator', {
+			configurable: true,
+			value: previousNavigator
+		})
+	}
+}
+
+const waitForLiveRecovery = async store => {
+	await new Promise(resolve => setTimeout(resolve, 150))
+	await store.syncPromise
+	await store.serverRevalidationPromise
 }
 
 test('clean local + same remote updates server-check timestamp without replacing state', async () => {
@@ -942,6 +1030,140 @@ test('create/create reconnect regression keeps remote A and local B', async () =
 	const state = await repository.getPlanningState()
 	assert.equal(queue.operation, null)
 	assert.deepEqual(state.items.map(planningItem => planningItem.title).sort(), ['FROM A', 'FROM B'])
+})
+
+test('live rejected to authenticated resumes paused pending update without store recreation', async () => {
+	const restoreGlobals = installLiveStoreGlobals()
+	rejectAuth()
+	const baseItem = item('100', {sum: 1000})
+	const localItem = item('100', {sum: 1500})
+	const local = dirtyState({baseItems: [baseItem], localItems: [localItem]})
+	const {store, repository, apiService, queue} = createLiveLoadedStore({
+		local,
+		remote: {period: period(), items: [baseItem]},
+		queue: syncPausedQueue()
+	})
+
+	setAuthState({token: 'fresh-token', user: {id: 1, username: 'demo'}})
+	await waitForLiveRecovery(store)
+
+	const state = await repository.getPlanningState()
+	assert.equal(queue.operation, null)
+	assert.equal(state.dirty, false)
+	assert.equal(store.getState().syncStatus, 'synced')
+	assert.equal(apiService.calls.includes('getCurrentPeriod'), true)
+	assert.equal(apiService.calls.includes('updateItem'), true)
+	assert.equal(apiService.calls.filter(call => call === 'updateItem').length, 1)
+	store.unsubscribeAuthStatus?.()
+	store.unsubscribeNetworkStatus?.()
+	restoreGlobals()
+})
+
+test('live rejected to authenticated resumes paused pending create without store recreation', async () => {
+	const restoreGlobals = installLiveStoreGlobals()
+	rejectAuth()
+	const localCreated = item('item-local-b', {title: 'FROM B', desc: 'FROM B', sum: 200})
+	const local = dirtyState({baseItems: [], localItems: [localCreated]})
+	const {store, repository, apiService, queue} = createLiveLoadedStore({
+		local,
+		remote: {period: period(), items: []},
+		queue: syncPausedQueue()
+	})
+
+	setAuthState({token: 'fresh-token', user: {id: 1, username: 'demo'}})
+	await waitForLiveRecovery(store)
+
+	const state = await repository.getPlanningState()
+	assert.equal(queue.operation, null)
+	assert.equal(state.dirty, false)
+	assert.equal(state.items.some(planningItem => planningItem.title === 'FROM B'), true)
+	assert.equal(apiService.calls.includes('getCurrentPeriod'), true)
+	assert.equal(apiService.calls.includes('createItem'), true)
+	store.unsubscribeAuthStatus?.()
+	store.unsubscribeNetworkStatus?.()
+	restoreGlobals()
+})
+
+test('live rejected to authenticated with no pending queue does not perform Planning mutation', async () => {
+	const restoreGlobals = installLiveStoreGlobals()
+	rejectAuth()
+	const clean = toPlanningState({period: period(), items: [item()]})
+	const {store, apiService, queue} = createLiveLoadedStore({
+		local: clean,
+		remote: {period: period(), items: [item()]},
+		queue: new FakeQueue(null)
+	})
+
+	setAuthState({token: 'fresh-token', user: {id: 1, username: 'demo'}})
+	await waitForLiveRecovery(store)
+
+	assert.equal(queue.operation, null)
+	assert.equal(apiService.calls.includes('createItem'), false)
+	assert.equal(apiService.calls.includes('updateItem'), false)
+	assert.equal(apiService.calls.includes('deleteItem'), false)
+	store.unsubscribeAuthStatus?.()
+	store.unsubscribeNetworkStatus?.()
+	restoreGlobals()
+})
+
+test('live auth-restored paused queue keeps same-item conflict safe and performs no PUT', async () => {
+	const restoreGlobals = installLiveStoreGlobals()
+	rejectAuth()
+	const baseX = item('100', {status: 'pending'})
+	const localX = item('100', {status: 'cancelled'})
+	const remoteX = item('100', {status: 'completed'})
+	const local = dirtyState({baseItems: [baseX], localItems: [localX]})
+	const {store, repository, apiService, queue} = createLiveLoadedStore({
+		local,
+		remote: {period: period(), items: [remoteX]},
+		queue: syncPausedQueue()
+	})
+
+	setAuthState({token: 'fresh-token', user: {id: 1, username: 'demo'}})
+	await waitForLiveRecovery(store)
+
+	const state = await repository.getPlanningState()
+	assert.equal(apiService.calls.includes('getCurrentPeriod'), true)
+	assert.equal(apiService.calls.includes('updateItem'), false)
+	assert.equal(queue.operation.status, 'conflict')
+	assert.equal(store.getState().syncStatus, 'conflict')
+	assert.equal(state.items[0].status, 'cancelled')
+	assert.equal(state.serverSnapshot.items[0].status, 'pending')
+	store.unsubscribeAuthStatus?.()
+	store.unsubscribeNetworkStatus?.()
+	restoreGlobals()
+})
+
+test('live auth-restored while offline waits for network recovery and pushes once', async () => {
+	const restoreGlobals = installLiveStoreGlobals({online: false})
+	rejectAuth()
+	const baseItem = item('100', {sum: 1000})
+	const localItem = item('100', {sum: 1500})
+	const local = dirtyState({baseItems: [baseItem], localItems: [localItem]})
+	const {store, apiService, queue} = createLiveLoadedStore({
+		local,
+		remote: {period: period(), items: [baseItem]},
+		queue: syncPausedQueue()
+	})
+	let offline = true
+	store.isOffline = () => offline
+
+	setAuthState({token: 'fresh-token', user: {id: 1, username: 'demo'}})
+	await waitForLiveRecovery(store)
+
+	assert.equal(queue.operation.status, 'paused')
+	assert.deepEqual(apiService.calls, [])
+
+	offline = false
+	store.handleRecoverySignal('online')
+	await waitForLiveRecovery(store)
+
+	assert.equal(queue.operation, null)
+	assert.equal(apiService.calls.filter(call => call === 'updateItem').length, 1)
+	assert.equal(store.getState().syncStatus, 'synced')
+	store.unsubscribeAuthStatus?.()
+	store.unsubscribeNetworkStatus?.()
+	restoreGlobals()
 })
 
 test('change analysis reports update/delete overlaps but ignores independent creates', () => {

@@ -12,6 +12,7 @@ import {clearAuthState, getAuthenticatedUserId, getAuthToken} from './services/A
 import connectionSyncStatus from './services/ConnectionSyncStatus.js'
 import {deriveSectionFreshness} from './services/SectionFreshness.js'
 import {resolveWorkspaceSwipe} from './services/WorkspaceNavigationGesture.js'
+import authModal from './components/AuthModal.js'
 
 const hbapp = {
 
@@ -67,7 +68,10 @@ const hbapp = {
 		this.hbapp.querySelectorAll('.hboo-sync-card').forEach(card => {
 			card.dataset.syncPresentation = state.presentation
 			card.dataset.syncTone = state.tone
+			card.dataset.syncApi = state.api
 			card.classList.toggle('hboo-sync-card-no-freshness', !freshness)
+			card.classList.toggle('hboo-sync-card-actionable', state.api === 'auth_required')
+			card.setAttribute('aria-disabled', state.api === 'auth_required' ? 'false' : 'true')
 			card.setAttribute('aria-label', `HBOO Sync: ${state.title}. ${state.detail}${freshness ? `. ${freshness.text}` : ''}`)
 			const title = card.querySelector('[data-hboo-sync-title]')
 			const detail = card.querySelector('[data-hboo-sync-detail]')
@@ -239,6 +243,9 @@ const hbapp = {
 			}
 			if (e.target.closest('[data-action="hboo-sync-status"]')) {
 				this.closeHeaderMenu()
+				if (connectionSyncStatus.getState().api === 'auth_required') {
+					authModal.open()
+				}
 				return
 			}
 			if (e.target.closest('[data-action="header-menu-toggle"]')) {

@@ -87,6 +87,20 @@ export default class PlanningSyncQueue {
 		return next
 	}
 
+	async resumePaused(operation, {reason = 'auth-restored'} = {}) {
+		if (!operation) return null
+		const next = {
+			...operation,
+			status: 'pending',
+			reason,
+			lastError: null,
+			updatedAt: Date.now(),
+			nextAttemptAt: Date.now()
+		}
+		await this.indexedDbClient.put('syncQueue', next)
+		return next
+	}
+
 	async markError(operation, error) {
 		const attempts = (Number(operation.attempts) || 0) + 1
 		const status = this.getFailureStatus(error)
