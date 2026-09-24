@@ -183,7 +183,6 @@ const hbapp = {
 	setMobileView(view = 'content') {
 		this.mobileView = view === 'sidebar' ? 'sidebar' : 'content'
 		this.hbapp.classList.toggle('mobile-summary-open', this.mobileView === 'sidebar')
-		this.hbapp.querySelector('.app-name')?.setAttribute('aria-expanded', this.mobileView === 'sidebar' ? 'true' : 'false')
 	},
 
 	navigateAppRoute(route, hash = '') {
@@ -262,6 +261,10 @@ const hbapp = {
 				this.toggleHeaderMenu()
 				return
 			}
+			if (e.target.closest('[data-action="header-home"]')) {
+				this.navigateAppRoute('home')
+				return
+			}
 			if (e.target.closest('[data-action="header-menu-settings-toggle"]')) {
 				this.toggleHeaderSubmenu(e.target.closest('[data-action="header-menu-settings-toggle"]'))
 				return
@@ -298,11 +301,6 @@ const hbapp = {
 						i.classList.remove('d-none')
 					})
 				}
-			}
-			if (e.target.closest('.app-name')) {
-				this.closeHeaderMenu()
-				this.setMobileView(this.mobileView === 'sidebar' ? 'content' : 'sidebar')
-				return
 			}
 			if (this.mobileView === 'sidebar' && this.isMobileSwipeEnabled() && e.target.closest('.app-main-column')) {
 				this.closeHeaderMenu()

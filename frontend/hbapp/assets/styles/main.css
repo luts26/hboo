@@ -2386,6 +2386,8 @@ img.pb-icon {
 }
 
 .app-name {
+	background: transparent;
+	border: 0;
 /*	border: 1px solid #f7f7f7;*/
 /*	border-radius: 10px;*/
 /*	box-shadow: -7px -7px 17px #ffffff,*/
@@ -2393,10 +2395,18 @@ img.pb-icon {
 	position: relative;
 	color: #778ba5;
 	cursor: pointer;
+	font: inherit;
 	font-weight: 800;
 	padding: 0 15px 20px;
 	margin: 5px 10px;
 	position: relative;
+	text-align: inherit;
+}
+
+.app-name:focus-visible {
+	border-radius: 8px;
+	outline: 2px solid rgba(52,152,219,.35);
+	outline-offset: 3px;
 }
 
 .environment-badge {

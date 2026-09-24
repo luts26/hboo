@@ -33,9 +33,9 @@ const header = {
 			<div class="header-container d-flex align-items-center">
 				<div class="transactions-today-date text-center"></div>
 				<div class="label-header">
-					<div class="app-name" title="Open workspace navigation" role="button" aria-expanded="false">
+					<button class="app-name" type="button" title="Go to Home" aria-label="Go to Home" data-action="header-home">
 						${appName}
-					</div>
+					</button>
 					<nav class="sub-menu">
 						<ul>
 							<li data-sparam="abank">add bank</li>

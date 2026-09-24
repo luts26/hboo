@@ -35,3 +35,27 @@ test('active workspace state does not use an experimental shared silhouette', ()
 	assert.doesNotMatch(appSource, /getBoundingClientRect/)
 	assert.doesNotMatch(appSource, /updateWorkspaceSilhouette/)
 })
+
+test('header brand is an accessible SPA Home action', () => {
+	const headerSource = read('hbapp/components/header.js')
+	const appSource = read('hbapp/hbapp.js')
+	const homeHandler = appSource.match(/if \(e\.target\.closest\('\[data-action="header-home"\]'\)\) \{[\s\S]*?\n\t\t\t\}/)?.[0] || ''
+
+	assert.match(headerSource, /<button class="app-name" type="button"/)
+	assert.match(headerSource, /data-action="header-home"/)
+	assert.match(headerSource, /aria-label="Go to Home"/)
+	assert.match(homeHandler, /this\.navigateAppRoute\('home'\)/)
+	assert.doesNotMatch(homeHandler, /window\.location|location\.href|location\.assign|location\.reload/)
+	assert.doesNotMatch(homeHandler, /setMobileView/)
+	assert.doesNotMatch(appSource, /e\.target\.closest\('\.app-name'\)[\s\S]{0,160}setMobileView/)
+})
+
+test('header brand Home handler runs before legacy label-header fallback', () => {
+	const appSource = read('hbapp/hbapp.js')
+	const homeIndex = appSource.indexOf('[data-action="header-home"]')
+	const labelIndex = appSource.indexOf("e.target.closest('.label-header')")
+
+	assert.ok(homeIndex > -1, 'header-home handler exists')
+	assert.ok(labelIndex > -1, 'label-header fallback exists')
+	assert.ok(homeIndex < labelIndex, 'header-home is handled before label-header')
+})

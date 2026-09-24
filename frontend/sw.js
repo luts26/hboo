@@ -1,4 +1,4 @@
-const HBOO_APP_VERSION = '2026-09-24-home-analytics-v12'
+const HBOO_APP_VERSION = '2026-09-24-header-home-logo-v1'
 const HBOO_APP_SHELL_CACHE = `hboo-app-shell-${HBOO_APP_VERSION}`
 const HBOO_APP_SHELL_PREFIX = 'hboo-app-shell-'
 
@@ -7,7 +7,7 @@ const REQUIRED_SHELL_ASSETS = [
 	'/index.html',
 	'/planing',
 	'/manifest.webmanifest',
-	'/hbapp/assets/styles/main.css?v=3',
+	'/hbapp/assets/styles/main.css?v=4',
 	'/hbapp/index.js?v=6'
 ]
 
