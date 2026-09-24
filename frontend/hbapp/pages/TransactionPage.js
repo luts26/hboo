@@ -10,6 +10,7 @@ import {
 	getDateInputValue,
 	normalizeTransactionDateSelection
 } from '../services/TransactionDateRange.js'
+import {getCategoryFilterFromQuery} from '../services/HomeAnalyticsNavigation.js'
 
 export default class TransactionPage extends AbstractClass {
 
@@ -47,7 +48,8 @@ export default class TransactionPage extends AbstractClass {
 		this.init()
 	}
 
-	init(query = '') {
+	init(query = location.search || '') {
+		this.applyInitialFiltersFromQuery(query)
 		this.loadCategories()
 		transactionStore.load(query)
 		if (!this.unsubscribe) {
@@ -103,6 +105,11 @@ export default class TransactionPage extends AbstractClass {
 			})
 
 		return this.categoryLoadPromise
+	}
+
+	applyInitialFiltersFromQuery(query = '') {
+		const categoryId = getCategoryFilterFromQuery(query)
+		if (categoryId) this.selectedCategoryId = categoryId
 	}
 
 	getCategoriesFromTransactions() {

@@ -299,6 +299,32 @@ export default class TransactionLocalRepository {
 		}))
 	}
 
+	async getCoverage(range = {}) {
+		const {dateFrom, dateTo} = normalizeRange(range)
+
+		try {
+			await this.ensureMigrated()
+			if (this.indexedDbFailed) throw new Error('IndexedDB unavailable')
+
+			const windows = (await this.indexedDbClient.getAll('transactionWindows'))
+				.filter(window => window?.complete && toNumber(window.dateFrom) <= dateTo && toNumber(window.dateTo) >= dateFrom)
+
+			return {
+				status: windows.length ? 'partial' : 'not_fetched',
+				complete: false,
+				windows
+			}
+		} catch (error) {
+			this.indexedDbFailed = true
+			console.warn('Transaction IndexedDB coverage read failed; using partial fallback', error)
+			return {
+				status: 'partial',
+				complete: false,
+				windows: []
+			}
+		}
+	}
+
 	async getRange(range = {}) {
 		const {dateFrom, dateTo} = normalizeRange(range)
 
