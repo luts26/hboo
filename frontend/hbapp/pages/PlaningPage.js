@@ -347,7 +347,7 @@ export default class PlaningPage extends AbstractClass {
 			actions.push('<button class="planing-status-btn" type="button" data-action="planning-pending" data-status="pending">Pending</button>')
 		}
 
-		return actions.length ? `<div class="planing-item-actions 222">${actions.join('')}</div>` : ''
+		return actions.length ? `<div class="planing-item-actions">${actions.join('')}</div>` : ''
 	}
 
 	getTransactionInfoTemplate(item, compact = false) {
@@ -417,8 +417,8 @@ export default class PlaningPage extends AbstractClass {
 						<span>${this.formatPlanningDate(item.date)}</span>
 					</div>
 				</button>
-				<div class="planing-item-meta d-none">
-					<span>${this.formatPlanningDate(item.date)}</span>
+				<div class="planing-item-meta">
+					<!--span>${this.formatPlanningDate(item.date)}</span-->
 					<button class="planing-transaction-btn d-none" type="button" data-action="planning-transactions-open" data-itemid="${item.id}">Transactions</button>
 					${status === 'pending' ? actionsHtml : `<strong>${this.getStatusLabel(status)}</strong>`}
 				</div>

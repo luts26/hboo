@@ -16,7 +16,7 @@ The project is designed around a practical question:
 > plan?**
 
 <p align="center">
-<img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balance dashboard">
+<img src="docs/screenshots/home-desktop.png" width="90%" alt="HBOO Home analytics dashboard">
 </p>
 
 ## Highlights
@@ -25,6 +25,8 @@ The project is designed around a practical question:
   transactions
 - **Financial Planning** — budgets, planned expenses, Actual Spending,
   and safe-to-spend calculations
+- **Financial Analytics** — Income vs Expenses trends, category spending,
+  local-history coverage awareness, and transaction drill-down
 - **Smart Completion** — suggests bank transactions that may correspond
   to planned expenses
 - **Local-first PWA** — financial data remains available without a
@@ -101,16 +103,24 @@ modifications are stopped instead of silently overwriting data.
 
 ## Product Direction Overview
 
-The next major area is the **Home analytics dashboard**, starting with:
+HBOO now combines daily financial state, planning, bank transactions, and
+**local-first analytics** in a single application.
 
-- Income vs Expenses over 6- and 12-month periods
-- spending by category for a selected period
-- financial summary and planning context
-- Plan vs Fact analytics
+The Home dashboard provides:
 
-Future development includes receipt scanning and structured purchase
-extraction, allowing transaction-level analytics to expand into
-**purchase, product, store, quantity, and price-history analytics**.
+- Income vs Expenses analytics for 6- and 12-month periods
+- monthly Income / Expenses / Net details
+- spending by category for selected periods
+- local transaction-history coverage awareness
+- category-to-Transactions drill-down
+- offline analytics from locally cached transaction history
+
+The next major product area is **Plan vs Fact**, connecting planned expenses
+with their actual bank transactions and comparing planned and actual spending.
+
+Future development includes recurring planning items, receipt scanning and
+structured purchase extraction, allowing transaction-level analytics to expand
+into **purchase, product, store, quantity, and price-history analytics**.
 
 ------------------------------------------------------------------------
 
@@ -333,6 +343,25 @@ an allowed DEV DB operation, verify that the selected database is
 exactly `hboo_dev`.
 
 ## Features
+
+### Home Analytics
+
+Home is the main financial analytics dashboard. It is a read-only local-first
+projection over transaction, category, balance, and planning data already
+available in HBOO. Opening Home does not trigger bank synchronization.
+
+It provides:
+
+- Income vs Expenses for 6- and 12-month periods
+- monthly Income / Expenses / Net details through compact chart tooltips
+- spending by category for custom periods
+- category-to-Transactions drill-down with the selected date range preserved
+- awareness of complete, partial, and unavailable local transaction history
+- offline analytics from previously cached transaction data
+
+Incomplete history is represented explicitly rather than silently treating
+missing local data as zero spending. Analytics use the same IndexedDB-backed
+local-first model as the rest of HBOO.
 
 ### Bank Balances
 
@@ -616,15 +645,17 @@ HBOO is designed for both desktop and mobile usage.
 
 <p align="center">
 
-<img src="docs/screenshots/balance-mobile.png" width="30%" alt="HBOO balance mobile">
-<img src="docs/screenshots/transactions-mobile.png" width="30%" alt="HBOO transactions mobile">
+<img src="docs/screenshots/home-mobile.png" width="30%" alt="HBOO Home analytics mobile">
+<img src="docs/screenshots/sidebar-mobile.png" width="30%" alt="HBOO mobile financial workspace sidebar">
 <img src="docs/screenshots/planning-mobile.png" width="30%" alt="HBOO planning mobile">
 
 </p>
 
-The installed PWA supports fullscreen operation and offline startup.
-Mobile navigation uses the same financial model and application
-architecture as desktop.
+The installed PWA supports fullscreen operation and offline startup. The
+mobile experience intentionally avoids a conventional bottom navigation bar:
+the HBOO brand returns to Home, while the financial workspace/sidebar is
+revealed with the mobile swipe interaction. The same local-first financial
+model and application architecture are shared with desktop.
 
 ## From FIPL to HBOO Planning
 
@@ -671,24 +702,32 @@ an ORM.
 - MySQL 8
 - mkcert for local trusted HTTPS
 
-## Analytics Direction
+## Analytics
 
-The next major product area is the Home analytics dashboard.
-
-The first analytics stage will use financial data that already exists in
-HBOO:
+Home Analytics is implemented as a local-first read model over data already
+stored by HBOO rather than as a separate backend analytics subsystem.
 
 ``` text
 Home
-+-- Current financial summary
 +-- Income vs Expenses
 |   +-- 6 months
 |   +-- 1 year
+|   +-- monthly Income / Expenses / Net
+|   +-- local-history coverage
 +-- Spending by Category
-|   +-- current month
 |   +-- selected period
-+-- Recent / upcoming planning context
+|   +-- category drill-down to Transactions
++-- Financial context
+    +-- Available Today
+    +-- Planning
+    +-- Balance
+    +-- Transactions
 ```
+
+Analytics are calculated from locally cached transaction history. Coverage
+metadata distinguishes complete, partial, and unavailable history so missing
+data is not presented as a real zero. Category metadata comes from the same
+language-scoped category cache used by the rest of the application.
 
 A later receipt-processing layer can extend this into deeper drill-down:
 
@@ -700,8 +739,8 @@ Transactions
     -> Price history / stores / quantities
 ```
 
-This keeps the first analytics version useful with bank transaction data
-while leaving room for item-level purchase statistics later.
+This keeps the current analytics useful with bank transaction data while
+leaving room for item-level purchase statistics later.
 
 ## Product Direction
 
@@ -710,9 +749,6 @@ as a demonstration project.
 
 ### Near-term
 
-- Home analytics dashboard
-- Income vs Expenses history for 6- and 12-month periods
-- spending by category for selected periods
 - Plan vs Fact analytics
 - recurring planning items
 - improved Planning conflict-resolution UI
@@ -770,7 +806,7 @@ validation remain developer-driven.
 **Active development**
 
 The current milestone is a local-first PWA with bank synchronization,
-offline financial data, durable Planning synchronization, and
-conflict-aware multi-device behavior.
+offline financial data, durable Planning synchronization, conflict-aware
+multi-device behavior, and a local-first Home analytics dashboard.
 
-The next major product area is the Home analytics dashboard.
+The next major product area is **Plan vs Fact**.
