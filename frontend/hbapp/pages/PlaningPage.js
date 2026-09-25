@@ -1,6 +1,7 @@
 import AbstractClass from './AbstractClass.js'
 import planningStore from '../stores/PlanningStore.js'
 import {endOfDay, startOfDay} from '../services/PlanningCalculator.js'
+import {calculatePlanVsFact} from '../services/PlanVsFactService.js'
 import CategoryApiService from '../services/CategoryApiService.js'
 import DataStatus, { createDataStatusViewModel } from '../components/DataStatus.js'
 import Toast from '../components/Toast.js'
@@ -32,7 +33,8 @@ export default class PlaningPage extends AbstractClass {
 		modalView: 'details',
 		selectedItemId: null,
 		transactionLinks: {},
-		smartSuggestions: {}
+		smartSuggestions: {},
+		mode: 'plan'
 	}
 	categories = []
 	categoryApiService = new CategoryApiService()
@@ -71,7 +73,8 @@ export default class PlaningPage extends AbstractClass {
 				modalView: this.state.modalView,
 				selectedItemId: this.state.selectedItemId,
 				transactionLinks: state.transactionLinks || {},
-				smartSuggestions: state.smartSuggestions || {}
+				smartSuggestions: state.smartSuggestions || {},
+				mode: this.state.mode || 'plan'
 			}
 			this.render()
 		})
@@ -264,6 +267,33 @@ export default class PlaningPage extends AbstractClass {
 			: `${this.formatAmount(this.state.summary.actualSpent)} грн`
 	}
 
+	formatSignedAmount(value) {
+		const amount = Number(value) || 0
+		if (amount === 0) return `${this.formatAmount(0)} грн`
+		return `${amount > 0 ? '+' : ''}${this.formatAmount(amount)} грн`
+	}
+
+	getPlanVsFactResultLabel(result) {
+		const labels = {
+			under: 'Under plan',
+			over: 'Over plan',
+			exact: 'On plan',
+			unavailable: 'Fact unavailable'
+		}
+
+		return labels[result] || labels.unavailable
+	}
+
+	getPlanningModeSwitchTemplate() {
+		const mode = this.state.mode || 'plan'
+
+		return `
+			<div class="hboo-segmented-control planing-mode-switch" role="tablist" aria-label="Planning mode">
+				<button class="hboo-segment-btn planing-mode-btn${mode === 'plan' ? ' active' : ''}" type="button" role="tab" aria-selected="${mode === 'plan'}" data-action="planning-mode" data-mode="plan">Planning</button>
+				<button class="hboo-segment-btn planing-mode-btn${mode === 'plan-vs-fact' ? ' active' : ''}" type="button" role="tab" aria-selected="${mode === 'plan-vs-fact'}" data-action="planning-mode" data-mode="plan-vs-fact">Plan vs Fact</button>
+			</div>`
+	}
+
 	getPeriodSummaryTemplate() {
 		const period = this.state.currentPeriod || {}
 		const fromDate = this.timeStampToStringDate(period.dateFrom)
@@ -440,6 +470,92 @@ export default class PlaningPage extends AbstractClass {
 		return items.map(item => this.getItemTemplate(item)).join('')
 	}
 
+	getPlanVsFactViewModel() {
+		return calculatePlanVsFact(this.state.summary?.items || [])
+	}
+
+	getPlanVsFactSummaryTemplate(viewModel) {
+		const summary = viewModel.summary
+		const differenceResult = summary.difference > 0
+			? 'under'
+			: (summary.difference < 0 ? 'over' : 'exact')
+
+		return `
+			<div class="planing-fact-summary">
+				<div class="planing-fact-summary-grid">
+					<div>
+						<span>Planned completed</span>
+						<strong>${this.formatAmount(summary.plannedComparable)} грн</strong>
+					</div>
+					<div>
+						<span>Actual</span>
+						<strong>${this.formatAmount(summary.actualComparable)} грн</strong>
+					</div>
+					<div class="planing-fact-summary-difference planing-fact-result-${differenceResult}">
+						<span>Difference</span>
+						<strong>${this.formatSignedAmount(summary.difference)}</strong>
+					</div>
+				</div>
+				<div class="planing-fact-counts">
+					<span>${summary.underPlanCount} under</span>
+					<span>${summary.overPlanCount} over</span>
+					<span>${summary.exactCount} on plan</span>
+				</div>
+			</div>`
+	}
+
+	getPlanVsFactItemTemplate(item) {
+		const difference = item.result === 'exact' ? '—' : this.formatSignedAmount(item.difference)
+
+		return `
+			<div class="planing-fact-item planing-fact-result-${item.result}">
+				<div class="planing-fact-item-header">
+					<div>
+						<div class="planing-fact-item-title">${this.escapeHtml(item.description || item.title)}</div>
+						<div class="planing-fact-item-category">${this.escapeHtml(this.getCategoryName({categoryId: item.categoryId}))}</div>
+					</div>
+					<strong>${this.getPlanVsFactResultLabel(item.result)}</strong>
+				</div>
+				<div class="planing-fact-lines">
+					<div><span>Plan</span><strong>${this.formatAmount(item.plannedAmount)} грн</strong></div>
+					<div><span>Fact</span><strong>${this.formatAmount(item.actualAmount)} грн</strong></div>
+					<div><span>Difference</span><strong>${difference}</strong></div>
+				</div>
+			</div>`
+	}
+
+	getPlanVsFactNotIncludedTemplate(viewModel) {
+		const summary = viewModel.summary
+		const rows = []
+		if (summary.pendingCount) rows.push(`<div><span>Pending items</span><strong>${summary.pendingCount}</strong></div>`)
+		if (summary.completedWithoutFactCount) rows.push(`<div><span>Completed without fact</span><strong>${summary.completedWithoutFactCount}</strong></div>`)
+		if (summary.cancelledCount) rows.push(`<div><span>Cancelled items excluded</span><strong>${summary.cancelledCount}</strong></div>`)
+
+		if (!rows.length && viewModel.items.length) return ''
+
+		return `
+			<div class="planing-fact-secondary">
+				<div class="planing-detail-section-title">Not included in comparison</div>
+				${rows.length ? rows.join('') : '<p>All completed items with known fact are included.</p>'}
+			</div>`
+	}
+
+	getPlanVsFactTemplate() {
+		const viewModel = this.getPlanVsFactViewModel()
+		const itemsHtml = viewModel.items.length
+			? viewModel.items.map(item => this.getPlanVsFactItemTemplate(item)).join('')
+			: '<div class="planing-empty">No completed planning items with known fact yet.</div>'
+
+		return `
+			<div class="planing-fact-view">
+				${this.getPlanVsFactSummaryTemplate(viewModel)}
+				<div class="planing-fact-list">
+					${itemsHtml}
+				</div>
+				${this.getPlanVsFactNotIncludedTemplate(viewModel)}
+			</div>`
+	}
+
 	getChecklistFormRowsTemplate(item = null) {
 		const checklist = this.getChecklistItems(item)
 		const rows = checklist.length ? checklist : [{id: this.createChecklistId(), title: '', checked: false}]
@@ -522,6 +638,34 @@ export default class PlaningPage extends AbstractClass {
 						<button class="planing-cancel-edit-btn" type="button">Cancel</button>
 						<button class="planing-save-btn" type="submit">Save period</button>
 					</div>
+			</form>`
+	}
+
+	getManualCompletionTemplate(item) {
+		const actualAmount = item?.actualAmount !== null && item?.actualAmount !== undefined
+			? item.actualAmount
+			: item?.sum
+
+		return `
+			<form class="planing-complete-form" data-itemid="${item?.id || ''}">
+				<div class="planing-detail-grid">
+					<div class="planing-detail-field planing-detail-field-main">
+						<span>Planned amount</span>
+						<strong>${this.formatAmount(item?.sum)} грн</strong>
+					</div>
+					<div class="planing-detail-field planing-detail-field-main">
+						<label for="planing-complete-actual">Actual amount</label>
+						<div class="planing-amount-inline">
+							<input id="planing-complete-actual" class="planing-complete-actual-input" type="number" name="actualAmount" min="0" step="0.01" value="${actualAmount}" required>
+							<span>грн</span>
+						</div>
+					</div>
+				</div>
+				<div class="planing-complete-error" data-complete-error hidden></div>
+				<div class="app-modal-actions planing-modal-actions">
+					<button class="planing-cancel-edit-btn" type="button">Cancel</button>
+					<button class="planing-save-btn" type="submit">Complete</button>
+				</div>
 			</form>`
 	}
 
@@ -690,12 +834,14 @@ export default class PlaningPage extends AbstractClass {
 		const modalTitle = {
 			period: 'Edit period',
 			add: 'Add expense',
+			complete: 'Complete expense',
 			detail: this.state.modalView === 'shoppingList' ? 'Shopping list' : (this.state.modalView === 'transactions' ? 'Transactions' : 'Expense details'),
 			edit: 'Edit expense'
 		}[this.state.modal]
 		const modalContent = {
 			period: () => this.getPeriodFormTemplate(),
 			add: () => this.getExpenseFormTemplate(),
+			complete: () => item ? this.getManualCompletionTemplate(item) : '',
 			detail: () => item
 				? (this.state.modalView === 'shoppingList'
 					? this.getShoppingListTemplate(item)
@@ -721,17 +867,23 @@ export default class PlaningPage extends AbstractClass {
 	}
 
 	getTemplate() {
+		const mode = this.state.mode || 'plan'
+		const isPlanVsFact = mode === 'plan-vs-fact'
+		const planActionsHtml = isPlanVsFact
+			? ''
+			: `<div class="planing-list-header planing-list-header-actions">
+					<button class="planing-add-btn" type="button" title="Add planning item" aria-label="Add planning item">+</button>
+				</div>`
+
 		return `<div class="${this.pageName}-container mt-2">
 			${this.getPageHeaderTemplate()}
 			<div class="planing-toolbar">
 				${this.getPeriodSummaryTemplate()}
 			</div>
+			${this.getPlanningModeSwitchTemplate()}
 			<div class="planing-list">
-				<div class="planing-list-header">
-					<div class="planing-list-title">Planning items</div>
-					<button class="planing-add-btn" type="button" title="Add planning item" aria-label="Add planning item">+</button>
-				</div>
-				${this.getItemsTemplate()}
+				${planActionsHtml}
+				${isPlanVsFact ? this.getPlanVsFactTemplate() : this.getItemsTemplate()}
 			</div>
 		</div>`
 	}
@@ -758,6 +910,11 @@ export default class PlaningPage extends AbstractClass {
 
 	setModalView(modalView = 'details') {
 		this.state.modalView = modalView
+		this.render()
+	}
+
+	setPlanningMode(mode = 'plan') {
+		this.state.mode = mode === 'plan-vs-fact' ? 'plan-vs-fact' : 'plan'
 		this.render()
 	}
 
@@ -810,7 +967,38 @@ export default class PlaningPage extends AbstractClass {
 		const detail = button.closest('.planing-detail')
 		const item = button.closest('.planing-item')
 		const itemId = detail?.dataset.itemid || item?.dataset.itemid || this.state.selectedItemId
+		if (button.dataset.status === 'completed') return this.openModal('complete', itemId)
 		await planningStore.setPlanningItemStatus(itemId, button.dataset.status)
+		this.closeModal()
+	}
+
+	getActualAmountFromCompletionForm(form) {
+		const input = form?.querySelector('[name="actualAmount"]')
+		const rawValue = input?.value
+		if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') return null
+		const amount = Number(rawValue)
+		if (!Number.isFinite(amount) || amount < 0) return null
+		return Math.round((amount + Number.EPSILON) * 100) / 100
+	}
+
+	async completePlanningItem(event) {
+		const form = event.target.closest('.planing-complete-form')
+		if (!form) return
+		event.preventDefault()
+		const actualAmount = this.getActualAmountFromCompletionForm(form)
+		const error = form.querySelector('[data-complete-error]')
+		if (actualAmount === null) {
+			if (error) {
+				error.textContent = 'Enter a valid actual amount.'
+				error.hidden = false
+			}
+			return
+		}
+
+		await planningStore.updatePlanningItem(form.dataset.itemid, {
+			status: 'completed',
+			actualAmount
+		})
 		this.closeModal()
 	}
 
@@ -938,6 +1126,8 @@ export default class PlaningPage extends AbstractClass {
 				this.render()
 				return
 			}
+			const modeTarget = event.target.closest('[data-action="planning-mode"]')
+			if (modeTarget) return this.setPlanningMode(modeTarget.dataset.mode)
 			if (event.target.closest('.planing-modal-close')) return this.closeModal()
 			if (event.target.classList.contains('planing-modal-backdrop')) return this.closeModal()
 			if (event.target.closest('.planing-period-summary')) return this.openModal('period')
@@ -945,6 +1135,7 @@ export default class PlaningPage extends AbstractClass {
 			if (event.target.closest('.planing-cancel-edit-btn')) return this.closeModal()
 			if (event.target.closest('.planing-detail .planing-edit-btn')) return this.openModal('edit', this.state.selectedItemId)
 			if (event.target.closest('.planing-period-form .planing-save-btn')) return this.savePeriod(event)
+			if (event.target.closest('.planing-complete-form .planing-save-btn')) return this.completePlanningItem(event)
 			if (event.target.closest('.planing-form .planing-save-btn')) {
 				return this.state.modal === 'edit' ? this.savePlanningItem(event) : this.createPlanningItem(event)
 			}
@@ -970,6 +1161,7 @@ export default class PlaningPage extends AbstractClass {
 		}
 		if (eventKey === 'keypressenter') {
 			if (event.target.closest('.planing-period-form')) return this.savePeriod(event)
+			if (event.target.closest('.planing-complete-form')) return this.completePlanningItem(event)
 			if (event.target.closest('.planing-checklist-input')) return
 			if (event.target.closest('.planing-form')) {
 				return this.state.modal === 'edit' ? this.savePlanningItem(event) : this.createPlanningItem(event)
@@ -980,6 +1172,7 @@ export default class PlaningPage extends AbstractClass {
 		}
 		if (event.type === 'submit') {
 			if (event.target.closest('.planing-period-form')) return this.savePeriod(event)
+			if (event.target.closest('.planing-complete-form')) return this.completePlanningItem(event)
 			if (event.target.closest('.planing-form')) {
 				return this.state.modal === 'edit' ? this.savePlanningItem(event) : this.createPlanningItem(event)
 			}

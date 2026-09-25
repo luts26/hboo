@@ -62,6 +62,25 @@ class FakeRepository {
 		return true
 	}
 
+	async updateItem(id, data, {markDirty = true} = {}) {
+		this.state.items = this.state.items.map(planningItem => {
+			if (String(planningItem.id) !== String(id)) return planningItem
+			return {
+				...planningItem,
+				...data,
+				id: planningItem.id,
+				periodId: planningItem.periodId,
+				updatedAt: Date.now()
+			}
+		})
+		if (markDirty) this.state.dirty = true
+		return this.state.items.find(planningItem => String(planningItem.id) === String(id)) || null
+	}
+
+	async setStatus(id, status, options = {}) {
+		return this.updateItem(id, {status}, options)
+	}
+
 	async markCurrentPeriodPersisted(persistedPeriod) {
 		this.state.currentPeriod = structuredClone(persistedPeriod)
 		this.state.period = structuredClone(persistedPeriod)
@@ -92,6 +111,7 @@ class FakeApi {
 		this.deferredItems = options.deferredItems || null
 		this.error = options.error || null
 		this.nextCreatedId = Number(options.nextCreatedId) || 200
+		this.updatedItems = []
 	}
 
 	async getCurrentPeriod() {
@@ -140,6 +160,7 @@ class FakeApi {
 
 	async updateItem(data) {
 		this.calls.push('updateItem')
+		this.updatedItems.push(structuredClone(data))
 		this.remote.items = this.remote.items.map(remoteItem => {
 			if (String(remoteItem.id) !== String(data.id)) return remoteItem
 			return {...remoteItem, ...data}
@@ -838,6 +859,49 @@ test('pre-push allows normal status update when raw API remote equals BASE', asy
 
 	assert.equal(apiService.calls.includes('updateItem'), true)
 	assert.notEqual(store.getState().syncStatus, 'conflict')
+})
+
+test('manual completion stores actualAmount locally and queues offline sync', async () => {
+	authenticate()
+	const base = toPlanningState({period: period(), items: [item('100', {sum: 500, actualAmount: null})]})
+	const {store, repository, queue} = createLoadedStore({
+		local: base,
+		remote: {period: period(), items: [item('100', {sum: 500, actualAmount: null})]}
+	})
+	store.isOffline = () => true
+
+	await store.updatePlanningItem('100', {
+		status: 'completed',
+		actualAmount: 424.5
+	})
+
+	const state = await repository.getPlanningState()
+	assert.equal(state.items[0].status, 'completed')
+	assert.equal(state.items[0].actualAmount, 424.5)
+	assert.equal(state.dirty, true)
+	assert.equal(queue.enqueued, 1)
+	assert.equal(store.getState().syncStatus, 'offline')
+})
+
+test('manual completion sync sends actualAmount through existing update payload', async () => {
+	authenticate()
+	const baseX = item('100', {status: 'pending', sum: 500, actualAmount: null})
+	const localX = item('100', {status: 'completed', sum: 500, actualAmount: 424.5})
+	const local = dirtyState({baseItems: [baseX], localItems: [localX]})
+	const {store, repository, apiService} = createLoadedStore({
+		local,
+		remote: {period: period(), items: [baseX]},
+		queue: syncPendingQueue()
+	})
+
+	await store.processSyncQueue({force: true, ignoreOffline: true, reason: 'item-update'})
+	await store.serverRevalidationPromise
+
+	const state = await repository.getPlanningState()
+	assert.equal(apiService.calls.includes('updateItem'), true)
+	assert.equal(apiService.updatedItems[0].actualAmount, 424.5)
+	assert.equal(apiService.updatedItems[0].status, 'completed')
+	assert.equal(state.serverSnapshot.items[0].actualAmount, 424.5)
 })
 
 test('pre-push allows normal title and amount update when remote is unchanged', async () => {

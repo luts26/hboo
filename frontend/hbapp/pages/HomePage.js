@@ -85,9 +85,9 @@ export default class HomePage extends AbstractClass {
 						<h2 id="home-income-title">Income vs Expenses</h2>
 						<p class="home-section-note" data-home-income-coverage>Loading local analytics...</p>
 					</div>
-					<div class="home-segmented-control" role="group" aria-label="Income analytics period">
-						<button class="home-segment-btn active" type="button" data-home-income-period="6">6 months</button>
-						<button class="home-segment-btn" type="button" data-home-income-period="12">1 year</button>
+					<div class="hboo-segmented-control home-segmented-control" role="group" aria-label="Income analytics period">
+						<button class="hboo-segment-btn home-segment-btn active" type="button" data-home-income-period="6">6 months</button>
+						<button class="hboo-segment-btn home-segment-btn" type="button" data-home-income-period="12">1 year</button>
 					</div>
 				</div>
 				<div class="home-chart-card">
