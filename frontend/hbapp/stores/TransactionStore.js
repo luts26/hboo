@@ -39,6 +39,11 @@ const getRequestQuery = (query = '', range = getDefaultRange()) => {
 	return `?${params.toString()}`
 }
 
+const hasRefreshRequest = query => {
+	const params = new URLSearchParams(String(query || '').replace(/^\?/, ''))
+	return params.has('updateTransaction')
+}
+
 const isValidRange = range => {
 	const dateFrom = Number(range?.dateFrom)
 	const dateTo = Number(range?.dateTo)
@@ -88,6 +93,7 @@ class TransactionStore {
 		this.repository = repository
 		this.listeners = new Set()
 		this.loadPromise = null
+		this.refreshSequence = 0
 		this.state = {
 			data: null,
 			updatedAt: null,
@@ -160,15 +166,20 @@ class TransactionStore {
 	}
 
 	async refresh(query = '', {range = getRangeFromQuery(query)} = {}) {
+		const refreshId = ++this.refreshSequence
 		range = normalizeTransactionRange(range, {normalizeTimestamps: false})
 		const requestQuery = getRequestQuery(query, range)
 		const cache = await this.repository.getRange(range)
+		if (refreshId !== this.refreshSequence) return this.getState()
 		const offline = isOffline()
+		const forceRefresh = hasRefreshRequest(query)
+		const cacheComplete = cache?.coverage?.complete === true
+		const shouldFetchApi = !offline && (forceRefresh || !cacheComplete)
 		if (cache) {
 			this.setState({
 				data: cache.data,
 				updatedAt: cache.updatedAt,
-				loading: !offline,
+				loading: shouldFetchApi,
 				loaded: true,
 				source: 'cache',
 				stale: offline,
@@ -194,9 +205,14 @@ class TransactionStore {
 			return this.getState()
 		}
 
+		if (!shouldFetchApi) {
+			return this.getState()
+		}
+
 		try {
 			const data = await this.apiService.getTransactions(requestQuery)
 			const savedCache = await this.repository.saveRange(data, range)
+			if (refreshId !== this.refreshSequence) return this.getState()
 			this.setState({
 				data: savedCache?.data || data,
 				updatedAt: savedCache?.updatedAt || Date.now(),
@@ -211,6 +227,7 @@ class TransactionStore {
 			return this.getState()
 		} catch (error) {
 			const latestCache = await this.repository.getRange(range)
+			if (refreshId !== this.refreshSequence) return this.getState()
 			this.setState({
 				data: latestCache?.data || {mono: [], privat: []},
 				updatedAt: latestCache?.updatedAt || null,

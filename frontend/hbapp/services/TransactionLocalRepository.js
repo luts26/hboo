@@ -194,8 +194,17 @@ const recordsToGroupedData = records => {
 	return data
 }
 
-const getCoverageStatus = (data, windows) => {
-	const complete = PROVIDERS.every(provider => windows.some(window => window?.provider === provider && window.complete))
+const hasCompleteProviderCoverage = (windows, dateFrom, dateTo) => {
+	return PROVIDERS.every(provider => windows.some(window => {
+		return window?.provider === provider
+			&& window.complete
+			&& toNumber(window.dateFrom) <= dateFrom
+			&& toNumber(window.dateTo) >= dateTo
+	}))
+}
+
+const getCoverageStatus = (data, windows, dateFrom = 0, dateTo = 0) => {
+	const complete = hasCompleteProviderCoverage(windows, dateFrom, dateTo)
 	if (complete) return 'complete'
 	const hasTransactions = PROVIDERS.some(provider => Array.isArray(data?.[provider]) && data[provider].length > 0)
 	return hasTransactions ? 'partial' : 'not_fetched'
@@ -293,10 +302,9 @@ export default class TransactionLocalRepository {
 	}
 
 	async getWindows(dateFrom, dateTo) {
-		return Promise.all(PROVIDERS.map(provider => {
-			const windowKey = `${provider}:${dateFrom}:${dateTo}`
-			return this.indexedDbClient.get('transactionWindows', windowKey)
-		}))
+		const windows = await this.indexedDbClient.getAll('transactionWindows')
+		return windows
+			.filter(window => window?.complete && toNumber(window.dateFrom) <= dateTo && toNumber(window.dateTo) >= dateFrom)
 	}
 
 	async getCoverage(range = {}) {
@@ -340,14 +348,15 @@ export default class TransactionLocalRepository {
 			const data = recordsToGroupedData(records)
 			const updatedAt = records.reduce((latest, record) => Math.max(latest, toNumber(record.fetchedAt), toNumber(record.updatedAt)), 0)
 			const completeWindows = windows.filter(window => window?.complete)
+			const complete = hasCompleteProviderCoverage(completeWindows, dateFrom, dateTo)
 
 			return {
 				version: STORAGE_VERSION,
 				updatedAt: updatedAt || completeWindows.reduce((latest, window) => Math.max(latest, toNumber(window.fetchedAt)), 0) || null,
 				data,
 				coverage: {
-					status: getCoverageStatus(data, windows),
-					complete: PROVIDERS.every(provider => windows.some(window => window?.provider === provider && window.complete)),
+					status: getCoverageStatus(data, windows, dateFrom, dateTo),
+					complete,
 					windows: windows.filter(Boolean)
 				}
 			}

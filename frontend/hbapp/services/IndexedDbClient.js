@@ -1,5 +1,5 @@
 const DATABASE_NAME = 'hboo-offline-v1'
-const DATABASE_VERSION = 1
+const DATABASE_VERSION = 3
 
 const STORE_DEFINITIONS = {
 	meta: {
@@ -64,6 +64,17 @@ const STORE_DEFINITIONS = {
 			{name: 'fetchedAt', keyPath: 'fetchedAt'}
 		]
 	},
+	balanceHistory: {
+		keyPath: 'id',
+		indexes: [
+			{name: 'userId', keyPath: 'userId'},
+			{name: 'provider', keyPath: 'provider'},
+			{name: 'userProvider', keyPath: ['userId', 'provider']},
+			{name: 'accountId', keyPath: 'accountId'},
+			{name: 'timestamp', keyPath: 'timestamp'},
+			{name: 'fetchedAt', keyPath: 'fetchedAt'}
+		]
+	},
 	categories: {
 		keyPath: ['language', 'id'],
 		indexes: [
@@ -85,20 +96,24 @@ const STORE_DEFINITIONS = {
 	}
 }
 
-const migrations = {
-	1: (db, transaction) => {
-		Object.entries(STORE_DEFINITIONS).forEach(([storeName, definition]) => {
-			const store = db.objectStoreNames.contains(storeName)
-				? transaction.objectStore(storeName)
-				: db.createObjectStore(storeName, {keyPath: definition.keyPath})
+const ensureStoreDefinitions = (db, transaction) => {
+	Object.entries(STORE_DEFINITIONS).forEach(([storeName, definition]) => {
+		const store = db.objectStoreNames.contains(storeName)
+			? transaction.objectStore(storeName)
+			: db.createObjectStore(storeName, {keyPath: definition.keyPath})
 
-			definition.indexes.forEach(index => {
-				if (!store.indexNames.contains(index.name)) {
-					store.createIndex(index.name, index.keyPath, {unique: Boolean(index.unique)})
-				}
-			})
+		definition.indexes.forEach(index => {
+			if (!store.indexNames.contains(index.name)) {
+				store.createIndex(index.name, index.keyPath, {unique: Boolean(index.unique)})
+			}
 		})
-	}
+	})
+}
+
+const migrations = {
+	1: ensureStoreDefinitions,
+	2: ensureStoreDefinitions,
+	3: ensureStoreDefinitions
 }
 
 const assertIndexedDbAvailable = () => {

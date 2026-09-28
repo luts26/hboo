@@ -29,12 +29,14 @@ class FakeIndexedDbClient {
 		this.stores = {
 			meta: new Map(),
 			balances: new Map(),
+			balanceHistory: new Map(),
 			categories: new Map()
 		}
 	}
 
 	keyFor(storeName, value) {
 		if (storeName === 'balances') return `${value.provider}:${value.accountId}`
+		if (storeName === 'balanceHistory') return value.id
 		if (storeName === 'categories') return `${value.language}:${value.id}`
 		if (storeName === 'meta') return value.key
 		return value.id
@@ -53,6 +55,8 @@ class FakeIndexedDbClient {
 	async getAllFromIndex(storeName, indexName, query = null) {
 		if (this.fail) throw new Error('IndexedDB unavailable')
 		return Array.from(this.stores[storeName].values()).filter(record => {
+			const value = indexName === 'userProvider' ? [record.userId, record.provider] : record[indexName]
+			if (Array.isArray(query?.only)) return JSON.stringify(value) === JSON.stringify(query.only)
 			if (query?.only !== undefined) return record[indexName] === query.only
 			return true
 		})
@@ -92,6 +96,7 @@ const {
 	MIGRATION_MARKER_KEY: BALANCE_MIGRATION_MARKER,
 	normalizeBalanceRecord
 } = await import('../hbapp/services/BalanceLocalRepository.js')
+const {default: BalanceHistoryLocalRepository} = await import('../hbapp/services/BalanceHistoryLocalRepository.js')
 const {BalanceStore} = await import('../hbapp/stores/BalanceStore.js')
 const {
 	default: CategoryLocalRepository,
@@ -128,6 +133,7 @@ const categoryUk = {id: 3, code: 'food', name: 'Продукти', icon: 'food-i
 const categoryEn = {id: 3, code: 'food', name: 'Food', icon: 'food-icon', type: 'expense'}
 
 const makeBalanceRepo = client => new BalanceLocalRepository('hboo-balance-cache-v1', {indexedDbClient: client})
+const makeBalanceHistoryRepo = client => new BalanceHistoryLocalRepository({indexedDbClient: client})
 const makeCategoryRepo = client => new CategoryLocalRepository({indexedDbClient: client})
 
 test.beforeEach(() => {
@@ -258,6 +264,106 @@ test('Balance cache is isolated by user', async () => {
 	const cache = await repo.getLatest()
 
 	assert.equal(cache.data.mono.length, 0)
+})
+
+test('Balance history saves and loads provider range from IndexedDB', async () => {
+	const client = new FakeIndexedDbClient()
+	const repo = makeBalanceHistoryRepo(client)
+	await repo.saveHistory({
+		provider: 'mono',
+		snapshots: [
+			{id: 'm1', provider: 'mono', accountId: 'mono-alpha', timestamp: 1789000000000, current: 8000, creditLimit: 0, position: 8000, state: 'own'},
+			{id: 'm2', provider: 'mono', accountId: 'mono-alpha', timestamp: 1789106400000, current: 4100, creditLimit: 5000, position: -900, state: 'credit'}
+		]
+	})
+
+	const history = await repo.getHistory({provider: 'mono', dateFrom: 1789000000000, dateTo: 1789200000000})
+
+	assert.equal(history.length, 2)
+	assert.equal(history[0].state, 'own')
+	assert.equal(history[1].position, -900)
+})
+
+test('Balance history isolates providers and users', async () => {
+	const client = new FakeIndexedDbClient()
+	const repo = makeBalanceHistoryRepo(client)
+	await repo.saveHistory({
+		provider: 'mono',
+		snapshots: [{id: 'm1', provider: 'mono', accountId: 'mono-alpha', timestamp: 1789106400000, current: 1, creditLimit: 0, position: 1, state: 'own'}]
+	})
+	await repo.saveHistory({
+		provider: 'privat',
+		snapshots: [{id: 'p1', provider: 'privat', accountId: 'privat-alpha', timestamp: 1789106400000, current: 2, creditLimit: 0, position: 2, state: 'own'}]
+	})
+
+	let privat = await repo.getHistory({provider: 'privat', dateFrom: 1789000000000, dateTo: 1789200000000})
+	assert.equal(privat.length, 1)
+	assert.equal(privat[0].provider, 'privat')
+
+	setUser(2)
+	privat = await repo.getHistory({provider: 'privat', dateFrom: 1789000000000, dateTo: 1789200000000})
+	assert.equal(privat.length, 0)
+})
+
+test('Balance history deduplicates repeated API refreshes by snapshot id', async () => {
+	const client = new FakeIndexedDbClient()
+	const repo = makeBalanceHistoryRepo(client)
+	const snapshot = {id: 'm1', provider: 'mono', accountId: 'mono-alpha', timestamp: 1789106400000, current: 1, creditLimit: 0, position: 1, state: 'own'}
+
+	await repo.saveHistory({provider: 'mono', snapshots: [snapshot]})
+	await repo.saveHistory({provider: 'mono', snapshots: [{...snapshot, current: 3, position: 3}]})
+
+	const history = await repo.getHistory({provider: 'mono', dateFrom: 1789000000000, dateTo: 1789200000000})
+	assert.equal(client.stores.balanceHistory.size, 1)
+	assert.equal(history[0].position, 3)
+})
+
+test('Balance history range reads support 6M and 1Y windows with previous snapshot context', async () => {
+	const repo = makeBalanceHistoryRepo(new FakeIndexedDbClient())
+	await repo.saveHistory({
+		provider: 'mono',
+		snapshots: [
+			{id: 'before', provider: 'mono', accountId: 'mono-alpha', timestamp: 1770000000000, current: 9, creditLimit: 0, position: 9, state: 'own', inRange: false},
+			{id: 'inside-6m', provider: 'mono', accountId: 'mono-alpha', timestamp: 1789106400000, current: 8, creditLimit: 0, position: 8, state: 'own'},
+			{id: 'inside-1y', provider: 'mono', accountId: 'mono-alpha', timestamp: 1779106400000, current: 7, creditLimit: 0, position: 7, state: 'own'}
+		]
+	})
+
+	const sixMonths = await repo.getHistory({provider: 'mono', dateFrom: 1780000000000, dateTo: 1790000000000})
+	const oneYear = await repo.getHistory({provider: 'mono', dateFrom: 1775000000000, dateTo: 1790000000000})
+
+	assert.deepEqual(sixMonths.map(item => item.sourceSnapshotId), ['inside-1y', 'inside-6m'])
+	assert.deepEqual(oneYear.map(item => item.sourceSnapshotId), ['before', 'inside-1y', 'inside-6m'])
+	assert.equal(oneYear[0].inRange, false)
+})
+
+test('Balance history 6M and 1Y ranges include DEV Mono demo observation windows', async () => {
+	const repo = makeBalanceHistoryRepo(new FakeIndexedDbClient())
+	await repo.saveHistory({
+		provider: 'mono',
+		snapshots: [
+			{id: 'nov-2025', provider: 'mono', accountId: 'test-mono-card-alpha', timestamp: new Date(2025, 10, 18, 10).getTime(), current: 36000, creditLimit: 30000, position: 6000, state: 'own'},
+			{id: 'apr-2026', provider: 'mono', accountId: 'test-mono-card-alpha', timestamp: new Date(2026, 3, 3, 10).getTime(), current: 42000, creditLimit: 30000, position: 12000, state: 'own'},
+			{id: 'aug-2026', provider: 'mono', accountId: 'test-mono-card-alpha', timestamp: new Date(2026, 7, 5, 10).getTime(), current: 20000, creditLimit: 30000, position: -10000, state: 'credit'},
+			{id: 'sep-2026', provider: 'mono', accountId: 'test-mono-card-alpha', timestamp: new Date(2026, 8, 27, 10).getTime(), current: 33000, creditLimit: 30000, position: 3000, state: 'own'}
+		]
+	})
+
+	const sixMonths = await repo.getHistory({
+		provider: 'mono',
+		dateFrom: new Date(2026, 3, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 28, 12, 0, 0, 0).getTime()
+	})
+	const oneYear = await repo.getHistory({
+		provider: 'mono',
+		dateFrom: new Date(2025, 9, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 28, 12, 0, 0, 0).getTime()
+	})
+
+	assert.deepEqual(sixMonths.filter(item => item.inRange).map(item => item.sourceSnapshotId), ['apr-2026', 'aug-2026', 'sep-2026'])
+	assert.deepEqual(oneYear.filter(item => item.inRange).map(item => item.sourceSnapshotId), ['nov-2025', 'apr-2026', 'aug-2026', 'sep-2026'])
+	assert.equal(new Set(oneYear.map(item => item.providerAccountId)).size, 1)
+	assert.ok(oneYear.every(item => Number.isFinite(item.timestamp)))
 })
 
 test('Category legacy language cache migrates into IndexedDB records', async () => {

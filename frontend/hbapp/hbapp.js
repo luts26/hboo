@@ -8,6 +8,7 @@ import planningStore from './stores/PlanningStore.js'
 import balanceStore from './stores/BalanceStore.js'
 import transactionStore from './stores/TransactionStore.js'
 import FinancialSummary from './components/FinancialSummary.js'
+import TransactionLocalRepository from './services/TransactionLocalRepository.js'
 import {clearAuthState, getAuthenticatedUserId, getAuthToken} from './services/AuthSession.js'
 import connectionSyncStatus from './services/ConnectionSyncStatus.js'
 import {deriveSectionFreshness} from './services/SectionFreshness.js'
@@ -27,6 +28,8 @@ const hbapp = {
 	planningState: planningStore.getState(),
 	balanceSummaryState: balanceStore.getState(),
 	transactionSummaryState: transactionStore.getState(),
+	transactionSummaryRepository: new TransactionLocalRepository(),
+	transactionSummaryLoadId: 0,
 	unsubscribeFinancialSummary: null,
 	unsubscribeBalanceSummary: null,
 	unsubscribeTransactionSummary: null,
@@ -104,12 +107,51 @@ const hbapp = {
 			this.renderFinancialSummary()
 		})
 		this.unsubscribeTransactionSummary = transactionStore.subscribe(state => {
-			this.transactionSummaryState = state
-			this.renderFinancialSummary()
+			this.refreshFinancialSummaryTransactions()
 		})
 		balanceStore.hydrateFromCache()
+		this.refreshFinancialSummaryTransactions()
 		transactionStore.hydrateFromCache()
 		planningStore.load()
+	},
+
+	getFinancialSummaryTransactionRange: function(now = new Date()) {
+		const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+		return {
+			dateFrom: from.getTime(),
+			dateTo: now.getTime()
+		}
+	},
+
+	refreshFinancialSummaryTransactions: async function() {
+		const loadId = ++this.transactionSummaryLoadId
+		const range = this.getFinancialSummaryTransactionRange()
+		try {
+			const cache = await this.transactionSummaryRepository.getRange(range)
+			if (loadId !== this.transactionSummaryLoadId) return
+			this.transactionSummaryState = {
+				...this.transactionSummaryState,
+				data: cache?.data || {mono: [], privat: []},
+				updatedAt: cache?.updatedAt || null,
+				loaded: true,
+				source: 'cache',
+				range,
+				coverage: cache?.coverage || null,
+				error: null
+			}
+			this.renderFinancialSummary()
+		} catch (error) {
+			if (loadId !== this.transactionSummaryLoadId) return
+			this.transactionSummaryState = {
+				...this.transactionSummaryState,
+				data: {mono: [], privat: []},
+				loaded: true,
+				source: 'cache',
+				range,
+				error
+			}
+			this.renderFinancialSummary()
+		}
 	},
 
 	renderFinancialSummary: function(viewModel = this.financialSummaryViewModel) {

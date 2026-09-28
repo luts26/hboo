@@ -8,6 +8,7 @@ import { datePickerDefault } from '../mixins/calendarHelper.js'
 import { hbRangeCreate } from '../mixins/hbRangeHelper.js'
 import {
 	getDateInputValue,
+	getDateSelectionFromRange,
 	normalizeTransactionDateSelection
 } from '../services/TransactionDateRange.js'
 import {getCategoryFilterFromQuery} from '../services/HomeAnalyticsNavigation.js'
@@ -786,6 +787,7 @@ export default class TransactionPage extends AbstractClass {
 
 			document.querySelector('body').scrollToTop = 0
 		}
+		let renderedDayCount = 0
 		Object.keys(this.sumTransactionsByDate)
 			.filter(i => i !== 'mono' && i !== 'privat')
 			.sort((a, b) => this.getDaySortValue(b) - this.getDaySortValue(a))
@@ -794,6 +796,7 @@ export default class TransactionPage extends AbstractClass {
 			const transactionFiltersData = this.getDaySummary(i)
 			if (this.filterBank.length) {
 				if (transactionFiltersData.in === 0 && transactionFiltersData.out === 0) return
+				renderedDayCount += 1
 				htmlTemplate += `<button class="transaction-date-container transaction-day-card" type="button" data-action="open-day-modal" data-daterow="${this.escapeHtml(i)}">
 						<div class="transaction-day-card-header">
 							<strong>${this.escapeHtml(this.formatDayLabel(i))}</strong>
@@ -807,6 +810,9 @@ export default class TransactionPage extends AbstractClass {
 					</button>`
 			}
 		})
+		if (!renderedDayCount) {
+			htmlTemplate += `<div class="transaction-empty-state">No transactions for selected period</div>`
+		}
 		let tin = 0
 		let tout = 0
 		let tcashback = 0
@@ -818,6 +824,7 @@ export default class TransactionPage extends AbstractClass {
 			tcommission += this.sumTransactionsByDate.mono.commission
 		}
 		if (this.filterBank.indexOf('privat') !== -1) {
+			tin += this.sumTransactionsByDate.privat.in
 			tout += this.sumTransactionsByDate.privat.out
 			tcashback += this.sumTransactionsByDate.privat.cashback
 			tcommission += this.sumTransactionsByDate.privat.commission
@@ -950,10 +957,12 @@ export default class TransactionPage extends AbstractClass {
 		let df = this.$hbapp.querySelector('.transaction-filters .input-date-picker-from').value
 		let dt = this.$hbapp.querySelector('.transaction-filters .input-date-picker-to').value
 		const range = normalizeTransactionDateSelection({from: df, to: dt})
+		const selectedRange = getDateSelectionFromRange(range)
+		if (selectedRange) this.appliedDateRange = selectedRange
 
 		const state = await this.refresh('', {range})
 		if (state?.loaded) {
-			this.appliedDateRange = {from: df, to: dt}
+			this.syncAppliedDateRangeFromState(state)
 			transactionStore.saveSelectedRange(state.range)
 		}
 	}
@@ -988,11 +997,16 @@ export default class TransactionPage extends AbstractClass {
 		this.afterUpdate()
 	}
 
+	getFilterModalRoot() {
+		return document.querySelector('.transaction-filter-modal')
+	}
+
 	updateFilterDraftFromModal() {
 		if (!this.filterDraft) return
-		const from = this.$hbapp.querySelector('[data-filter-field="from"]')?.value
-		const to = this.$hbapp.querySelector('[data-filter-field="to"]')?.value
-		const categoryId = this.$hbapp.querySelector('.transaction-filter-modal-category')?.value
+		const modal = this.getFilterModalRoot()
+		const from = modal?.querySelector('[data-filter-field="from"]')?.value
+		const to = modal?.querySelector('[data-filter-field="to"]')?.value
+		const categoryId = modal?.querySelector('.transaction-filter-modal-category')?.value
 		if (from) this.filterDraft.from = from
 		if (to) this.filterDraft.to = to
 		if (categoryId) this.filterDraft.categoryId = categoryId
@@ -1034,9 +1048,11 @@ export default class TransactionPage extends AbstractClass {
 
 		if (datesChanged) {
 			const range = normalizeTransactionDateSelection({from: draft.from, to: draft.to})
+			const selectedRange = getDateSelectionFromRange(range)
+			if (selectedRange) this.appliedDateRange = selectedRange
 			const state = await this.refresh('', {range})
 			if (!state?.loaded) return
-			this.appliedDateRange = {from: draft.from, to: draft.to}
+			this.syncAppliedDateRangeFromState(state)
 			transactionStore.saveSelectedRange(state.range)
 		}
 

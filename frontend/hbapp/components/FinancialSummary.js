@@ -22,7 +22,7 @@ const formatDate = value => {
 const getMonthPeriod = () => {
 	const now = new Date()
 	const from = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1))
-	const to = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+	const to = now.getTime()
 	return {
 		from,
 		to,

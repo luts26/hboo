@@ -1,5 +1,10 @@
 import IndexedDbClient from './IndexedDbClient.js'
 import {getAuthenticatedUserId} from './AuthSession.js'
+import {
+	getAccountId,
+	getProviderAccountId,
+	getSnapshotTimestamp
+} from './BalanceSnapshotNormalizer.js'
 
 const STORAGE_KEY = 'hboo-balance-cache-v1'
 const STORAGE_VERSION = 1
@@ -22,20 +27,7 @@ const getCurrentUserKey = () => {
 	return userId ? String(userId) : 'anonymous'
 }
 
-const getProviderAccountId = (provider, account = {}) => {
-	if (provider === 'mono') return String(account.c_id || account.iban || account.id || 'default')
-	return String(account.account || account.card_number || account.id || 'default')
-}
-
-const getAccountId = (provider, account = {}, userKey = getCurrentUserKey()) => {
-	return `${userKey}:${getProviderAccountId(provider, account)}`
-}
-
-const getSnapshotAt = (provider, account = {}) => {
-	const date = toNumber(account.date)
-	if (!date) return null
-	return provider === 'mono' ? date * 1000 : date
-}
+const getSnapshotAt = getSnapshotTimestamp
 
 const normalizeBalanceRecord = (provider, account = {}, fetchedAt = Date.now(), userKey = getCurrentUserKey()) => {
 	const amountScale = provider === 'mono' ? 100 : 1

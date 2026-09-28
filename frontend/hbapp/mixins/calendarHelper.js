@@ -15,8 +15,33 @@ const MONTHS = [
 let inputDatePicker = null
 let inputDatePickerFrom = null
 let inputDatePickerTo = null
+let datePickerStyleMounted = false
+
+const DATE_VALUE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+
+const isValidDateValue = value => DATE_VALUE_PATTERN.test(String(value || ''))
+
+const parseDateValue = value => {
+	const match = String(value || '').match(DATE_VALUE_PATTERN)
+	if (!match) return null
+	const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+	return Number.isNaN(date.getTime()) ? null : date
+}
+
+const formatDateValue = date => {
+	if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
+	return [
+		date.getFullYear(),
+		String(date.getMonth() + 1).padStart(2, '0'),
+		String(date.getDate()).padStart(2, '0')
+	].join('-')
+}
+
+const getCurrentDateValue = () => formatDateValue(new Date())
 
 const _setDatePickerStyle = () => {
+	if (datePickerStyleMounted) return
+	datePickerStyleMounted = true
 
 	let datePickerStyle = document.createElement('style')
 	datePickerStyle.innerText =  `
@@ -92,7 +117,9 @@ const _setDatePickerStyle = () => {
 	document.head.appendChild(datePickerStyle)
 }
 
-const _getCalendarFilters = (monthNumber = new Date().getMonth()) => {
+const _getCalendarFilters = (monthNumber = new Date().getMonth(), year = new Date().getFullYear()) => {
+	const currentYear = new Date().getFullYear()
+	const years = new Set([year, currentYear, currentYear - 1, currentYear + 1, 2023, 2024, 2025, 2026])
 	let calendarTemplate = `
 		<div id="date">
 			<div class="input-date-picker-container">
@@ -115,7 +142,9 @@ const _getCalendarFilters = (monthNumber = new Date().getMonth()) => {
 					})
 				calendarTemplate += `</select>
 				<select name="syear" id="syear">
-					<option value="2023">2023</option>
+					${Array.from(years).sort((a, b) => a - b).map(item => {
+						return `<option ${item === year ? 'selected ' : ''}value="${item}">${item}</option>`
+					}).join('')}
 				</select>
 			</div>
 		</div>
@@ -126,11 +155,12 @@ const _getCalendarFilters = (monthNumber = new Date().getMonth()) => {
 const createCalendar = (selectDate = new Date(), selectedRange = null) => {
 
 	let currentDate = new Date()
-	let dateFromSelect = new Date(selectDate)
+	let dateFromSelect = selectDate instanceof Date ? new Date(selectDate.getTime()) : new Date(selectDate)
+	if (Number.isNaN(dateFromSelect.getTime())) dateFromSelect = currentDate
 
 	let year = dateFromSelect.getFullYear()
-	let month = (dateFromSelect.getMonth() < 10) ? '0' + (dateFromSelect.getMonth() + 1) : dateFromSelect.getMonth() + 1
-	let selectedTo = selectedRange?.to ? new Date(selectedRange.to) : null
+	let month = String(dateFromSelect.getMonth() + 1).padStart(2, '0')
+	let selectedTo = selectedRange?.to ? parseDateValue(selectedRange.to) : null
 	let day = selectedTo && !Number.isNaN(selectedTo.getTime()) ? selectedTo.getDate() : currentDate.getDate()
 	let dayOfWeek = new Date(year, dateFromSelect.getMonth()).getDay()
 	let curentDay = 1
@@ -172,19 +202,40 @@ const datePickerDefault = (selectedRange = null) => {
 	_setDatePickerStyle()
 
 	const $datePicker = document.querySelector('date-picker')
+	if (!$datePicker) return
+	const currentFrom = $datePicker.querySelector('.input-date-picker-from')?.value || ''
+	const currentTo = $datePicker.querySelector('.input-date-picker-to')?.value || ''
+	const explicitRange = selectedRange?.from && selectedRange?.to
+		? selectedRange
+		: (isValidDateValue(currentFrom) && isValidDateValue(currentTo) ? {from: currentFrom, to: currentTo} : null)
+	const fallbackTo = getCurrentDateValue()
+	const fallbackFrom = `${fallbackTo.slice(0, 8)}01`
+	const pickerRange = {
+		from: explicitRange?.from || inputDatePickerFrom || fallbackFrom,
+		to: explicitRange?.to || inputDatePickerTo || inputDatePicker || fallbackTo
+	}
+	const selectedDate = parseDateValue(pickerRange.from) || new Date()
 	$datePicker.classList.add('date-picker-hide')
-	const selectedDate = selectedRange?.from ? new Date(selectedRange.from) : new Date()
-	$datePicker.innerHTML = _getCalendarFilters(selectedDate.getMonth())
-	$datePicker.querySelector('.calendar-table').innerHTML = createCalendar(selectedDate, selectedRange)
-	$datePicker.querySelector('.input-date-picker-from').value = selectedRange?.from || inputDatePickerFrom || inputDatePicker
-	$datePicker.querySelector('.input-date-picker-to').value = selectedRange?.to || inputDatePickerTo || inputDatePicker
+	$datePicker.innerHTML = _getCalendarFilters(selectedDate.getMonth(), selectedDate.getFullYear())
+	$datePicker.querySelector('.calendar-table').innerHTML = createCalendar(selectedDate, pickerRange)
+	$datePicker.querySelector('.input-date-picker-from').value = pickerRange.from
+	$datePicker.querySelector('.input-date-picker-to').value = pickerRange.to
+	inputDatePickerFrom = pickerRange.from
+	inputDatePickerTo = pickerRange.to
+	inputDatePicker = pickerRange.to
 
-	$datePicker.querySelector('#smonth').addEventListener('change', e => {
-		let month = Number(e.target.value) + 1
-		inputDatePicker = `2023-${(month) < 10 ? '0' + month : month}`
-		document.querySelector('.calendar-table').innerHTML = createCalendar(inputDatePicker)
-		document.querySelector('.active-input').value = inputDatePicker
-	})
+	const renderSelectedMonth = () => {
+		const year = Number($datePicker.querySelector('#syear')?.value) || new Date().getFullYear()
+		const month = Number($datePicker.querySelector('#smonth')?.value) || 0
+		const selectedMonth = new Date(year, month, 1)
+		$datePicker.querySelector('.calendar-table').innerHTML = createCalendar(selectedMonth, {
+			from: $datePicker.querySelector('.input-date-picker-from')?.value,
+			to: $datePicker.querySelector('.input-date-picker-to')?.value
+		})
+	}
+
+	$datePicker.querySelector('#smonth').addEventListener('change', renderSelectedMonth)
+	$datePicker.querySelector('#syear').addEventListener('change', renderSelectedMonth)
 
 	$datePicker.addEventListener('click', e => {
 
@@ -203,11 +254,17 @@ const datePickerDefault = (selectedRange = null) => {
 		if (e.target.closest('td')) {
 			let selectedDay = e.target.closest('td')
 			if (!selectedDay.textContent) return
-			$datePicker.querySelector('td.active').classList.remove('active')
+			$datePicker.querySelector('td.active')?.classList.remove('active')
 			selectedDay.classList.add('active')
 			$datePicker.classList.add('date-picker-hide')
-			let dateArr = $datePicker.querySelector('.active-input').value.split('-')
-			$datePicker.querySelector('.active-input').value = dateArr[0] + '-' + dateArr[1] + '-' + selectedDay.textContent
+			const activeInput = $datePicker.querySelector('.active-input')
+			if (!activeInput) return
+			const year = Number($datePicker.querySelector('#syear')?.value) || new Date().getFullYear()
+			const month = String((Number($datePicker.querySelector('#smonth')?.value) || 0) + 1).padStart(2, '0')
+			activeInput.value = `${year}-${month}-${selectedDay.textContent.padStart(2, '0')}`
+			inputDatePickerFrom = $datePicker.querySelector('.input-date-picker-from')?.value || inputDatePickerFrom
+			inputDatePickerTo = $datePicker.querySelector('.input-date-picker-to')?.value || inputDatePickerTo
+			inputDatePicker = activeInput.value
 		}
 	})
 	

@@ -1,4 +1,4 @@
-const HBOO_APP_VERSION = '2026-09-25-manual-actual-segmented-v1'
+const HBOO_APP_VERSION = '2026-09-28-financial-position-idb-range-fix-v1'
 const HBOO_APP_SHELL_CACHE = `hboo-app-shell-${HBOO_APP_VERSION}`
 const HBOO_APP_SHELL_PREFIX = 'hboo-app-shell-'
 
@@ -7,8 +7,8 @@ const REQUIRED_SHELL_ASSETS = [
 	'/index.html',
 	'/planing',
 	'/manifest.webmanifest',
-	'/hbapp/assets/styles/main.css?v=6',
-	'/hbapp/index.js?v=6'
+	'/hbapp/assets/styles/main.css?v=9',
+	'/hbapp/index.js?v=9'
 ]
 
 const OPTIONAL_SHELL_ASSETS = [

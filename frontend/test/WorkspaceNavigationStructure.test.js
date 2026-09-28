@@ -24,6 +24,27 @@ test('financial summary cards remain the primary workspace navigation targets', 
 	assert.deepEqual(targets.sort(), ['balance', 'planing', 'transaction'])
 })
 
+test('sidebar financial summary transactions are independent from selected Transactions range', () => {
+	const appSource = read('hbapp/hbapp.js')
+	const summarySource = read('hbapp/components/FinancialSummary.js')
+	const transactionSubscription = appSource.match(/this\.unsubscribeTransactionSummary = transactionStore\.subscribe\([\s\S]*?\n\t\t\}\)/)?.[0] || ''
+
+	assert.match(appSource, /transactionSummaryRepository: new TransactionLocalRepository\(\)/)
+	assert.match(appSource, /getFinancialSummaryTransactionRange/)
+	assert.match(appSource, /dateFrom: from\.getTime\(\)/)
+	assert.match(appSource, /dateTo: now\.getTime\(\)/)
+	assert.match(transactionSubscription, /this\.refreshFinancialSummaryTransactions\(\)/)
+	assert.doesNotMatch(transactionSubscription, /this\.transactionSummaryState\s*=\s*state/)
+	assert.match(summarySource, /const to = now\.getTime\(\)/)
+})
+
+test('transactions page total income includes every selected provider', () => {
+	const source = read('hbapp/pages/TransactionPage.js')
+
+	assert.match(source, /tin \+= this\.sumTransactionsByDate\.mono\.in/)
+	assert.match(source, /tin \+= this\.sumTransactionsByDate\.privat\.in/)
+})
+
 test('active workspace state does not use an experimental shared silhouette', () => {
 	const cssSource = read('hbapp/assets/styles/main.css')
 	const appSource = read('hbapp/hbapp.js')

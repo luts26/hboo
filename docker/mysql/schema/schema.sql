@@ -152,7 +152,8 @@ CREATE TABLE `mono` (
   `iban` varchar(255) DEFAULT NULL,
   `send_id` varchar(255) DEFAULT NULL,
   `type` varchar(255) DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_mono_currency_date` (`currency_code`,`date`(20))
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -236,7 +237,8 @@ CREATE TABLE `privat` (
   `credit_limit` double DEFAULT NULL,
   `currency` varchar(255) DEFAULT NULL,
   `date` varchar(255) DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_privat_currency_date` (`currency`(10),`date`(20))
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

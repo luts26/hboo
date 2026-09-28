@@ -26,6 +26,9 @@ const routes = {
     'GET /api/hbv2/balance': {
         handler: balanceHandler
     },
+    'GET /api/hbv2/balance/history': {
+        handler: balanceHandler
+    },
     'GET /api/hbv2/transaction': {
         handler: transactionHandler
     },
