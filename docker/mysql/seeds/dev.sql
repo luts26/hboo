@@ -188,3 +188,76 @@ INSERT INTO `privat_transaction` (
     (2009, '-160.00', '4763.60', '0.00', '9', 'Поповнення мобільного', '1788591600000', 'Synthetic mobile payment', '0.00', '0.0000', '0.0000', 'test-privat-tx-2009', 'DEBIT'),
     (2010, '1200.00', '4603.60', '0.00', '8', 'Перекази', '1788546000000', 'Synthetic incoming transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2010', 'CREDIT'),
     (2011, '-500.00', '5803.60', '0.00', '100000000000896', 'Заощадження', '1788412200000', 'Synthetic deposit transfer', '0.00', '0.0000', '0.0000', 'test-privat-tx-2011', 'DEBIT');
+
+-- DEV-only Product Price History / Prices by Store dataset.
+-- Stable client_mutation_id values keep this deterministic and safe to rerun.
+SET NAMES utf8mb4;
+
+INSERT INTO purchase (
+    user_id,
+    client_mutation_id,
+    merchant_id,
+    purchased_at,
+    payment_type,
+    total,
+    note
+)
+SELECT u.id, seed.client_mutation_id, m.id, seed.purchased_at, 'cash', seed.total, seed.note
+FROM (
+    SELECT 'dev-price-2026-07-04-atb' client_mutation_id, 'АТБ' merchant_name, '2026-07-04 10:15:00' purchased_at, 164.40 total, 'DEV price history seed: July ATB groceries' note UNION ALL
+    SELECT 'dev-price-2026-07-19-novus', 'Novus', '2026-07-19 18:40:00', 170.61, 'DEV price history seed: July Novus groceries' UNION ALL
+    SELECT 'dev-price-2026-08-08-silpo', 'Сільпо', '2026-08-08 13:05:00', 270.40, 'DEV price history seed: August Silpo groceries' UNION ALL
+    SELECT 'dev-price-2026-08-24-atb', 'АТБ', '2026-08-24 19:10:00', 182.00, 'DEV price history seed: August ATB groceries' UNION ALL
+    SELECT 'dev-price-2026-09-10-novus', 'Novus', '2026-09-10 17:35:00', 130.41, 'DEV price history seed: September Novus groceries' UNION ALL
+    SELECT 'dev-price-2026-09-21-atb-morning', 'АТБ', '2026-09-21 10:30:00', 59.90, 'DEV price history seed: same-day ATB observation' UNION ALL
+    SELECT 'dev-price-2026-09-21-novus-evening', 'Novus', '2026-09-21 18:20:00', 58.41, 'DEV price history seed: same-day Novus observation' UNION ALL
+    SELECT 'dev-price-2026-09-24-bulvarchyk', 'Бульварчик', '2026-09-24 12:20:00', 68.00, 'DEV price history seed: count product at Bulvarchyk' UNION ALL
+    SELECT 'dev-price-2026-09-27-atb', 'АТБ', '2026-09-27 16:45:00', 223.30, 'DEV price history seed: duplicate Milk item rows'
+) seed
+INNER JOIN users u ON u.username = 'demo.user'
+INNER JOIN merchant m ON m.name = seed.merchant_name
+ON DUPLICATE KEY UPDATE
+    merchant_id = VALUES(merchant_id),
+    purchased_at = VALUES(purchased_at),
+    payment_type = VALUES(payment_type),
+    total = VALUES(total),
+    note = VALUES(note);
+
+DELETE pi
+FROM purchase_item pi
+INNER JOIN purchase p ON p.id = pi.purchase_id
+INNER JOIN users u ON u.id = p.user_id
+WHERE u.username = 'demo.user'
+  AND p.client_mutation_id LIKE 'dev-price-%';
+
+INSERT INTO purchase_item (
+    purchase_id,
+    product_id,
+    quantity,
+    unit,
+    total
+)
+SELECT p.id, pr.id, seed.quantity, seed.unit, seed.total
+FROM (
+    SELECT 'dev-price-2026-07-04-atb' client_mutation_id, 'Молоко' product_name, 1.000 quantity, 'l' unit, 57.90 total UNION ALL
+    SELECT 'dev-price-2026-07-04-atb', 'Помідори', 500.000, 'g', 42.50 UNION ALL
+    SELECT 'dev-price-2026-07-04-atb', 'Яйця курячі', 10.000, 'pcs', 64.00 UNION ALL
+    SELECT 'dev-price-2026-07-19-novus', 'Молоко', 900.000, 'ml', 56.61 UNION ALL
+    SELECT 'dev-price-2026-07-19-novus', 'Помідори', 1.200, 'kg', 114.00 UNION ALL
+    SELECT 'dev-price-2026-08-08-silpo', 'Молоко', 1.000, 'l', 65.40 UNION ALL
+    SELECT 'dev-price-2026-08-08-silpo', 'Помідори', 750.000, 'g', 69.00 UNION ALL
+    SELECT 'dev-price-2026-08-08-silpo', 'Яйця курячі', 20.000, 'pcs', 136.00 UNION ALL
+    SELECT 'dev-price-2026-08-24-atb', 'Молоко', 2.000, 'l', 116.00 UNION ALL
+    SELECT 'dev-price-2026-08-24-atb', 'Яйця курячі', 10.000, 'pcs', 66.00 UNION ALL
+    SELECT 'dev-price-2026-09-10-novus', 'Молоко', 900.000, 'ml', 58.41 UNION ALL
+    SELECT 'dev-price-2026-09-10-novus', 'Яйця курячі', 10.000, 'pcs', 72.00 UNION ALL
+    SELECT 'dev-price-2026-09-21-atb-morning', 'Молоко', 1.000, 'l', 59.90 UNION ALL
+    SELECT 'dev-price-2026-09-21-novus-evening', 'Молоко', 900.000, 'ml', 58.41 UNION ALL
+    SELECT 'dev-price-2026-09-24-bulvarchyk', 'Яйця курячі', 10.000, 'pcs', 68.00 UNION ALL
+    SELECT 'dev-price-2026-09-27-atb', 'Молоко', 1.000, 'l', 60.20 UNION ALL
+    SELECT 'dev-price-2026-09-27-atb', 'Молоко', 500.000, 'ml', 31.10 UNION ALL
+    SELECT 'dev-price-2026-09-27-atb', 'Помідори', 1.500, 'kg', 132.00
+) seed
+INNER JOIN users u ON u.username = 'demo.user'
+INNER JOIN purchase p ON p.user_id = u.id AND p.client_mutation_id = seed.client_mutation_id
+INNER JOIN product pr ON pr.name = seed.product_name;

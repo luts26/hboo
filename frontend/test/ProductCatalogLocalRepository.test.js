@@ -220,6 +220,100 @@ test('purchase range query includes pending_create/update and excludes pending_d
 	assert.deepEqual(purchases.map(purchase => purchase.total).sort((a, b) => a - b), [10, 20])
 })
 
+test('hydrated purchase range returns saved purchases newest first', async () => {
+	const repository = makeRepository()
+	const range = {
+		dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 30, 23, 59, 59, 999).getTime()
+	}
+	await repository.mergeServerPurchases([
+		{id: 1, userId: 7, merchantName: 'Novus', purchasedAt: '2026-09-27T12:00:00', paymentType: 'cash', total: 27, items: []},
+		{id: 2, userId: 7, merchantName: 'АТБ', purchasedAt: '2026-09-29T12:00:00', paymentType: 'cash', total: 29, items: []},
+		{id: 3, userId: 7, merchantName: 'Бульварчик', purchasedAt: '2026-09-24T12:00:00', paymentType: 'cash', total: 24, items: []}
+	], {userId: 7, range, markComplete: true})
+
+	const purchases = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+
+	assert.deepEqual(purchases.map(purchase => purchase.merchantName), ['АТБ', 'Novus', 'Бульварчик'])
+})
+
+test('offline cached purchase range keeps newest-first ordering after reload', async () => {
+	const indexedDbClient = new FakeIndexedDbClient()
+	const repository = new ProductCatalogLocalRepository({indexedDbClient})
+	const range = {
+		dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 30, 23, 59, 59, 999).getTime()
+	}
+	await repository.mergeServerPurchases([
+		{id: 1, userId: 7, merchantName: 'Аврора', purchasedAt: '2026-09-18T12:00:00', paymentType: 'cash', total: 18, items: []},
+		{id: 2, userId: 7, merchantName: 'АТБ', purchasedAt: '2026-09-29T12:00:00', paymentType: 'cash', total: 29, items: []},
+		{id: 3, userId: 7, merchantName: 'Novus', purchasedAt: '2026-09-27T12:00:00', paymentType: 'cash', total: 27, items: []}
+	], {userId: 7, range, markComplete: true})
+
+	const restoredRepository = new ProductCatalogLocalRepository({indexedDbClient})
+	const purchases = await restoredRepository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+
+	assert.deepEqual(purchases.map(purchase => purchase.merchantName), ['АТБ', 'Novus', 'Аврора'])
+})
+
+test('offline newly created latest purchase appears at the top and stays single after sync', async () => {
+	const repository = makeRepository()
+	const range = {
+		dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 30, 23, 59, 59, 999).getTime()
+	}
+	await repository.mergeServerPurchases([
+		{id: 1, userId: 7, merchantName: 'Novus', purchasedAt: '2026-09-27T12:00:00', paymentType: 'cash', total: 27, items: []}
+	], {userId: 7, range, markComplete: true})
+	const local = await repository.savePurchase({
+		userId: 7,
+		merchantName: 'АТБ',
+		purchasedAt: '2026-09-29T18:30:00',
+		paymentType: 'cash',
+		total: 29,
+		items: []
+	}, {syncStatus: 'pending_create', userId: 7})
+
+	let purchases = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+	assert.deepEqual(purchases.map(purchase => purchase.merchantName), ['АТБ', 'Novus'])
+
+	await repository.markPurchaseSynced(local.id, {
+		id: 900,
+		clientMutationId: local.clientMutationId,
+		userId: 7,
+		merchantName: 'АТБ',
+		purchasedAt: '2026-09-29T18:30:00',
+		paymentType: 'cash',
+		total: 29,
+		items: []
+	})
+	await repository.mergeServerPurchases([
+		{id: 900, userId: 7, clientMutationId: local.clientMutationId, merchantName: 'АТБ', purchasedAt: '2026-09-29T18:30:00', paymentType: 'cash', total: 29, items: []}
+	], {userId: 7, range, markComplete: true})
+
+	purchases = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+	assert.deepEqual(purchases.map(purchase => purchase.merchantName), ['АТБ', 'Novus'])
+	assert.equal(purchases.filter(purchase => purchase.merchantName === 'АТБ').length, 1)
+})
+
+test('equal purchasedAt ordering uses deterministic secondary key', async () => {
+	const repository = makeRepository()
+	const range = {
+		dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+		dateTo: new Date(2026, 8, 30, 23, 59, 59, 999).getTime()
+	}
+	await repository.mergeServerPurchases([
+		{id: 9001, userId: 7, merchantName: 'First deterministic', purchasedAt: '2026-09-29T12:00:00', paymentType: 'cash', total: 1, items: []},
+		{id: 9002, userId: 7, merchantName: 'Second deterministic', purchasedAt: '2026-09-29T12:00:00', paymentType: 'cash', total: 2, items: []}
+	], {userId: 7, range, markComplete: true})
+
+	const firstRead = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+	const secondRead = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+
+	assert.deepEqual(firstRead.map(purchase => purchase.merchantName), ['Second deterministic', 'First deterministic'])
+	assert.deepEqual(secondRead.map(purchase => purchase.id), firstRead.map(purchase => purchase.id))
+})
+
 test('purchase coverage is user scoped and empty complete range is valid coverage', async () => {
 	const repository = makeRepository()
 	const range = {

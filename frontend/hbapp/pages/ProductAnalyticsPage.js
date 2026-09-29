@@ -84,7 +84,8 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		loading: true,
 		error: '',
 		selectedCategoryId: null,
-		selectedProductId: null
+		selectedProductId: null,
+		activePricePointId: null
 	}
 
 	constructor(hbapp) {
@@ -96,6 +97,17 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		this.handleKeydown = event => {
 			if (event.key === 'Escape' && this.state.selectedProductId) this.closeProductDetail()
 		}
+		this.handlePricePointHover = event => {
+			const target = event.target.closest('[data-price-point-id]')
+			if (target) this.selectPricePoint(target.dataset.pricePointId, target)
+		}
+		this.handlePriceChartMouseOut = event => {
+			const chart = event.target.closest('[data-product-price-chart]')
+			if (chart && !chart.contains(event.relatedTarget)) this.hidePriceTooltip()
+		}
+		this.handleOutsidePointer = event => {
+			if (!event.target.closest('[data-price-point-id], [data-product-price-tooltip]')) this.hidePriceTooltip()
+		}
 		document.addEventListener('keydown', this.handleKeydown)
 		this.init()
 	}
@@ -103,10 +115,18 @@ export default class ProductAnalyticsPage extends AbstractClass {
 	destroy() {
 		if (this.unsubscribeProductCatalogChanges) this.unsubscribeProductCatalogChanges()
 		if (this.handleKeydown) document.removeEventListener('keydown', this.handleKeydown)
+		this.$hbapp.removeEventListener('mouseover', this.handlePricePointHover)
+		this.$hbapp.removeEventListener('focusin', this.handlePricePointHover)
+		this.$hbapp.removeEventListener('mouseout', this.handlePriceChartMouseOut)
+		document.removeEventListener('pointerdown', this.handleOutsidePointer)
 		overlayHost.clear('product-analytics-detail')
 	}
 
 	init() {
+		this.$hbapp.addEventListener('mouseover', this.handlePricePointHover)
+		this.$hbapp.addEventListener('focusin', this.handlePricePointHover)
+		this.$hbapp.addEventListener('mouseout', this.handlePriceChartMouseOut)
+		document.addEventListener('pointerdown', this.handleOutsidePointer)
 		this.render()
 		this.loadPeriod(this.state.periodKey)
 	}
@@ -125,6 +145,7 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		if (action === 'close-category') this.closeCategory()
 		if (action === 'open-product') this.openProduct(target.dataset.productId)
 		if (action === 'close-product') this.closeProductDetail()
+		if (action === 'select-price-point') this.selectPricePoint(target.dataset.pricePointId, target)
 	}
 
 	async loadPeriod(periodKey = 'current') {
@@ -137,6 +158,7 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		this.state.unavailableOffline = false
 		this.state.selectedCategoryId = null
 		this.state.selectedProductId = null
+		this.state.activePricePointId = null
 		this.render()
 
 		try {
@@ -210,11 +232,13 @@ export default class ProductAnalyticsPage extends AbstractClass {
 
 	openProduct(productId) {
 		this.state.selectedProductId = productId || null
+		this.state.activePricePointId = null
 		this.render()
 	}
 
 	closeProductDetail() {
 		this.state.selectedProductId = null
+		this.state.activePricePointId = null
 		this.render()
 	}
 
@@ -362,8 +386,9 @@ export default class ProductAnalyticsPage extends AbstractClass {
 						${this.getProductDetailField('Last price', detail.lastUnitPriceLabel || formatUnitPrice(detail.lastUnitPrice, detail.priceUnit))}
 						${this.getProductDetailField('Purchases', detail.purchaseCount)}
 					</div>
-					${this.getRecentPurchasesTemplate(detail)}
 					${this.getPriceHistoryTemplate(detail)}
+					${this.getStorePricesTemplate(detail)}
+					${this.getRecentPurchasesTemplate(detail)}
 				</div>
 			</div>
 		</div>`
@@ -386,7 +411,8 @@ export default class ProductAnalyticsPage extends AbstractClass {
 	}
 
 	getRecentPurchasesTemplate(detail) {
-		const rows = detail.recentPurchases.map(point => `
+		const visible = detail.recentPurchases.slice(0, 5)
+		const rows = visible.map(point => `
 			<div class="product-analytics-purchase-row">
 				<div class="product-analytics-purchase-title">
 					<strong>${this.escapeHtml(formatDateShort(point.purchasedAt))} · ${this.escapeHtml(point.merchantName)}</strong>
@@ -398,23 +424,188 @@ export default class ProductAnalyticsPage extends AbstractClass {
 				</div>
 			</div>
 		`).join('')
+		const note = detail.recentPurchases.length > visible.length
+			? `<div class="product-analytics-detail-empty">Showing latest ${visible.length} of ${detail.recentPurchases.length} purchases.</div>`
+			: ''
 		return `<section class="product-analytics-detail-section">
 			<h5>Recent purchases</h5>
 			${rows || '<div class="product-analytics-detail-empty">No comparable purchases for this period.</div>'}
+			${note}
 		</section>`
 	}
 
 	getPriceHistoryTemplate(detail) {
-		const rows = detail.history.map(point => `
-			<div class="product-analytics-price-row">
-				<span>${this.escapeHtml(formatDateShort(point.purchasedAt))}</span>
-				<strong>${this.escapeHtml(point.unitPriceLabel || '-')}</strong>
+		return `<section class="product-analytics-detail-section">
+			<div class="product-analytics-detail-section-title">
+				<h5>Price history</h5>
+				<span>${detail.priceUnit ? this.escapeHtml(`Price, грн/${detail.priceUnit}`) : ''}</span>
+			</div>
+			${detail.priceChartPoints.length ? this.getPriceChartTemplate(detail) : '<div class="product-analytics-detail-empty">Price history is not available for this product yet.</div>'}
+		</section>`
+	}
+
+	getStorePricesTemplate(detail) {
+		const rows = detail.storePrices.map(store => `
+			<div class="product-analytics-store-row">
+				<strong>${this.escapeHtml(store.merchantName)}</strong>
+				<div>
+					<span>Avg ${this.escapeHtml(store.averageUnitPriceLabel || '-')}</span>
+					<span>Last ${this.escapeHtml(store.lastUnitPriceLabel || '-')}</span>
+					<span>${this.escapeHtml(String(store.purchaseCount))} purchases</span>
+					<span>${this.escapeHtml(store.displayQuantity || '-')}</span>
+				</div>
 			</div>
 		`).join('')
 		return `<section class="product-analytics-detail-section">
-			<h5>Price history</h5>
-			${rows || '<div class="product-analytics-detail-empty">No valid price points for this period.</div>'}
+			<h5>Prices by store</h5>
+			${rows || '<div class="product-analytics-detail-empty">No store price observations for this period.</div>'}
 		</section>`
+	}
+
+	getPriceScale(points) {
+		const prices = points.map(point => Number(point.price)).filter(Number.isFinite)
+		const min = Math.min(...prices)
+		const max = Math.max(...prices)
+		if (min === max) {
+			const padding = Math.max(1, Math.abs(min) * .08)
+			return {min: min - padding, max: max + padding}
+		}
+		const padding = Math.max((max - min) * .18, max * .015, 1)
+		return {
+			min: Math.max(0, min - padding),
+			max: max + padding
+		}
+	}
+
+	getPriceChartTemplate(detail) {
+		const rawPoints = detail.priceChartPoints
+		const width = 640
+		const height = 230
+		const padding = {top: 16, right: 18, bottom: 38, left: 58}
+		const plotWidth = width - padding.left - padding.right
+		const plotHeight = height - padding.top - padding.bottom
+		const scale = this.getPriceScale(rawPoints)
+		const timestamps = rawPoints.map(point => Number(point.timestamp)).filter(Number.isFinite)
+		const firstTimestamp = Math.min(...timestamps)
+		const lastTimestamp = Math.max(...timestamps)
+		const rangeMs = Math.max(1, lastTimestamp - firstTimestamp)
+		const xFor = timestamp => rawPoints.length === 1
+			? padding.left + plotWidth / 2
+			: padding.left + ((timestamp - firstTimestamp) / rangeMs) * plotWidth
+		const yFor = price => padding.top + ((scale.max - price) / Math.max(1, scale.max - scale.min)) * plotHeight
+		const points = rawPoints.map(point => ({
+			...point,
+			x: xFor(Number(point.timestamp)),
+			y: yFor(Number(point.price))
+		}))
+		const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
+		const ticks = [scale.max, scale.min + (scale.max - scale.min) * .67, scale.min + (scale.max - scale.min) * .33, scale.min]
+		const yTicks = ticks.map(value => {
+			const y = yFor(value)
+			return `<g>
+				<line class="home-line-grid" x1="${padding.left}" x2="${width - padding.right}" y1="${y.toFixed(2)}" y2="${y.toFixed(2)}"></line>
+				<text class="home-line-y-label" x="${padding.left - 8}" y="${(y + 4).toFixed(2)}" text-anchor="end">${this.escapeHtml(this.formatAxisPrice(value))}</text>
+			</g>`
+		}).join('')
+		const labelPoints = this.getPriceAxisLabelPoints(points)
+		const xLabels = labelPoints.map(point => `<text class="home-line-axis-label" x="${point.x.toFixed(2)}" y="${height - 14}" text-anchor="middle">${this.escapeHtml(point.dateLabel)}</text>`).join('')
+		const markers = points.map(point => `<circle class="home-line-marker product-price-marker" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4"></circle>`).join('')
+		const targets = points.map(point => {
+			const isActive = point.id === this.state.activePricePointId
+			return `<button class="product-price-point ${isActive ? 'active' : ''}" type="button" data-analytics-action="select-price-point" data-price-point-id="${this.escapeHtml(point.id)}" aria-label="${this.escapeHtml(`${point.fullDateLabel}. ${point.merchantName}. ${point.priceLabel}. ${point.quantityLabel}. ${point.totalLabel}`)}" style="left:${((point.x / width) * 100).toFixed(2)}%; top:${((point.y / height) * 100).toFixed(2)}%;">
+				<span class="home-income-target-dot product-price-target-dot" aria-hidden="true"></span>
+			</button>`
+		}).join('')
+		return `<div class="product-price-chart" data-product-price-chart>
+			<div class="home-income-line-shell product-price-line-shell">
+				<svg class="home-income-line-svg product-price-line-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Product price history">
+					${yTicks}
+					<line class="home-line-axis" x1="${padding.left}" x2="${width - padding.right}" y1="${padding.top + plotHeight}" y2="${padding.top + plotHeight}"></line>
+					${xLabels}
+					${points.length > 1 ? `<path class="home-line-series product-price-series" d="${path}"></path>` : ''}
+					${markers}
+				</svg>
+				<div class="home-income-targets">${targets}</div>
+				<div class="home-month-tooltip product-price-tooltip" data-product-price-tooltip aria-hidden="true"></div>
+			</div>
+		</div>`
+	}
+
+	getPriceAxisLabelPoints(points) {
+		if (points.length <= 3) return points
+		const indexes = new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])
+		return points.filter((point, index) => indexes.has(index))
+	}
+
+	formatAxisPrice(value) {
+		const amount = Number(value) || 0
+		return amount.toLocaleString('uk-UA', {
+			maximumFractionDigits: amount >= 100 ? 0 : 1,
+			minimumFractionDigits: 0
+		})
+	}
+
+	selectPricePoint(pointId, target = null) {
+		if (!pointId) return
+		this.state.activePricePointId = pointId
+		this.$hbapp.querySelectorAll('[data-price-point-id]').forEach(button => {
+			button.classList.toggle('active', button.dataset.pricePointId === pointId)
+		})
+		this.renderPriceTooltip(pointId, target)
+	}
+
+	renderPriceTooltip(pointId = this.state.activePricePointId, target = null) {
+		const root = this.$hbapp.querySelector('[data-product-price-tooltip]')
+		const detail = this.getSelectedProductDetail()
+		if (!root || !detail) return
+		const point = detail.priceChartPoints.find(item => item.id === pointId)
+		if (!point) {
+			this.hidePriceTooltip()
+			return
+		}
+		root.innerHTML = `<div class="home-month-tooltip-card">
+			<div class="home-month-tooltip-title">${this.escapeHtml(point.fullDateLabel)}</div>
+			<div class="home-month-tooltip-grid">
+				<span>Store</span><strong>${this.escapeHtml(point.merchantName)}</strong>
+				<span>Price</span><strong>${this.escapeHtml(point.priceLabel)}</strong>
+				<span>Quantity</span><strong>${this.escapeHtml(point.quantityLabel || '-')}</strong>
+				<span>Total</span><strong>${this.escapeHtml(point.totalLabel)}</strong>
+			</div>
+		</div>`
+		root.classList.add('active')
+		root.setAttribute('aria-hidden', 'false')
+		this.positionPriceTooltip(target)
+	}
+
+	positionPriceTooltip(target) {
+		const tooltip = this.$hbapp.querySelector('[data-product-price-tooltip]')
+		const chart = this.$hbapp.querySelector('[data-product-price-chart]')
+		if (!tooltip || !chart || !target) return
+		const chartRect = chart.getBoundingClientRect()
+		const targetRect = target.getBoundingClientRect()
+		const tooltipWidth = Math.min(280, Math.max(220, tooltip.offsetWidth || 240))
+		const center = targetRect.left + (targetRect.width / 2) - chartRect.left
+		const left = Math.max((tooltipWidth / 2) + 8, Math.min(center, chartRect.width - (tooltipWidth / 2) - 8))
+		const above = targetRect.top - chartRect.top
+		const top = above > 145
+			? above - 8
+			: targetRect.bottom - chartRect.top + 10
+		tooltip.style.setProperty('--home-tooltip-x', `${left}px`)
+		tooltip.style.setProperty('--home-tooltip-y', `${top}px`)
+		tooltip.classList.toggle('home-month-tooltip-below', above <= 145)
+	}
+
+	hidePriceTooltip() {
+		this.state.activePricePointId = null
+		const root = this.$hbapp.querySelector('[data-product-price-tooltip]')
+		if (root) {
+			root.classList.remove('active', 'home-month-tooltip-below')
+			root.setAttribute('aria-hidden', 'true')
+			root.innerHTML = ''
+		}
+		this.$hbapp.querySelectorAll('[data-price-point-id]').forEach(button => {
+			button.classList.remove('active')
+		})
 	}
 
 	escapeHtml(value = '') {

@@ -104,6 +104,8 @@ const formatUnitPriceLabel = (value, unit) => value === null || value === undefi
 	? ''
 	: `${formatMoneyAmount(value)} грн/${unit}`
 
+const formatMoneyLabel = value => `${formatMoneyAmount(value)} грн`
+
 const formatRawQuantity = (quantity, unit) => {
 	const amount = Number(quantity)
 	if (!Number.isFinite(amount) || !unit) return ''
@@ -122,6 +124,108 @@ const resolveMerchant = (purchase, merchantsById) => {
 		id: merchant?.id ?? purchase.merchantId ?? purchase.merchantServerId ?? null,
 		name: merchant?.name || purchase.merchantName || 'Unknown merchant'
 	}
+}
+
+const formatShortDateLabel = timestamp => {
+	const date = new Date(Number(timestamp))
+	if (Number.isNaN(date.getTime())) return ''
+	return date.toLocaleDateString('en-GB', {day: 'numeric', month: 'short'})
+}
+
+const formatFullDateLabel = timestamp => {
+	const date = new Date(Number(timestamp))
+	if (Number.isNaN(date.getTime())) return ''
+	return date.toLocaleDateString('en-GB', {
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit'
+	})
+}
+
+const getMerchantKey = point => {
+	if (point.merchantId !== null && point.merchantId !== undefined && point.merchantId !== '') return `id:${point.merchantId}`
+	return `legacy:${point.merchantName || 'Unknown merchant'}`
+}
+
+const compareStorePrices = (left, right) => {
+	const purchaseDiff = Number(right.purchaseCount || 0) - Number(left.purchaseCount || 0)
+	if (purchaseDiff) return purchaseDiff
+	const observationDiff = Number(right.observationCount || 0) - Number(left.observationCount || 0)
+	if (observationDiff) return observationDiff
+	return String(left.merchantName || '').localeCompare(String(right.merchantName || ''), 'uk')
+}
+
+const buildPriceChartPoints = history => history.map(point => ({
+	id: `${point.purchaseId || 'purchase'}:${point.purchaseItemId || point.timestamp}`,
+	purchaseId: point.purchaseId,
+	purchaseItemId: point.purchaseItemId,
+	timestamp: point.timestamp,
+	dateLabel: formatShortDateLabel(point.timestamp),
+	fullDateLabel: formatFullDateLabel(point.timestamp),
+	price: point.normalizedUnitPrice,
+	priceLabel: point.unitPriceLabel,
+	merchantId: point.merchantId,
+	merchantName: point.merchantName,
+	quantityLabel: point.quantityLabel,
+	total: point.total,
+	totalLabel: formatMoneyLabel(point.total)
+}))
+
+const buildStorePrices = (history, priceUnit) => {
+	const stores = new Map()
+	history.forEach(point => {
+		const key = getMerchantKey(point)
+		const aggregate = stores.get(key) || {
+			merchantId: point.merchantId,
+			merchantName: point.merchantName,
+			spent: 0,
+			normalizedQuantity: 0,
+			displayQuantity: '',
+			averageUnitPrice: null,
+			averageUnitPriceLabel: '',
+			lastUnitPrice: null,
+			lastUnitPriceLabel: '',
+			purchaseCount: 0,
+			observationCount: 0,
+			distinctPurchaseIds: new Set(),
+			latestPoint: null
+		}
+		aggregate.spent = roundMoney(aggregate.spent + point.total)
+		aggregate.normalizedQuantity += point.normalizedQuantity
+		aggregate.observationCount += 1
+		aggregate.distinctPurchaseIds.add(toProductKey(point.purchaseId))
+		if (!aggregate.latestPoint || compareHistoryPointAsc(point, aggregate.latestPoint) >= 0) {
+			aggregate.latestPoint = point
+		}
+		stores.set(key, aggregate)
+	})
+
+	return Array.from(stores.values())
+		.map(store => {
+			const multiplier = getDisplayPriceMultiplier(store.latestPoint?.normalizedUnit)
+			const averageUnitPrice = store.normalizedQuantity > 0 && multiplier
+				? roundMoney(store.spent / store.normalizedQuantity * multiplier)
+				: null
+			return {
+				merchantId: store.merchantId,
+				merchantName: store.merchantName,
+				spent: store.spent,
+				spentLabel: formatMoneyLabel(store.spent),
+				normalizedQuantity: store.normalizedQuantity || null,
+				displayQuantity: store.normalizedQuantity > 0
+					? formatNormalizedQuantity(store.normalizedQuantity, store.latestPoint?.normalizedUnit)
+					: '',
+				averageUnitPrice,
+				averageUnitPriceLabel: formatUnitPriceLabel(averageUnitPrice, priceUnit),
+				lastUnitPrice: store.latestPoint?.normalizedUnitPrice ?? null,
+				lastUnitPriceLabel: store.latestPoint?.unitPriceLabel || '',
+				purchaseCount: store.distinctPurchaseIds.size,
+				observationCount: store.observationCount
+			}
+		})
+		.sort(compareStorePrices)
 }
 
 const calculateProductAnalytics = ({
@@ -346,6 +450,8 @@ const buildProductDetail = ({
 		? roundMoney(comparableSpent / normalizedQuantity * multiplier)
 		: null
 	const lastPoint = history.at(-1) || null
+	const priceChartPoints = buildPriceChartPoints(history)
+	const storePrices = buildStorePrices(history, priceUnit)
 
 	return {
 		product: product ? {
@@ -376,7 +482,9 @@ const buildProductDetail = ({
 		priceUnit,
 		purchaseCount: purchaseIds.size,
 		history,
-		recentPurchases: [...history].sort(compareHistoryPointDesc)
+		recentPurchases: [...history].sort(compareHistoryPointDesc),
+		priceChartPoints,
+		storePrices
 	}
 }
 

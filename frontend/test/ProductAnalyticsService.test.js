@@ -361,6 +361,25 @@ test('product detail last price uses latest purchasedAt regardless of insertion 
 	assert.deepEqual(detail.history.map(point => point.purchaseId), ['early', 'middle', 'late'])
 })
 
+test('product detail keeps canonical history chronological and recent purchases newest first', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: '14', merchantId: 501, purchasedAt: '2026-09-14T12:00:00', items: [{id: 'i14', productId: 201, quantity: 1, unit: 'l', total: 61.5}]},
+			{id: '29', merchantId: 501, purchasedAt: '2026-09-29T12:00:00', items: [{id: 'i29', productId: 201, quantity: 1, unit: 'l', total: 64.9}]},
+			{id: '06', merchantId: 501, purchasedAt: '2026-09-06T12:00:00', items: [{id: 'i06', productId: 201, quantity: 1, unit: 'l', total: 59.2}]},
+			{id: '22', merchantId: 501, purchasedAt: '2026-09-22T12:00:00', items: [{id: 'i22', productId: 201, quantity: 1, unit: 'l', total: 58.9}]}
+		]
+	})
+
+	assert.deepEqual(detail.history.map(point => point.purchaseId), ['06', '14', '22', '29'])
+	assert.deepEqual(detail.recentPurchases.map(point => point.purchaseId), ['29', '22', '14', '06'])
+})
+
 test('product detail recent purchases sort newest first and resolve merchants', () => {
 	const detail = buildProductDetail({
 		productId: 201,
@@ -381,6 +400,106 @@ test('product detail recent purchases sort newest first and resolve merchants', 
 	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').quantityLabel, '900 ml')
 	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').unitPriceLabel, '64,90 грн/l')
 	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').total, 58.41)
+})
+
+test('product detail chart points are factual valid observations with metadata', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: 'valid-a', merchantId: 501, purchasedAt: '2026-09-21T10:30:00', items: [{id: 'a', productId: 201, quantity: 900, unit: 'ml', total: 58.41}]},
+			{id: 'invalid-zero', merchantId: 501, purchasedAt: '2026-09-21T11:00:00', items: [{id: 'bad-zero', productId: 201, quantity: 0, unit: 'ml', total: 10}]},
+			{id: 'invalid-unit', merchantId: 501, purchasedAt: '2026-09-21T12:00:00', items: [{id: 'bad-unit', productId: 201, quantity: 1, unit: 'box', total: 10}]},
+			{id: 'valid-b', merchantId: 502, purchasedAt: '2026-09-21T18:20:00', items: [{id: 'b', productId: 201, quantity: 1, unit: 'l', total: 60.2}]}
+		]
+	})
+
+	assert.equal(detail.history.length, 2)
+	assert.equal(detail.priceChartPoints.length, 2)
+	assert.deepEqual(detail.priceChartPoints.map(point => point.purchaseId), ['valid-a', 'valid-b'])
+	assert.equal(detail.priceChartPoints[0].merchantName, 'Novus')
+	assert.equal(detail.priceChartPoints[0].price, 64.9)
+	assert.equal(detail.priceChartPoints[0].priceLabel, '64,90 грн/l')
+	assert.equal(detail.priceChartPoints[0].quantityLabel, '900 ml')
+	assert.equal(detail.priceChartPoints[0].totalLabel, '58,41 грн')
+	assert.match(detail.priceChartPoints[0].dateLabel, /21 Sep/)
+})
+
+test('product detail store prices use weighted average and latest store price', () => {
+	const detail = buildProductDetail({
+		productId: 101,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: 'a1', merchantId: 502, purchasedAt: '2026-09-02T12:00:00', items: [{id: 'a1i', productId: 101, quantity: 0.5, unit: 'kg', total: 50}]},
+			{id: 'a2', merchantId: 502, purchasedAt: '2026-09-20T12:00:00', items: [{id: 'a2i', productId: 101, quantity: 1.5, unit: 'kg', total: 120}]},
+			{id: 'a3', merchantId: 502, purchasedAt: '2026-09-29T12:00:00', items: [{id: 'a3i', productId: 101, quantity: 1, unit: 'kg', total: 95}]}
+		]
+	})
+
+	const atb = detail.storePrices[0]
+	assert.equal(atb.merchantName, 'АТБ')
+	assert.equal(atb.normalizedQuantity, 3000)
+	assert.equal(atb.displayQuantity, '3 kg')
+	assert.equal(atb.spent, 265)
+	assert.equal(atb.averageUnitPrice, 88.33)
+	assert.equal(atb.averageUnitPriceLabel, '88,33 грн/kg')
+	assert.equal(atb.lastUnitPrice, 95)
+	assert.equal(atb.lastUnitPriceLabel, '95,00 грн/kg')
+	assert.equal(atb.observationCount, 3)
+	assert.equal(atb.purchaseCount, 3)
+})
+
+test('product detail store prices count distinct purchases for duplicate item occurrences', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{
+			id: 'same-receipt',
+			merchantId: 501,
+			purchasedAt: '2026-09-10T12:00:00',
+			items: [
+				{id: 'a', productId: 201, quantity: 1, unit: 'l', total: 60},
+				{id: 'b', productId: 201, quantity: 2, unit: 'l', total: 116}
+			]
+		}]
+	})
+
+	const store = detail.storePrices[0]
+	assert.equal(store.observationCount, 2)
+	assert.equal(store.purchaseCount, 1)
+	assert.equal(store.normalizedQuantity, 3000)
+	assert.equal(store.averageUnitPrice, 58.67)
+})
+
+test('product detail store prices aggregate multiple merchants independently and sort neutrally', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: 'atb-1', merchantId: 502, purchasedAt: '2026-09-02T12:00:00', items: [{id: 'a1', productId: 201, quantity: 1, unit: 'l', total: 58}]},
+			{id: 'atb-2', merchantId: 502, purchasedAt: '2026-09-29T12:00:00', items: [{id: 'a2', productId: 201, quantity: 1, unit: 'l', total: 60}]},
+			{id: 'novus-1', merchantId: 501, purchasedAt: '2026-09-14T12:00:00', items: [{id: 'n1', productId: 201, quantity: 900, unit: 'ml', total: 58.41}]},
+			{id: 'silpo-1', merchantId: 503, purchasedAt: '2026-09-20T12:00:00', items: [{id: 's1', productId: 201, quantity: 1, unit: 'l', total: 66.1}]}
+		]
+	})
+
+	assert.deepEqual(detail.storePrices.map(store => store.merchantName), ['АТБ', 'Сільпо', 'Novus'])
+	assert.equal(detail.storePrices.find(store => store.merchantName === 'АТБ').averageUnitPrice, 59)
+	assert.equal(detail.storePrices.find(store => store.merchantName === 'АТБ').lastUnitPrice, 60)
+	assert.equal(detail.storePrices.find(store => store.merchantName === 'Novus').averageUnitPrice, 64.9)
+	assert.equal(detail.storePrices.find(store => store.merchantName === 'Сільпо').averageUnitPrice, 66.1)
 })
 
 test('product detail keeps factual item occurrences but counts distinct purchases', () => {
