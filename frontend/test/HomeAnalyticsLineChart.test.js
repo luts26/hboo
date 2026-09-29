@@ -104,8 +104,8 @@ test('IndexedDB has dedicated balanceHistory store and Service Worker avoids API
 
 	assert.match(indexedDb, /balanceHistory/)
 	assert.match(indexedDb, /userProvider/)
-	assert.match(indexedDb, /const DATABASE_VERSION = 3/)
-	assert.match(indexedDb, /3: ensureStoreDefinitions/)
+	assert.match(indexedDb, /const DATABASE_VERSION = 6/)
+	assert.match(indexedDb, /6: ensureStoreDefinitions/)
 	assert.match(sw, /url\.pathname\.startsWith\('\/api\/'\)/)
 })
 

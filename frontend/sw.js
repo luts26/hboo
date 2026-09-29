@@ -1,4 +1,4 @@
-const HBOO_APP_VERSION = '2026-09-28-financial-position-idb-range-fix-v1'
+const HBOO_APP_VERSION = '2026-09-29-product-analytics-v1'
 const HBOO_APP_SHELL_CACHE = `hboo-app-shell-${HBOO_APP_VERSION}`
 const HBOO_APP_SHELL_PREFIX = 'hboo-app-shell-'
 

@@ -3,6 +3,7 @@ const sidebar = {
 	getHtml: (config) => {
 		return `<div class="sidebar">
 			<div class="financial-summary-root"></div>
+			<div class="purchase-summary-root"></div>
 			<button class="hboo-sync-placeholder hboo-sync-card" type="button" data-action="hboo-sync-status" aria-label="HBOO Sync status">
 				<div class="hboo-sync-title">HBOO Sync</div>
 				<div class="hboo-sync-state">

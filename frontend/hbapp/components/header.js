@@ -53,6 +53,7 @@ const header = {
 					<button class="header-menu-toggle" type="button" aria-label="Open menu" aria-haspopup="true" aria-expanded="false" data-action="header-menu-toggle">&#8942;</button>
 					<nav class="header-utility-menu" aria-label="Header menu">
 						${mainMenuHtml}
+						<div data-header-context-menu></div>
 						<div class="header-menu-submenu" data-header-submenu="settings">
 							<button class="header-menu-item header-submenu-toggle" type="button" aria-expanded="false" data-action="header-menu-settings-toggle">
 								<span>Settings</span>

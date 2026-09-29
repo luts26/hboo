@@ -5,6 +5,9 @@ import DepositPage from '../pages/DepositPage.js'
 import PlaningPage from '../pages/PlaningPage.js'
 import SettingsPage from '../pages/SettingsPage.js'
 import TransactionPage from '../pages/TransactionPage.js'
+import PurchasePage from '../pages/PurchasePage.js'
+import ProductAnalyticsPage from '../pages/ProductAnalyticsPage.js'
+import ProductCatalogPage from '../pages/ProductCatalogPage.js'
 
 const router = {
 
@@ -13,6 +16,9 @@ const router = {
 		'home': HomePage,
 		'balance': BalancePage,
 		'transaction': TransactionPage,
+		'purchases': PurchasePage,
+		'purchases/analytics': ProductAnalyticsPage,
+		'products': ProductCatalogPage,
 		'deposit': DepositPage,
 		'planing': PlaningPage,
 		'settings': SettingsPage

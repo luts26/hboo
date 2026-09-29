@@ -8,9 +8,15 @@ import planningStore from './stores/PlanningStore.js'
 import balanceStore from './stores/BalanceStore.js'
 import transactionStore from './stores/TransactionStore.js'
 import FinancialSummary from './components/FinancialSummary.js'
+import PurchaseSummary from './components/PurchaseSummary.js'
 import TransactionLocalRepository from './services/TransactionLocalRepository.js'
+import ProductCatalogLocalRepository from './services/ProductCatalogLocalRepository.js'
+import ProductCatalogApiService from './services/ProductCatalogApiService.js'
+import {getCurrentPurchaseRange} from './services/PurchaseDateRange.js'
+import {subscribeProductCatalogChanges} from './services/ProductCatalogEvents.js'
 import {clearAuthState, getAuthenticatedUserId, getAuthToken} from './services/AuthSession.js'
 import connectionSyncStatus from './services/ConnectionSyncStatus.js'
+import {productCatalogSyncService} from './services/ProductCatalogSyncService.js'
 import {deriveSectionFreshness} from './services/SectionFreshness.js'
 import {resolveWorkspaceSwipe} from './services/WorkspaceNavigationGesture.js'
 import authModal from './components/AuthModal.js'
@@ -29,10 +35,14 @@ const hbapp = {
 	balanceSummaryState: balanceStore.getState(),
 	transactionSummaryState: transactionStore.getState(),
 	transactionSummaryRepository: new TransactionLocalRepository(),
+	purchaseSummaryRepository: new ProductCatalogLocalRepository(),
+	purchaseHydrationService: new ProductCatalogApiService(),
 	transactionSummaryLoadId: 0,
+	purchaseSummaryLoadId: 0,
 	unsubscribeFinancialSummary: null,
 	unsubscribeBalanceSummary: null,
 	unsubscribeTransactionSummary: null,
+	unsubscribePurchaseSummary: null,
 	unsubscribeConnectionSyncStatus: null,
 	defaultTemplate: false,
 	mobileView: 'content',
@@ -50,6 +60,7 @@ const hbapp = {
 		container.setContent(this.hbapp, config)
 		header.setContent(this.hbapp, config)
 		this.mountFinancialSummary()
+		this.mountPurchaseSummary()
 		this.mountConnectionSyncStatus()
 		// yCalc()
 		// footer.setContent(this.hbapp, config)
@@ -115,6 +126,16 @@ const hbapp = {
 		planningStore.load()
 	},
 
+	mountPurchaseSummary: function() {
+		if (this.unsubscribePurchaseSummary) this.unsubscribePurchaseSummary()
+		this.unsubscribePurchaseSummary = subscribeProductCatalogChanges(() => this.refreshPurchaseSummary())
+		this.refreshPurchaseSummary()
+		this.purchaseHydrationService.hydrateGuaranteedPurchaseWindow({refresh: true})
+			.then(() => this.refreshPurchaseSummary())
+			.catch(() => {})
+		this.purchaseHydrationService.localRepository.cleanupPurchaseCache({userId: getAuthenticatedUserId()}).catch(() => {})
+	},
+
 	getFinancialSummaryTransactionRange: function(now = new Date()) {
 		const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
 		return {
@@ -154,6 +175,31 @@ const hbapp = {
 		}
 	},
 
+	refreshPurchaseSummary: async function() {
+		const loadId = ++this.purchaseSummaryLoadId
+		const range = getCurrentPurchaseRange()
+		try {
+			const [purchases, products, categories] = await Promise.all([
+				this.purchaseSummaryRepository.getPurchasesByRange(getAuthenticatedUserId(), range.dateFrom, range.dateTo),
+				this.purchaseSummaryRepository.getProducts({includeDisabled: true}),
+				this.purchaseSummaryRepository.getCategories({includeDisabled: true})
+			])
+			if (loadId !== this.purchaseSummaryLoadId) return
+			this.renderPurchaseSummary({purchases, products, categories})
+		} catch {
+			if (loadId !== this.purchaseSummaryLoadId) return
+			this.renderPurchaseSummary({purchases: [], products: [], categories: []})
+		}
+	},
+
+	renderPurchaseSummary: function(viewModel = {}) {
+		this.hbapp.querySelectorAll('.purchase-summary-root').forEach(root => {
+			const summary = new PurchaseSummary(root)
+			summary.render(viewModel)
+		})
+		this.updateSidebarActiveRoute()
+	},
+
 	renderFinancialSummary: function(viewModel = this.financialSummaryViewModel) {
 		this.financialSummaryViewModel = {
 			...(viewModel || {}),
@@ -176,6 +222,15 @@ const hbapp = {
 			else item.removeAttribute('aria-current')
 		})
 		this.renderConnectionSyncStatus()
+		this.renderHeaderContextMenu(activePath)
+	},
+
+	renderHeaderContextMenu(activePath = (router.getCurrentPath() || router.defaultUrlPath).replace(/^\//, '')) {
+		this.hbapp.querySelectorAll('[data-header-context-menu]').forEach(slot => {
+			slot.innerHTML = activePath === 'purchases' || activePath === 'purchases/analytics'
+				? '<button class="header-menu-item" type="button" data-action="header-menu-route" data-route="products">Manage products</button>'
+				: ''
+		})
 	},
 
 	logoutApp() {
@@ -370,6 +425,10 @@ const hbapp = {
 			this.pageObject.eventsRegister(e, 'change')
 		})
 
+		this.hbapp.addEventListener('input', e => {
+			this.pageObject.eventsRegister(e, 'input')
+		})
+
 		this.hbapp.addEventListener('touchstart', e => this.handleViewSwipeStart(e), {passive: true})
 		this.hbapp.addEventListener('touchend', e => this.handleViewSwipeEnd(e), {passive: true})
 	},
@@ -408,7 +467,10 @@ const hbapp = {
 		this.mountAppLock()
 
 		this.authToken = getAuthToken()
-		if (this.authToken && getAuthenticatedUserId()) this.setDefaultTemplate()
+		if (this.authToken && getAuthenticatedUserId()) {
+			this.setDefaultTemplate()
+			productCatalogSyncService.processQueue({reason: 'app-startup'}).catch(() => {})
+		}
 		else {
 			if (this.authToken) clearAuthState()
 			router.redirectRouter('/login')

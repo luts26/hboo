@@ -131,7 +131,7 @@ class TransactionRepository {
                 FROM mono_transaction mt
                 LEFT JOIN category_mapping cm
                     ON cm.provider = 'mono'
-                    AND cm.external_code = CAST(mt.mcc AS CHAR)
+                    AND cm.external_code = CAST(mt.mcc AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
                     AND cm.category_id = ?
                 LEFT JOIN planning_transaction_link ptl
                     ON ptl.provider = 'mono'

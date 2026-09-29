@@ -3,11 +3,13 @@ import router from '../router/router.js'
 const primaryItems = [
 	{path: 'home', label: 'Home'},
 	{path: 'planing', label: 'Planning'},
+	{path: 'purchases', label: 'Purchases'},
 	{path: 'transaction', label: 'Transactions'},
 	{path: 'balance', label: 'Balance'}
 ]
 
 const secondaryItems = [
+	{path: 'products', label: 'Products'},
 	{path: 'deposit', label: 'Deposit'},
 	{path: 'settings', label: 'Settings'}
 ]

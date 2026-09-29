@@ -1,5 +1,5 @@
 const DATABASE_NAME = 'hboo-offline-v1'
-const DATABASE_VERSION = 3
+const DATABASE_VERSION = 6
 
 const STORE_DEFINITIONS = {
 	meta: {
@@ -83,6 +83,65 @@ const STORE_DEFINITIONS = {
 			{name: 'updatedAt', keyPath: 'updatedAt'}
 		]
 	},
+	productCategories: {
+		keyPath: 'id',
+		indexes: [
+			{name: 'name', keyPath: 'name'},
+			{name: 'status', keyPath: 'status'},
+			{name: 'sortOrder', keyPath: 'sortOrder'},
+			{name: 'updatedAt', keyPath: 'updatedAt'}
+		]
+	},
+	products: {
+		keyPath: 'id',
+		indexes: [
+			{name: 'localId', keyPath: 'localId'},
+			{name: 'serverId', keyPath: 'serverId'},
+			{name: 'categoryId', keyPath: 'categoryId'},
+			{name: 'name', keyPath: 'name'},
+			{name: 'measurementType', keyPath: 'measurementType'},
+			{name: 'status', keyPath: 'status'},
+			{name: 'syncStatus', keyPath: 'syncStatus'},
+			{name: 'updatedAt', keyPath: 'updatedAt'}
+		]
+	},
+	merchants: {
+		keyPath: 'id',
+		indexes: [
+			{name: 'localId', keyPath: 'localId'},
+			{name: 'serverId', keyPath: 'serverId'},
+			{name: 'name', keyPath: 'name'},
+			{name: 'status', keyPath: 'status'},
+			{name: 'syncStatus', keyPath: 'syncStatus'},
+			{name: 'updatedAt', keyPath: 'updatedAt'}
+		]
+	},
+	purchases: {
+		keyPath: 'id',
+		indexes: [
+			{name: 'userId', keyPath: 'userId'},
+			{name: 'localId', keyPath: 'localId'},
+			{name: 'serverId', keyPath: 'serverId'},
+			{name: 'clientMutationId', keyPath: 'clientMutationId'},
+			{name: 'merchantId', keyPath: 'merchantId'},
+			{name: 'purchasedAt', keyPath: 'purchasedAt'},
+			{name: 'purchaseTime', keyPath: 'purchaseTime'},
+			{name: 'paymentType', keyPath: 'paymentType'},
+			{name: 'syncStatus', keyPath: 'syncStatus'},
+			{name: 'updatedAt', keyPath: 'updatedAt'}
+		]
+	},
+	purchaseWindows: {
+		keyPath: 'windowKey',
+		indexes: [
+			{name: 'userId', keyPath: 'userId'},
+			{name: 'dateFrom', keyPath: 'dateFrom'},
+			{name: 'dateTo', keyPath: 'dateTo'},
+			{name: 'monthKey', keyPath: 'monthKey'},
+			{name: 'fetchedAt', keyPath: 'fetchedAt'},
+			{name: 'lastAccessedAt', keyPath: 'lastAccessedAt'}
+		]
+	},
 	syncQueue: {
 		keyPath: 'operationId',
 		indexes: [
@@ -113,7 +172,10 @@ const ensureStoreDefinitions = (db, transaction) => {
 const migrations = {
 	1: ensureStoreDefinitions,
 	2: ensureStoreDefinitions,
-	3: ensureStoreDefinitions
+	3: ensureStoreDefinitions,
+	4: ensureStoreDefinitions,
+	5: ensureStoreDefinitions,
+	6: ensureStoreDefinitions
 }
 
 const assertIndexedDbAvailable = () => {

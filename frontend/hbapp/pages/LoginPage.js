@@ -13,7 +13,7 @@ export default class LoginPage {
 
 	init() {
 		if (getAuthToken() && getAuthenticatedUserId()) {
-			window.history.pushState({}, null, '/planing')
+			window.history.pushState({}, null, '/home')
 			return
 		}
 		if (getAuthToken()) clearAuthState()
@@ -23,7 +23,7 @@ export default class LoginPage {
 			root: this.hbapp.querySelector('.auth-page-root'),
 			onSuccess: authState => {
 				if (authState?.user?.id) {
-					window.history.pushState({}, null, '/balance')
+					window.history.pushState({}, null, '/home')
 				}
 			}
 		})

@@ -1,6 +1,7 @@
 import planningStore from '../stores/PlanningStore.js'
 import {API_AUTH_STATUS, getAuthState, subscribeAuthState} from './AuthSession.js'
 import networkStatusService from './NetworkStatusService.js'
+import {getState as getProductCatalogSyncState, subscribe as subscribeProductCatalogSyncState} from './ProductCatalogSyncState.js'
 
 const AUTH_PAUSED_STATUSES = new Set(['paused', 'auth-paused'])
 const ERROR_STATUSES = new Set(['error'])
@@ -21,12 +22,21 @@ const formatPending = count => {
 const deriveConnectionSyncState = ({
 	networkState = {},
 	authState = {},
-	planningState = {}
+	planningState = {},
+	productCatalogState = {}
 } = {}) => {
 	const network = networkState.network || (networkState.online === false ? 'offline' : 'online')
-	const syncStatus = planningState.syncStatus || 'idle'
-	const pendingCount = getPendingCount(planningState)
-	const lastSuccessfulSyncAt = Number(planningState.lastSuccessfulSyncAt) || null
+	const productSyncStatus = productCatalogState.syncStatus || 'idle'
+	const planningSyncStatus = planningState.syncStatus || 'idle'
+	const pendingCount = getPendingCount(planningState) + Math.max(0, Number(productCatalogState.pendingCount) || 0)
+	const syncStatus = productSyncStatus === 'syncing'
+		? 'syncing'
+		: productSyncStatus === 'paused'
+			? 'paused'
+			: productSyncStatus === 'error'
+				? 'error'
+				: planningSyncStatus
+	const lastSuccessfulSyncAt = Number(planningState.lastSuccessfulSyncAt || productCatalogState.lastSuccessfulSyncAt) || null
 	const apiAuthStatus = authState.apiAuthStatus || authState.apiStatus || API_AUTH_STATUS.UNKNOWN
 	const hasAuth = Boolean(authState.authenticated || (authState.token && authState.userId))
 	const isAuthRejected = apiAuthStatus === API_AUTH_STATUS.REJECTED
@@ -99,6 +109,7 @@ class ConnectionSyncStatus {
 		this.listeners = new Set()
 		this.state = this.derive()
 		this.unsubscribePlanning = this.planningStore.subscribe(() => this.refresh())
+		this.unsubscribeProductCatalog = subscribeProductCatalogSyncState(() => this.refresh())
 		this.unsubscribeNetwork = this.networkService.subscribe(() => this.refresh())
 		this.unsubscribeAuth = subscribeAuthState(() => this.refresh())
 	}
@@ -116,7 +127,8 @@ class ConnectionSyncStatus {
 		return deriveConnectionSyncState({
 			networkState: this.networkService.getState(),
 			authState: this.getAuthSnapshot(),
-			planningState: this.planningStore.getState()
+			planningState: this.planningStore.getState(),
+			productCatalogState: getProductCatalogSyncState()
 		})
 	}
 

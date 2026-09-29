@@ -19,9 +19,13 @@ test('sidebar does not render a separate conventional navigation block', () => {
 
 test('financial summary cards remain the primary workspace navigation targets', () => {
 	const summarySource = read('hbapp/components/FinancialSummary.js')
-	const targets = Array.from(summarySource.matchAll(/data-summary-nav="([^"]+)"/g), match => match[1])
+	const purchaseSummarySource = read('hbapp/components/PurchaseSummary.js')
+	const targets = [
+		...Array.from(summarySource.matchAll(/data-summary-nav="([^"]+)"/g), match => match[1]),
+		...Array.from(purchaseSummarySource.matchAll(/data-summary-nav="([^"]+)"/g), match => match[1])
+	]
 
-	assert.deepEqual(targets.sort(), ['balance', 'planing', 'transaction'])
+	assert.deepEqual(targets.sort(), ['balance', 'planing', 'purchases', 'transaction'])
 })
 
 test('sidebar financial summary transactions are independent from selected Transactions range', () => {

@@ -78,6 +78,15 @@ test('Transaction detail and filter modals use viewport overlay host', () => {
 	assert.doesNotMatch(source, /\$\{this\.getDayModalTemplate\(\)\}/)
 })
 
+test('Purchase editor modal uses viewport overlay host', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+
+	assert.match(source, /import overlayHost from '\.\.\/services\/OverlayHost\.js'/)
+	assert.match(source, /renderEditorModal\(\)/)
+	assert.match(source, /overlayHost\.render\('purchase-editor-modal'/)
+	assert.doesNotMatch(source, /<div class="purchase-layout">[\s\S]*\$\{this\.getFormTemplate\(\)\}/)
+})
+
 test('long modal content scrolls internally and AppLock remains above overlays', () => {
 	const cssSource = read('hbapp/assets/styles/main.css')
 	const modalBackdropZIndex = Number(cssSource.match(/\.app-modal-backdrop\s*\{[\s\S]*?z-index:\s*(\d+)/)?.[1])

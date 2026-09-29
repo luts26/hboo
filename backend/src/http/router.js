@@ -5,6 +5,7 @@ import balanceHandler from '../handlers/balanceHandler.js';
 import transactionHandler from '../handlers/transactionHandler.js';
 import categoryHandler from '../handlers/categoryHandler.js';
 import planningHandler from '../handlers/planningHandler.js';
+import productCatalogHandler from '../handlers/productCatalogHandler.js';
 
 const routes = {
     'GET /api/health': {
@@ -76,6 +77,39 @@ const routes = {
     },
     'GET /api/planning/period/:id/statistics': {
         handler: planningHandler
+    },
+    'GET /api/product-categories': {
+        handler: productCatalogHandler
+    },
+    'GET /api/products': {
+        handler: productCatalogHandler
+    },
+    'POST /api/products': {
+        handler: productCatalogHandler
+    },
+    'PUT /api/products/:id': {
+        handler: productCatalogHandler
+    },
+    'GET /api/merchants': {
+        handler: productCatalogHandler
+    },
+    'POST /api/merchants': {
+        handler: productCatalogHandler
+    },
+    'GET /api/purchases': {
+        handler: productCatalogHandler
+    },
+    'GET /api/purchases/:id': {
+        handler: productCatalogHandler
+    },
+    'POST /api/purchases': {
+        handler: productCatalogHandler
+    },
+    'PUT /api/purchases/:id': {
+        handler: productCatalogHandler
+    },
+    'DELETE /api/purchases/:id': {
+        handler: productCatalogHandler
     }
 };
 
