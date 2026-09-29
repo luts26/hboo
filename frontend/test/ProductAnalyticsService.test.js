@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import ProductCatalogLocalRepository from '../hbapp/services/ProductCatalogLocalRepository.js'
-import {calculateProductAnalytics} from '../hbapp/services/ProductAnalyticsService.js'
+import {buildProductDetail, calculateProductAnalytics} from '../hbapp/services/ProductAnalyticsService.js'
 import {formatNormalizedQuantity} from '../hbapp/services/ProductUnitService.js'
 
 const period = {
@@ -21,6 +21,12 @@ const products = [
 	{id: 102, name: 'Картопля', categoryId: 10, categoryName: 'Овочі', measurementType: 'weight'},
 	{id: 201, name: 'Молоко', categoryId: 20, categoryName: 'Молочні', measurementType: 'volume'},
 	{id: 301, name: 'Вода', categoryId: 30, categoryName: 'Напої', measurementType: 'count'}
+]
+
+const merchants = [
+	{id: 501, name: 'Novus'},
+	{id: 502, name: 'АТБ'},
+	{id: 503, name: 'Сільпо'}
 ]
 
 class FakeIndexedDbClient {
@@ -263,4 +269,166 @@ test('local create sync reconciliation edit and delete recalculate without dupli
 	analytics = await calculateFromRepository(repository)
 	assert.equal(analytics.totals.spent, 0)
 	assert.equal(analytics.totals.purchasesCount, 0)
+})
+
+test('product detail builds exact normalized price points for weight volume and count', () => {
+	const weightFromGrams = buildProductDetail({
+		productId: 101,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{id: 1, merchantId: 501, purchasedAt: '2026-09-10T12:00:00', items: [
+			{id: 'g', productId: 101, quantity: 400, unit: 'g', total: 40.79}
+		]}]
+	})
+	const weightFromKg = buildProductDetail({
+		productId: 101,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{id: 2, merchantId: 501, purchasedAt: '2026-09-10T12:00:00', items: [
+			{id: 'kg', productId: 101, quantity: 0.4, unit: 'kg', total: 40.79}
+		]}]
+	})
+	const volume = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{id: 3, merchantId: 501, purchasedAt: '2026-09-10T12:00:00', items: [
+			{id: 'ml', productId: 201, quantity: 500, unit: 'ml', total: 41.49}
+		]}]
+	})
+	const count = buildProductDetail({
+		productId: 301,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{id: 4, merchantId: 501, purchasedAt: '2026-09-10T12:00:00', items: [
+			{id: 'pcs', productId: 301, quantity: 4, unit: 'pcs', total: 100}
+		]}]
+	})
+
+	assert.equal(weightFromGrams.history[0].normalizedUnitPrice, 101.98)
+	assert.equal(weightFromGrams.history[0].unitPriceLabel, '101,98 грн/kg')
+	assert.equal(weightFromKg.history[0].normalizedUnitPrice, 101.98)
+	assert.equal(volume.history[0].normalizedUnitPrice, 82.98)
+	assert.equal(volume.history[0].unitPriceLabel, '82,98 грн/l')
+	assert.equal(count.history[0].normalizedUnitPrice, 25)
+	assert.equal(count.history[0].unitPriceLabel, '25,00 грн/pcs')
+})
+
+test('product detail average price is weighted by comparable spend and quantity', () => {
+	const detail = buildProductDetail({
+		productId: 101,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: 'a', merchantId: 501, purchasedAt: '2026-09-02T12:00:00', items: [{id: 'a1', productId: 101, quantity: 0.5, unit: 'kg', total: 50}]},
+			{id: 'b', merchantId: 502, purchasedAt: '2026-09-14T12:00:00', items: [{id: 'b1', productId: 101, quantity: 1.5, unit: 'kg', total: 120}]}
+		]
+	})
+
+	assert.equal(detail.spent, 170)
+	assert.equal(detail.normalizedQuantity, 2000)
+	assert.equal(detail.displayQuantity, '2 kg')
+	assert.equal(detail.averageUnitPrice, 85)
+	assert.equal(detail.averageUnitPriceLabel, '85,00 грн/kg')
+})
+
+test('product detail last price uses latest purchasedAt regardless of insertion order', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: 'late', merchantId: 501, purchasedAt: '2026-09-29T12:00:00', items: [{id: 'late-item', productId: 201, quantity: 1, unit: 'l', total: 64}]},
+			{id: 'early', merchantId: 502, purchasedAt: '2026-09-02T12:00:00', items: [{id: 'early-item', productId: 201, quantity: 1, unit: 'l', total: 60}]},
+			{id: 'middle', merchantId: 503, purchasedAt: '2026-09-14T12:00:00', items: [{id: 'middle-item', productId: 201, quantity: 1, unit: 'l', total: 58}]}
+		]
+	})
+
+	assert.equal(detail.lastUnitPrice, 64)
+	assert.equal(detail.lastUnitPriceLabel, '64,00 грн/l')
+	assert.deepEqual(detail.history.map(point => point.purchaseId), ['early', 'middle', 'late'])
+})
+
+test('product detail recent purchases sort newest first and resolve merchants', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [
+			{id: 'older', merchantId: 502, purchasedAt: '2026-09-22T12:00:00', items: [{id: 'b', productId: 201, quantity: 1, unit: 'l', total: 58.9}]},
+			{id: 'newer', merchantId: 501, purchasedAt: '2026-09-29T12:00:00', items: [{id: 'a', productId: 201, quantity: 900, unit: 'ml', total: 58.41}]},
+			{id: 'same-time', merchantName: 'Fallback shop', purchasedAt: '2026-09-29T12:00:00', items: [{id: 'c', productId: 201, quantity: 2, unit: 'l', total: 123}]}
+		]
+	})
+
+	assert.deepEqual(detail.recentPurchases.map(point => point.purchaseId), ['same-time', 'newer', 'older'])
+	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').merchantName, 'Novus')
+	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'same-time').merchantName, 'Fallback shop')
+	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').quantityLabel, '900 ml')
+	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').unitPriceLabel, '64,90 грн/l')
+	assert.equal(detail.recentPurchases.find(point => point.purchaseId === 'newer').total, 58.41)
+})
+
+test('product detail keeps factual item occurrences but counts distinct purchases', () => {
+	const detail = buildProductDetail({
+		productId: 201,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{
+			id: 100,
+			merchantId: 501,
+			purchasedAt: '2026-09-10T12:00:00',
+			items: [
+				{id: 'a', productId: 201, quantity: 1, unit: 'l', total: 60},
+				{id: 'b', productId: 201, quantity: 2, unit: 'l', total: 116}
+			]
+		}]
+	})
+
+	assert.equal(detail.spent, 176)
+	assert.equal(detail.displayQuantity, '3 l')
+	assert.equal(detail.history.length, 2)
+	assert.equal(detail.purchaseCount, 1)
+})
+
+test('product detail keeps spending when malformed items cannot produce price points', () => {
+	const detail = buildProductDetail({
+		productId: 101,
+		period,
+		categories,
+		products,
+		merchants,
+		purchases: [{
+			id: 1,
+			merchantId: 501,
+			purchasedAt: '2026-09-10T12:00:00',
+			items: [
+				{id: 'bad-zero', productId: 101, quantity: 0, unit: 'kg', total: 25},
+				{id: 'bad-unit', productId: 101, quantity: 1, unit: 'box', total: 30}
+			]
+		}]
+	})
+
+	assert.equal(detail.spent, 55)
+	assert.equal(detail.displayQuantity, '')
+	assert.equal(detail.averageUnitPrice, null)
+	assert.equal(detail.lastUnitPrice, null)
+	assert.equal(detail.history.length, 0)
+	assert.equal(detail.purchaseCount, 1)
 })

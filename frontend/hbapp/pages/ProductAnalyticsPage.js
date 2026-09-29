@@ -2,7 +2,7 @@ import AbstractClass from './AbstractClass.js'
 import router from '../router/router.js'
 import overlayHost from '../services/OverlayHost.js'
 import ProductCatalogApiService from '../services/ProductCatalogApiService.js'
-import {calculateProductAnalytics} from '../services/ProductAnalyticsService.js'
+import {buildProductDetail, calculateProductAnalytics} from '../services/ProductAnalyticsService.js'
 import {
 	getCurrentPurchaseRange,
 	getPreviousPurchaseMonthRange,
@@ -51,6 +51,12 @@ const formatUnitPrice = (value, unit) => value === null || value === undefined |
 	? '-'
 	: `${formatMoneyAmount(value)} грн/${unit}`
 
+const formatDateShort = value => {
+	const date = new Date(value)
+	if (Number.isNaN(date.getTime())) return '-'
+	return date.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'})
+}
+
 const toPeriodLabel = (period, key) => {
 	const from = new Date(period.dateFrom)
 	const to = new Date(period.dateTo)
@@ -69,12 +75,16 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		periodKey: 'current',
 		period: PERIODS.current.getRange(),
 		analytics: calculateProductAnalytics(),
+		purchases: [],
+		products: [],
+		categories: [],
+		merchants: [],
 		coverage: null,
 		unavailableOffline: false,
 		loading: true,
 		error: '',
 		selectedCategoryId: null,
-		selectedProduct: null
+		selectedProductId: null
 	}
 
 	constructor(hbapp) {
@@ -84,7 +94,7 @@ export default class ProductAnalyticsPage extends AbstractClass {
 			this.refreshFromLocal().catch(() => {})
 		})
 		this.handleKeydown = event => {
-			if (event.key === 'Escape' && this.state.selectedProduct) this.closeProductDetail()
+			if (event.key === 'Escape' && this.state.selectedProductId) this.closeProductDetail()
 		}
 		document.addEventListener('keydown', this.handleKeydown)
 		this.init()
@@ -102,6 +112,10 @@ export default class ProductAnalyticsPage extends AbstractClass {
 	}
 
 	eventsRegister(event, type) {
+		if (type === 'click' && event.target.classList.contains('product-analytics-detail-backdrop')) {
+			this.closeProductDetail()
+			return
+		}
 		const target = event.target.closest('[data-analytics-action]')
 		if (type !== 'click' || !target) return
 		const action = target.dataset.analyticsAction
@@ -122,6 +136,7 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		this.state.error = ''
 		this.state.unavailableOffline = false
 		this.state.selectedCategoryId = null
+		this.state.selectedProductId = null
 		this.render()
 
 		try {
@@ -129,10 +144,14 @@ export default class ProductAnalyticsPage extends AbstractClass {
 				this.apiService.loadCatalog({refresh: true}),
 				this.apiService.loadPurchasesByRange({refresh: true, range: period})
 			])
+			this.state.purchases = purchaseResult?.purchases || []
+			this.state.products = catalog.products || []
+			this.state.categories = catalog.categories || []
+			this.state.merchants = catalog.merchants || []
 			this.state.analytics = calculateProductAnalytics({
-				purchases: purchaseResult?.purchases || [],
-				products: catalog.products || [],
-				categories: catalog.categories || [],
+				purchases: this.state.purchases,
+				products: this.state.products,
+				categories: this.state.categories,
 				period
 			})
 			this.state.coverage = purchaseResult?.coverage || null
@@ -148,7 +167,7 @@ export default class ProductAnalyticsPage extends AbstractClass {
 	}
 
 	async refreshFromLocal() {
-		const [purchases, products, categories, coverage] = await Promise.all([
+		const [purchases, products, categories, merchants, coverage] = await Promise.all([
 			this.apiService.localRepository.getPurchasesByRange(
 				this.apiService.getUserId(),
 				this.state.period.dateFrom,
@@ -156,16 +175,21 @@ export default class ProductAnalyticsPage extends AbstractClass {
 			),
 			this.apiService.localRepository.getProducts({includeDisabled: true}),
 			this.apiService.localRepository.getCategories({includeDisabled: true}),
+			this.apiService.localRepository.getMerchants({includeDisabled: true}),
 			this.apiService.localRepository.getPurchaseCoverage(
 				this.apiService.getUserId(),
 				this.state.period.dateFrom,
 				this.state.period.dateTo
 			)
 		])
+		this.state.purchases = purchases
+		this.state.products = products
+		this.state.categories = categories
+		this.state.merchants = merchants
 		this.state.analytics = calculateProductAnalytics({
-			purchases,
-			products,
-			categories,
+			purchases: this.state.purchases,
+			products: this.state.products,
+			categories: this.state.categories,
 			period: this.state.period
 		})
 		this.state.coverage = coverage
@@ -185,12 +209,12 @@ export default class ProductAnalyticsPage extends AbstractClass {
 	}
 
 	openProduct(productId) {
-		this.state.selectedProduct = this.state.analytics.products.find(product => String(product.productId) === String(productId)) || null
+		this.state.selectedProductId = productId || null
 		this.render()
 	}
 
 	closeProductDetail() {
-		this.state.selectedProduct = null
+		this.state.selectedProductId = null
 		this.render()
 	}
 
@@ -314,32 +338,83 @@ export default class ProductAnalyticsPage extends AbstractClass {
 		return `<button class="product-analytics-row product-analytics-product-row" type="button" data-analytics-action="open-product" data-product-id="${this.escapeHtml(product.productId)}">
 			<span>${this.escapeHtml(product.name)}<small>${this.escapeHtml(product.categoryName || '')}</small></span>
 			<strong>${formatMoney(product.spent)}</strong>
-			<em>${this.escapeHtml(product.quantityLabel || '-')}</em>
+			<em>${this.escapeHtml(product.quantityLabel || '-')} ›</em>
 		</button>`
 	}
 
 	getProductDetailTemplate() {
-		const product = this.state.selectedProduct
-		if (!product) return ''
+		const detail = this.getSelectedProductDetail()
+		if (!detail) return ''
 		return `<div class="app-modal-backdrop product-analytics-detail-backdrop">
 			<div class="app-modal product-analytics-detail-modal" role="dialog" aria-modal="true" aria-labelledby="product-analytics-detail-title">
 				<div class="app-modal-header">
-					<h4 id="product-analytics-detail-title">${this.escapeHtml(product.name)}</h4>
+					<div>
+						<h4 id="product-analytics-detail-title">${this.escapeHtml(detail.product.name)}</h4>
+						<p>${this.escapeHtml(detail.category.name)} · ${this.escapeHtml(toPeriodLabel(this.state.period, this.state.periodKey))}</p>
+					</div>
 					<button class="app-modal-close" type="button" title="Close" aria-label="Close" data-analytics-action="close-product">×</button>
 				</div>
 				<div class="app-modal-body product-analytics-detail-body">
-					${this.getProductDetailField('Spent', formatMoney(product.spent))}
-					${this.getProductDetailField('Purchased', product.quantityLabel || '-')}
-					${this.getProductDetailField('Average price', formatUnitPrice(product.averageUnitPrice, product.priceUnit))}
-					${this.getProductDetailField('Last price', formatUnitPrice(product.lastUnitPrice, product.priceUnit))}
-					${this.getProductDetailField('Purchases', product.purchaseCount)}
+					<div class="product-analytics-detail-grid">
+						${this.getProductDetailField('Spent', formatMoney(detail.spent))}
+						${this.getProductDetailField('Purchased', detail.displayQuantity || '-')}
+						${this.getProductDetailField('Average price', detail.averageUnitPriceLabel || formatUnitPrice(detail.averageUnitPrice, detail.priceUnit))}
+						${this.getProductDetailField('Last price', detail.lastUnitPriceLabel || formatUnitPrice(detail.lastUnitPrice, detail.priceUnit))}
+						${this.getProductDetailField('Purchases', detail.purchaseCount)}
+					</div>
+					${this.getRecentPurchasesTemplate(detail)}
+					${this.getPriceHistoryTemplate(detail)}
 				</div>
 			</div>
 		</div>`
 	}
 
+	getSelectedProductDetail() {
+		if (!this.state.selectedProductId) return null
+		return buildProductDetail({
+			productId: this.state.selectedProductId,
+			purchases: this.state.purchases,
+			products: this.state.products,
+			categories: this.state.categories,
+			merchants: this.state.merchants,
+			period: this.state.period
+		})
+	}
+
 	getProductDetailField(label, value) {
 		return `<div class="product-analytics-detail-field"><span>${this.escapeHtml(label)}</span><strong>${this.escapeHtml(value)}</strong></div>`
+	}
+
+	getRecentPurchasesTemplate(detail) {
+		const rows = detail.recentPurchases.map(point => `
+			<div class="product-analytics-purchase-row">
+				<div class="product-analytics-purchase-title">
+					<strong>${this.escapeHtml(formatDateShort(point.purchasedAt))} · ${this.escapeHtml(point.merchantName)}</strong>
+				</div>
+				<div class="product-analytics-purchase-values">
+					<span>${this.escapeHtml(point.quantityLabel || '-')}</span>
+					<span>${this.escapeHtml(point.unitPriceLabel || '-')}</span>
+					<strong>${formatMoney(point.total)}</strong>
+				</div>
+			</div>
+		`).join('')
+		return `<section class="product-analytics-detail-section">
+			<h5>Recent purchases</h5>
+			${rows || '<div class="product-analytics-detail-empty">No comparable purchases for this period.</div>'}
+		</section>`
+	}
+
+	getPriceHistoryTemplate(detail) {
+		const rows = detail.history.map(point => `
+			<div class="product-analytics-price-row">
+				<span>${this.escapeHtml(formatDateShort(point.purchasedAt))}</span>
+				<strong>${this.escapeHtml(point.unitPriceLabel || '-')}</strong>
+			</div>
+		`).join('')
+		return `<section class="product-analytics-detail-section">
+			<h5>Price history</h5>
+			${rows || '<div class="product-analytics-detail-empty">No valid price points for this period.</div>'}
+		</section>`
 	}
 
 	escapeHtml(value = '') {

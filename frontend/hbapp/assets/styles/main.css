@@ -5568,26 +5568,92 @@ textarea.planing-textarea {
 }
 
 .product-analytics-detail-modal {
-	width: min(440px, calc(100vw - 24px));
+	width: min(520px, calc(100vw - 24px));
+}
+
+.product-analytics-detail-modal .app-modal-header p {
+	color: #9baabd;
+	font-size: 10pt;
+	font-weight: 800;
+	line-height: 1.25;
+	margin: .2rem 0 0;
 }
 
 .product-analytics-detail-body {
 	display: grid;
+	gap: 1rem;
+}
+
+.product-analytics-detail-grid {
+	display: grid;
 	gap: .65rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .product-analytics-detail-field {
-	align-items: center;
 	border-radius: 10px;
 	box-shadow: inset -2px -2px 4px rgb(255, 255, 255), inset 2px 2px 4px rgba(0,0,0,.08);
-	display: flex;
-	justify-content: space-between;
+	display: grid;
+	gap: .2rem;
 	padding: .75rem .85rem;
 }
 
 .product-analytics-detail-field strong {
 	color: #778ba5;
-	text-align: right;
+	font-size: 12pt;
+	line-height: 1.2;
+	overflow-wrap: anywhere;
+}
+
+.product-analytics-detail-section {
+	display: grid;
+	gap: .55rem;
+}
+
+.product-analytics-detail-section h5 {
+	color: #778ba5;
+	font-size: 12pt;
+	margin: 0;
+}
+
+.product-analytics-purchase-row,
+.product-analytics-price-row {
+	border-top: 1px solid rgba(119,139,165,.16);
+	display: grid;
+	gap: .35rem;
+	padding-top: .55rem;
+}
+
+.product-analytics-purchase-title strong {
+	color: #778ba5;
+	font-size: 10.5pt;
+}
+
+.product-analytics-purchase-values,
+.product-analytics-price-row {
+	align-items: center;
+	display: grid;
+	gap: .6rem;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.product-analytics-price-row {
+	grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.product-analytics-purchase-values span,
+.product-analytics-price-row span,
+.product-analytics-detail-empty {
+	color: #9baabd;
+	font-size: 10pt;
+	font-weight: 800;
+}
+
+.product-analytics-purchase-values strong,
+.product-analytics-price-row strong {
+	color: #778ba5;
+	font-size: 10.5pt;
+	white-space: nowrap;
 }
 
 .product-search-row input,
@@ -5969,6 +6035,20 @@ textarea.planing-textarea {
 
 	.product-analytics-row em {
 		text-align: left;
+	}
+
+	.product-analytics-detail-grid,
+	.product-analytics-purchase-values {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.product-analytics-purchase-values strong {
+		grid-column: 1 / -1;
+	}
+
+	.product-analytics-detail-modal {
+		max-height: calc(100dvh - 24px);
+		width: calc(100vw - 24px);
 	}
 
 	.purchase-editor-modal {
