@@ -83,6 +83,31 @@ export default class ReceiptApiService {
 		throw createHttpError(response)
 	}
 
+	async parseReceipt(receiptServerId) {
+		const headers = authHeaders()
+		const response = await fetch(`${apiUrl}/receipts/${encodeURIComponent(receiptServerId)}/parse`, {
+			headers,
+			cache: 'no-store'
+		})
+		observe(response, headers)
+		if (response.status === 200) return response.json()
+		if (response.status === 404) return null
+		throw createHttpError(response, response.status === 409 ? 'Receipt text recognition is not complete.' : 'Receipt parser request failed')
+	}
+
+	async confirmReceiptPurchase(receiptServerId, purchase) {
+		const headers = {...authHeaders(), 'Content-Type': 'application/json'}
+		const response = await fetch(`${apiUrl}/receipts/${encodeURIComponent(receiptServerId)}/confirm`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify(purchase)
+		})
+		observe(response, headers)
+		if (response.status === 200 || response.status === 201) return response.json()
+		if (response.status === 404) return null
+		throw createHttpError(response, response.status === 409 ? 'Receipt was already linked or could not be linked.' : 'Receipt confirmation failed')
+	}
+
 	async uploadReceipt(purchaseServerId, receipt) {
 		const headers = authHeaders()
 		const form = new FormData()

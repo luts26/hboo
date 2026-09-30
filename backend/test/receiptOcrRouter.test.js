@@ -19,3 +19,25 @@ test('receipt OCR routes are authenticated and map receipt id with ocr mode', ()
     assert.equal(get.params.mode, 'ocr');
     assert.equal(get.params.purchaseId, undefined);
 });
+
+test('receipt parse route is authenticated and maps receipt id with parse mode', () => {
+    assert.equal(routes['GET /api/receipts/:receiptId/parse'].public, undefined);
+
+    const get = findRoute('GET', '/api/receipts/55/parse');
+
+    assert.equal(get.route, routes['GET /api/receipts/:receiptId/parse']);
+    assert.equal(get.params.receiptId, '55');
+    assert.equal(get.params.mode, 'parse');
+    assert.equal(get.params.purchaseId, undefined);
+});
+
+test('receipt confirm route is authenticated and maps receipt id with confirm mode', () => {
+    assert.equal(routes['POST /api/receipts/:receiptId/confirm'].public, undefined);
+
+    const post = findRoute('POST', '/api/receipts/55/confirm');
+
+    assert.equal(post.route, routes['POST /api/receipts/:receiptId/confirm']);
+    assert.equal(post.params.receiptId, '55');
+    assert.equal(post.params.mode, 'confirm');
+    assert.equal(post.params.purchaseId, undefined);
+});

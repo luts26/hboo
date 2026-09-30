@@ -219,6 +219,6 @@ test('Purchase inline create product flow still writes local product and selects
 	const saveNewProductMethod = source.match(/async saveNewProduct\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
 
 	assert.match(saveNewProductMethod, /await this\.apiService\.createProduct/)
-	assert.match(saveNewProductMethod, /this\.selectProduct\(this\.state\.createProductForRowId, product\.id\)/)
+	assert.match(saveNewProductMethod, /else this\.selectProduct\(rowId, product\.id\)/)
 	assert.match(saveNewProductMethod, /this\.state\.createProductForm = null/)
 })

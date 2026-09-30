@@ -53,3 +53,42 @@ test('ReceiptApiService reads and starts standalone receipt OCR endpoints', asyn
 		globalThis.fetch = previousFetch
 	}
 })
+
+test('ReceiptApiService parses and confirms reviewed receipt purchases', async () => {
+	globalThis.localStorage = new MemoryStorage()
+	setAuthState({token: 'receipt-token', user: {id: 7, username: 'u7'}})
+	const previousFetch = globalThis.fetch
+	const calls = []
+	globalThis.fetch = async (url, options = {}) => {
+		calls.push({url: String(url), options})
+		if (String(url).endsWith('/parse')) {
+			return {
+				status: 200,
+				json: async () => ({receiptId: 55, draft: {parserVersion: 'receipt-parser-v1', items: []}})
+			}
+		}
+		return {
+			status: 201,
+			json: async () => ({status: 'created', idempotent: false, purchase: {id: 9, receipt: {id: 55}}})
+		}
+	}
+
+	try {
+		const service = new ReceiptApiService()
+		const parsed = await service.parseReceipt(55)
+		const confirmed = await service.confirmReceiptPurchase(55, {
+			client_mutation_id: 'receipt-review-55',
+			items: [{product_id: 10, quantity: 1, unit: 'pcs', total: 20}]
+		})
+
+		assert.equal(parsed.draft.parserVersion, 'receipt-parser-v1')
+		assert.equal(confirmed.purchase.receipt.id, 55)
+		assert.deepEqual(calls.map(call => call.url), ['/api/receipts/55/parse', '/api/receipts/55/confirm'])
+		assert.equal(calls[0].options.cache, 'no-store')
+		assert.equal(calls[1].options.method, 'POST')
+		assert.equal(calls[1].options.headers['Content-Type'], 'application/json')
+		assert.equal(JSON.parse(calls[1].options.body).client_mutation_id, 'receipt-review-55')
+	} finally {
+		globalThis.fetch = previousFetch
+	}
+})

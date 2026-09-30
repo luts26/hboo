@@ -142,6 +142,12 @@ const routes = {
     'POST /api/receipts/:receiptId/ocr': {
         handler: receiptHandler
     },
+    'GET /api/receipts/:receiptId/parse': {
+        handler: receiptHandler
+    },
+    'POST /api/receipts/:receiptId/confirm': {
+        handler: receiptHandler
+    },
     'DELETE /api/receipts/:receiptId': {
         handler: receiptHandler
     }
@@ -191,6 +197,8 @@ export function findRoute(method, pathname) {
         if (matched) {
             if (routePath.endsWith('/receipt/image') || routePath.endsWith('/receipts/:receiptId/image')) params.mode = 'image';
             if (routePath.endsWith('/receipts/:receiptId/ocr')) params.mode = 'ocr';
+            if (routePath.endsWith('/receipts/:receiptId/parse')) params.mode = 'parse';
+            if (routePath.endsWith('/receipts/:receiptId/confirm')) params.mode = 'confirm';
             return {
                 route,
                 params

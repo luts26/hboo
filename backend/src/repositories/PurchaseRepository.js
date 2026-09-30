@@ -233,6 +233,135 @@ class PurchaseRepository {
         }
     }
 
+    async createPurchaseFromReceipt(userId, receiptId, purchase) {
+        const connection = await pool.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const [receiptRows] = await connection.execute(`
+                SELECT id, purchase_id AS purchaseId
+                FROM receipt
+                WHERE id = ?
+                  AND user_id = ?
+                LIMIT 1
+                FOR UPDATE
+            `, [receiptId, userId]);
+
+            const receipt = receiptRows[0] || null;
+            if (!receipt) {
+                await connection.rollback();
+                return {status: 'not_found', purchase: null};
+            }
+
+            if (receipt.purchaseId) {
+                const existingLinked = await this.findPurchaseById(userId, receipt.purchaseId, connection);
+                await connection.commit();
+                return {status: 'already_linked', purchase: existingLinked};
+            }
+
+            const existingByMutation = await this.findPurchaseByClientMutationId(
+                userId,
+                purchase.clientMutationId,
+                connection
+            );
+            if (existingByMutation) {
+                await connection.execute(`
+                    UPDATE receipt
+                    SET purchase_id = ?,
+                        updated_at = NOW()
+                    WHERE id = ?
+                      AND user_id = ?
+                      AND purchase_id IS NULL
+                `, [existingByMutation.id, receiptId, userId]);
+                await connection.commit();
+                return {
+                    status: 'idempotent_link',
+                    purchase: await this.findPurchaseById(userId, existingByMutation.id)
+                };
+            }
+
+            const [result] = await connection.execute(`
+                INSERT INTO purchase (
+                    user_id,
+                    client_mutation_id,
+                    merchant_id,
+                    purchased_at,
+                    payment_type,
+                    transaction_provider,
+                    transaction_id,
+                    total,
+                    note,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            `, [
+                userId,
+                purchase.clientMutationId,
+                purchase.merchantId,
+                purchase.purchasedAt,
+                purchase.paymentType,
+                purchase.transactionProvider,
+                purchase.transactionId,
+                purchase.total,
+                purchase.note
+            ]);
+
+            const purchaseId = result.insertId;
+
+            for (const item of purchase.items) {
+                await connection.execute(`
+                    INSERT INTO purchase_item (
+                        purchase_id,
+                        product_id,
+                        quantity,
+                        unit,
+                        total,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                `, [
+                    purchaseId,
+                    item.productId,
+                    item.quantity,
+                    item.unit,
+                    item.total
+                ]);
+            }
+
+            const [linkResult] = await connection.execute(`
+                UPDATE receipt
+                SET purchase_id = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                  AND user_id = ?
+                  AND purchase_id IS NULL
+            `, [purchaseId, receiptId, userId]);
+
+            if (linkResult.affectedRows !== 1) {
+                await connection.rollback();
+                return {status: 'link_failed', purchase: null};
+            }
+
+            await connection.commit();
+            return {
+                status: 'created',
+                purchase: await this.findPurchaseById(userId, purchaseId)
+            };
+        } catch (error) {
+            await connection.rollback();
+            if (error?.code === 'ER_DUP_ENTRY' && purchase.clientMutationId) {
+                const existing = await this.findPurchaseByClientMutationId(userId, purchase.clientMutationId);
+                if (existing) return {status: 'idempotent_existing', purchase: existing};
+            }
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
     async replacePurchase(userId, purchaseId, purchase) {
         const connection = await pool.getConnection();
 

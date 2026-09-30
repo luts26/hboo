@@ -210,6 +210,23 @@ export default class ReceiptLocalRepository {
 		return cloneReceipt(record)
 	}
 
+	async linkStandaloneToPurchase(receiptLocalId, purchase) {
+		const existing = await this.indexedDbClient.get(STORE, receiptLocalId)
+		if (!existing) return null
+		const purchaseLocalId = purchase?.id || purchase?.localId || null
+		const record = normalizeReceipt({
+			...existing,
+			purchaseLocalId,
+			purchaseServerId: toServerId(purchase?.serverId ?? purchase?.id),
+			serverReceiptId: existing.serverReceiptId || purchase?.receipt?.id || null,
+			syncStatus: 'synced',
+			error: null
+		})
+		await this.indexedDbClient.put(STORE, record)
+		notifyProductCatalogChanged({entityType: 'purchase', action: 'standalone-receipt-linked'})
+		return cloneReceipt(record)
+	}
+
 	async updateServerPurchaseId(purchaseLocalId, purchaseServerId) {
 		const receipt = await this.getByPurchaseLocalId(purchaseLocalId, {includeDeleted: true})
 		if (!receipt || receipt.purchaseServerId) return receipt

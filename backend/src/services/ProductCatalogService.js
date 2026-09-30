@@ -80,6 +80,32 @@ class ProductCatalogService {
         ));
     }
 
+    async createPurchaseFromReceipt(userId, receiptId, data) {
+        const purchase = await this.buildPurchase(data);
+        const result = await this.purchasesRepository.createPurchaseFromReceipt(
+            this.requireId(userId, 'user id'),
+            this.requireId(receiptId, 'receipt id'),
+            purchase
+        );
+
+        if (result.status === 'not_found') {
+            const error = new Error('Receipt not found');
+            error.statusCode = 404;
+            throw error;
+        }
+        if (result.status === 'link_failed' || !result.purchase) {
+            const error = new Error('Receipt could not be linked');
+            error.statusCode = 409;
+            throw error;
+        }
+
+        return {
+            status: result.status,
+            idempotent: result.status !== 'created',
+            purchase: this.formatPurchase(result.purchase)
+        };
+    }
+
     async updatePurchase(userId, purchaseId, data) {
         const purchase = await this.buildPurchase(data);
         const updated = await this.purchasesRepository.replacePurchase(

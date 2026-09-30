@@ -97,3 +97,98 @@ test('POST /api/receipts still uses multipart upload parser', async () => {
     assert.equal(res.statusCode, 201);
     assert.deepEqual(JSON.parse(res.body), {id: 4, purchaseId: null});
 });
+
+test('GET /api/receipts/:receiptId/parse returns parser draft without multipart upload', async () => {
+    let multipartCalled = false;
+    let parserCalled = false;
+    const handler = createReceiptHandler({
+        receipts: {},
+        ocr: {},
+        parser: {
+            async parseReceipt(userId, receiptId) {
+                parserCalled = true;
+                assert.equal(userId, 7);
+                assert.equal(receiptId, '4');
+                return {
+                    receiptId: 4,
+                    draft: {
+                        parserVersion: 'receipt-parser-v1',
+                        items: []
+                    }
+                };
+            }
+        },
+        async readForm() {
+            multipartCalled = true;
+            throw new Error('multipart parser should not be called');
+        }
+    });
+    const req = {
+        method: 'GET',
+        headers: {},
+        user: {user_id: 7},
+        params: {receiptId: '4', mode: 'parse'}
+    };
+    const res = makeResponse();
+
+    await handler(req, res);
+
+    assert.equal(parserCalled, true);
+    assert.equal(multipartCalled, false);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), {
+        receiptId: 4,
+        draft: {
+            parserVersion: 'receipt-parser-v1',
+            items: []
+        }
+    });
+});
+
+test('POST /api/receipts/:receiptId/confirm reads JSON and creates purchase from receipt', async () => {
+    let captured = null;
+    const handler = createReceiptHandler({
+        receipts: {},
+        ocr: {},
+        parser: {},
+        purchaseConfirmation: {
+            async createPurchaseFromReceipt(userId, receiptId, payload) {
+                captured = {userId, receiptId, payload};
+                return {
+                    status: 'created',
+                    idempotent: false,
+                    purchase: {id: 9, receipt: {id: 4}}
+                };
+            }
+        },
+        async readForm() {
+            throw new Error('multipart parser should not be called');
+        }
+    });
+    const req = {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        user: {user_id: 7},
+        params: {receiptId: '4', mode: 'confirm'},
+        async *[Symbol.asyncIterator]() {
+            yield Buffer.from(JSON.stringify({
+                client_mutation_id: 'receipt-review-4',
+                payment_type: 'bank',
+                items: [{product_id: 10, quantity: 1, unit: 'pcs', total: 20}]
+            }));
+        }
+    };
+    const res = makeResponse();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal(captured.userId, 7);
+    assert.equal(captured.receiptId, '4');
+    assert.equal(captured.payload.client_mutation_id, 'receipt-review-4');
+    assert.deepEqual(JSON.parse(res.body), {
+        status: 'created',
+        idempotent: false,
+        purchase: {id: 9, receipt: {id: 4}}
+    });
+});

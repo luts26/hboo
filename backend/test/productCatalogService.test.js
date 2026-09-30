@@ -147,6 +147,100 @@ test('passes client mutation id so repository can make purchase create idempoten
     assert.equal(purchase.clientMutationId, 'local-purchase-abc');
 });
 
+test('creates purchase from receipt through transactional repository path', async () => {
+    let captured = null;
+    const catalogRepository = {
+        findCategoryById: async id => categories.find(item => Number(item.id) === Number(id)) || null,
+        findProductById: async id => products.find(item => Number(item.id) === Number(id)) || null,
+        findMerchantById: async id => merchants.find(item => Number(item.id) === Number(id)) || null
+    };
+    const purchasesRepository = {
+        createPurchaseFromReceipt: async (userId, receiptId, purchase) => {
+            captured = {userId, receiptId, purchase};
+            return {
+                status: 'created',
+                purchase: {
+                    id: 222,
+                    merchantName: 'Базар',
+                    receiptId: 44,
+                    ...purchase,
+                    items: purchase.items.map((item, index) => ({
+                        id: index + 1,
+                        purchaseId: 222,
+                        productName: 'Помідори',
+                        categoryId: 1,
+                        categoryName: 'Овочі',
+                        measurementType: 'weight',
+                        productStatus: 'active',
+                        ...item
+                    }))
+                }
+            };
+        }
+    };
+    const service = new ProductCatalogService({catalogRepository, purchasesRepository});
+
+    const result = await service.createPurchaseFromReceipt(7, 44, {
+        client_mutation_id: 'receipt-review-44',
+        merchant_id: 7,
+        purchased_at: '2026-09-28T12:00:00',
+        payment_type: 'bank',
+        items: [{product_id: 10, quantity: 1.25, unit: 'kg', total: 55}]
+    });
+
+    assert.equal(captured.userId, 7);
+    assert.equal(captured.receiptId, 44);
+    assert.equal(captured.purchase.clientMutationId, 'receipt-review-44');
+    assert.equal(captured.purchase.total, '55.00');
+    assert.equal(result.status, 'created');
+    assert.equal(result.idempotent, false);
+    assert.equal(result.purchase.hasReceipt, true);
+    assert.equal(result.purchase.receipt.id, 44);
+});
+
+test('receipt confirmation reports idempotent linked purchase without duplicate create', async () => {
+    const catalogRepository = {
+        findCategoryById: async id => categories.find(item => Number(item.id) === Number(id)) || null,
+        findProductById: async id => products.find(item => Number(item.id) === Number(id)) || null,
+        findMerchantById: async () => null
+    };
+    const purchasesRepository = {
+        createPurchaseFromReceipt: async (userId, receiptId, purchase) => ({
+            status: 'already_linked',
+            purchase: {
+                id: 222,
+                merchantId: null,
+                merchantName: null,
+                receiptId,
+                ...purchase,
+                items: purchase.items.map((item, index) => ({
+                    id: index + 1,
+                    purchaseId: 222,
+                    productName: 'Помідори',
+                    categoryId: 1,
+                    categoryName: 'Овочі',
+                    measurementType: 'weight',
+                    productStatus: 'active',
+                    ...item
+                }))
+            }
+        })
+    };
+    const service = new ProductCatalogService({catalogRepository, purchasesRepository});
+
+    const result = await service.createPurchaseFromReceipt(7, 44, {
+        client_mutation_id: 'receipt-review-44',
+        purchased_at: '2026-09-28T12:00:00',
+        payment_type: 'bank',
+        items: [{product_id: 10, quantity: 1, unit: 'kg', total: 20}]
+    });
+
+    assert.equal(result.status, 'already_linked');
+    assert.equal(result.idempotent, true);
+    assert.equal(result.purchase.id, 222);
+    assert.equal(result.purchase.hasReceipt, true);
+});
+
 test('passes purchase date range options to repository list', async () => {
     let captured = null;
     const service = new ProductCatalogService({

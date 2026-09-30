@@ -1,11 +1,15 @@
 import receiptService from '../services/ReceiptService.js';
 import receiptOcrService from '../services/ReceiptOcrService.js';
+import receiptParserService from '../services/ReceiptParserService.js';
+import productCatalogService from '../services/ProductCatalogService.js';
 import {sendJson} from '../http/response.js';
 import {readMultipartForm} from '../http/multipart.js';
 
 function createReceiptHandler({
     receipts = receiptService,
     ocr = receiptOcrService,
+    parser = receiptParserService,
+    purchaseConfirmation = productCatalogService,
     readForm = readMultipartForm
 } = {}) {
     return async function receiptHandler(req, res) {
@@ -26,6 +30,20 @@ function createReceiptHandler({
 
         if (receiptId && req.params.mode === 'ocr' && req.method === 'POST') {
             sendJson(res, 200, await ocr.runOcr(userId, receiptId));
+            return;
+        }
+
+        if (receiptId && req.params.mode === 'parse' && req.method === 'GET') {
+            sendJson(res, 200, await parser.parseReceipt(userId, receiptId));
+            return;
+        }
+
+        if (receiptId && req.params.mode === 'confirm' && req.method === 'POST') {
+            sendJson(res, 201, await purchaseConfirmation.createPurchaseFromReceipt(
+                userId,
+                receiptId,
+                await readJson(req)
+            ));
             return;
         }
 
@@ -130,6 +148,19 @@ function createReceiptHandler({
         throw error;
     }
     };
+}
+
+async function readJson(req) {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+
+    try {
+        return body ? JSON.parse(body) : {};
+    } catch {
+        const error = new Error('Invalid JSON');
+        error.statusCode = 400;
+        throw error;
+    }
 }
 
 export default createReceiptHandler();

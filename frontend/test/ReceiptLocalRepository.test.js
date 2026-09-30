@@ -179,6 +179,25 @@ test('standalone OCR result is cached with raw line breaks and survives reload l
 	assert.equal(reloaded.ocr.durationMs, 123)
 })
 
+test('linked standalone receipt leaves review queue and points at created purchase', async () => {
+	const {repository} = setup(7)
+	const receipt = await repository.saveStandalone({image: fakeImage()})
+	await repository.markSynced(receipt.localId, {id: 55, purchaseId: null, mimeType: 'image/jpeg', sizeBytes: 12})
+
+	const linked = await repository.linkStandaloneToPurchase(receipt.localId, {
+		id: 'server-purchase-9',
+		serverId: 9,
+		receipt: {id: 55}
+	})
+
+	assert.equal(linked.purchaseLocalId, 'server-purchase-9')
+	assert.equal(linked.purchaseServerId, 9)
+	assert.equal(linked.serverReceiptId, 55)
+	assert.equal(linked.syncStatus, 'synced')
+	assert.deepEqual(await repository.listStandaloneByUser(), [])
+	assert.equal((await repository.getByPurchaseLocalId('server-purchase-9')).localId, receipt.localId)
+})
+
 test('unsynced standalone receipt can keep local image while OCR is absent', async () => {
 	const {repository} = setup(7)
 	const receipt = await repository.saveStandalone({image: fakeImage()})

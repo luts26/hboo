@@ -5881,15 +5881,17 @@ textarea.planing-textarea {
 	display: grid;
 	gap: .35rem;
 	left: 0;
-	padding: .5rem;
+/*	padding: .5rem;*/
 	position: absolute;
 	right: 0;
-	top: calc(100% + .25rem);
+/*	top: calc(100% + .25rem);*/
+	top: 50%;
 	z-index: 5;
 }
 
 .purchase-suggestions button {
 	box-shadow: none;
+	margin: 0 .4rem;
 	padding: .45rem .5rem;
 	text-align: left;
 }
@@ -6229,6 +6231,191 @@ textarea.planing-textarea {
 	font-size: 11pt;
 }
 
+.receipt-review-modal {
+	max-height: calc(100dvh - 36px);
+	max-width: 760px;
+	width: min(760px, calc(100vw - 32px));
+}
+
+.receipt-review-body {
+	display: grid;
+	gap: .85rem;
+	max-height: calc(100dvh - 150px);
+	overflow: auto;
+}
+
+.receipt-review-form,
+.receipt-review-items {
+	display: grid;
+	gap: .8rem;
+}
+
+.receipt-review-meta {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.receipt-review-summary {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: .5rem 1rem;
+	justify-content: space-between;
+}
+
+.receipt-review-summary span {
+	color: #4f5b66;
+	font-size: 10pt;
+}
+
+.receipt-review-warning {
+	background: #fff6db;
+	border: 1px solid #f0cf76;
+	border-radius: 8px;
+	color: #7a5700;
+	font-size: 10pt;
+	padding: .45rem .6rem;
+}
+
+.receipt-review-ok {
+	background: #e8f8ef;
+	border: 1px solid #91d8ad;
+	border-radius: 8px;
+	color: #126d3c;
+	font-size: 10pt;
+	padding: .45rem .6rem;
+}
+
+.receipt-review-suggestion {
+	align-items: center;
+	border: 1px dashed rgba(0, 134, 90, .35);
+	border-radius: 8px;
+	display: grid;
+	gap: .35rem;
+	grid-template-columns: minmax(0, 1fr) auto;
+	padding: .55rem .65rem;
+}
+
+.receipt-review-suggestion small {
+	color: #667481;
+	grid-column: 1 / -1;
+}
+
+.receipt-review-item {
+	border: 1px solid rgba(0, 134, 90, .14);
+	border-radius: 8px;
+	display: grid;
+	gap: .55rem;
+	padding: .7rem;
+}
+
+.receipt-review-item.needs-check {
+	border-color: #e2b43f;
+}
+
+.receipt-review-item-head {
+	align-items: start;
+	display: flex;
+	gap: .5rem;
+	justify-content: space-between;
+}
+
+.receipt-review-item-head strong {
+	font-size: 11pt;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.receipt-review-item-head span {
+	background: #fff6db;
+	border-radius: 999px;
+	color: #7a5700;
+	font-size: 9pt;
+	font-weight: 800;
+	padding: .15rem .45rem;
+	white-space: nowrap;
+}
+
+.receipt-review-product {
+	grid-column: auto;
+}
+
+.receipt-review-product label {
+	color: #4f5b66;
+	display: grid;
+	font-size: 9pt;
+	gap: .2rem;
+}
+
+.receipt-review-product-help,
+.receipt-review-selected-product {
+	font-size: 9.5pt;
+	margin: 0;
+}
+
+.receipt-review-product-help {
+	color: #73808c;
+}
+
+.receipt-review-selected-product {
+	color: #00865a;
+	font-weight: 800;
+}
+
+.receipt-review-create-product {
+	justify-self: start;
+}
+
+.receipt-review-item-grid {
+	display: grid;
+	gap: .55rem;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.receipt-review-item-grid label {
+	color: #4f5b66;
+	display: grid;
+	font-size: 9pt;
+	gap: .2rem;
+}
+
+.receipt-review-item-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .5rem;
+	justify-content: space-between;
+}
+
+.receipt-review-open,
+.receipt-review-raw-toggle {
+	justify-self: start;
+}
+
+.dark-theme .receipt-review-item,
+.dark-theme .receipt-review-warning,
+.dark-theme .receipt-review-ok,
+.dark-theme .receipt-review-suggestion {
+	background: #2e3b4a;
+	border-color: rgba(255,255,255,.08);
+}
+
+.dark-theme .receipt-review-summary span,
+.dark-theme .receipt-review-item-grid label,
+.dark-theme .receipt-review-product label,
+.dark-theme .receipt-review-suggestion small {
+	color: #d0dae6;
+}
+
+.dark-theme .receipt-review-warning,
+.dark-theme .receipt-review-item-head span {
+	background: #493f24;
+	color: #ffe5a0;
+}
+
+.dark-theme .receipt-review-ok,
+.dark-theme .receipt-review-selected-product {
+	color: #96e5b5;
+}
+
 .dark-theme .product-toolbar,
 .dark-theme .product-search-row,
 .dark-theme .product-form-card,
@@ -6384,13 +6571,24 @@ textarea.planing-textarea {
 		width: calc(100vw - 24px);
 	}
 
-	.purchase-editor-modal {
+	.purchase-editor-modal,
+	.receipt-review-modal {
 		max-height: calc(100dvh - 24px);
 		width: calc(100vw - 24px);
 	}
 
-	.purchase-editor-modal-body {
+	.purchase-editor-modal-body,
+	.receipt-review-body {
 		padding: .75rem;
+	}
+
+	.receipt-review-meta,
+	.receipt-review-item-grid {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.receipt-review-suggestion {
+		grid-template-columns: 1fr;
 	}
 
 	.product-row {

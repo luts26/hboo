@@ -18,6 +18,10 @@ const todayInputValue = () => {
 const toPurchasedAt = dateValue => `${dateValue || todayInputValue()}T12:00:00`
 
 const formatMoney = value => `${(Number(value) || 0).toFixed(2)} грн`
+const formatOptionalMoney = value => {
+	const parsed = parseDecimalInput(value)
+	return parsed === null ? '—' : formatMoney(parsed)
+}
 
 const parseDecimalInput = value => {
 	if (value === null || value === undefined) return null
@@ -45,6 +49,96 @@ const createItem = () => ({
 	total: '',
 	suggestions: []
 })
+
+const extractPackageAmount = rawName => {
+	const text = String(rawName || '').replace(',', '.')
+	const match = text.match(/(^|[^\d])(\d+(?:\.\d+)?)\s*(кг|kg|г|g|мл|ml|л|l|шт|pcs|pc)(?![\p{L}\d])/iu)
+	if (!match) return null
+	const quantity = Number(match[2])
+	if (!Number.isFinite(quantity) || quantity <= 0) return null
+	const unit = normalizeReviewUnit(match[3])
+	return unit ? {quantity, unit} : null
+}
+
+const normalizeReviewUnit = unit => {
+	const text = String(unit || '').toLowerCase()
+	if (['кг', 'kg'].includes(text)) return 'kg'
+	if (['г', 'g'].includes(text)) return 'g'
+	if (['мл', 'ml'].includes(text)) return 'ml'
+	if (['л', 'l'].includes(text)) return 'l'
+	if (['шт', 'pcs', 'pc'].includes(text)) return 'pcs'
+	return ''
+}
+
+const deriveReviewAmount = item => {
+	const receiptQuantity = parseDecimalInput(item.quantity)
+	const receiptUnit = normalizeReviewUnit(item.unit)
+	const packageAmount = extractPackageAmount(item.rawName)
+	if (receiptUnit && receiptUnit !== 'pcs' && receiptQuantity !== null) {
+		return {quantity: receiptQuantity, unit: receiptUnit}
+	}
+	if (packageAmount) {
+		const multiplier = receiptQuantity !== null && receiptQuantity > 0 && Number.isInteger(receiptQuantity)
+			? receiptQuantity
+			: 1
+		return {
+			quantity: packageAmount.quantity * multiplier,
+			unit: packageAmount.unit
+		}
+	}
+	if (receiptUnit && receiptQuantity !== null) return {quantity: receiptQuantity, unit: receiptUnit}
+	return {
+		quantity: receiptQuantity,
+		unit: ''
+	}
+}
+
+const createReceiptReviewItem = (item = {}) => ({
+	rowId: item.rowId || `review-row-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+	productId: item.productId || null,
+	productServerId: item.productServerId || null,
+	productName: item.productName || '',
+	productQuery: item.productQuery || '',
+	categoryId: item.categoryId || null,
+	categoryName: item.categoryName || '',
+	measurementType: item.measurementType || null,
+	rawName: item.rawName || '',
+	rawText: item.rawText || '',
+	quantity: deriveReviewAmount(item).quantity === null || deriveReviewAmount(item).quantity === undefined ? '' : normalizeDecimalString(deriveReviewAmount(item).quantity),
+	unit: deriveReviewAmount(item).unit || '',
+	receiptQuantity: item.quantity === null || item.quantity === undefined ? null : Number(item.quantity),
+	receiptUnit: item.unit || null,
+	receiptUnitPrice: item.unitPrice === null || item.unitPrice === undefined ? null : Number(item.unitPrice),
+	receiptLineTotal: item.total === null || item.total === undefined ? null : Number(item.total),
+	total: item.total === null || item.total === undefined ? '' : normalizeDecimalString(item.total),
+	confidence: Number(item.confidence || 0),
+	parserWarnings: Array.isArray(item.warnings) ? item.warnings : [],
+	validation: item.validation || null,
+	suggestions: []
+})
+
+const createReviewMutationId = receipt => `receipt-review-${receipt?.serverReceiptId || receipt?.localId || Date.now()}`
+
+const toDateTimeLocalValue = value => {
+	const text = String(value || '').trim()
+	if (!text) return `${todayInputValue()}T12:00`
+	return text.slice(0, 16)
+}
+
+const toApiDateTimeValue = value => {
+	const text = String(value || '').trim()
+	return text ? (text.length === 16 ? `${text}:00` : text) : toPurchasedAt(todayInputValue())
+}
+
+const normalizeComparableText = value => normalizeSearchText(value).replace(/\s+/g, ' ').trim()
+const matchesProductQuery = (productName, query) => {
+	const needle = normalizeSearchText(query)
+	if (!needle) return false
+	const haystack = normalizeSearchText(productName)
+	if (haystack.includes(needle)) return true
+	const tokens = needle.split(/\s+/).filter(Boolean)
+	return tokens.length > 1 && tokens.every(token => haystack.includes(token))
+}
 
 export default class PurchasePage extends AbstractClass {
 
@@ -83,6 +177,19 @@ export default class PurchasePage extends AbstractClass {
 			originalReceiptAction: null,
 			error: ''
 		},
+		receiptReview: {
+			open: false,
+			receiptLocalId: null,
+			receiptServerId: null,
+			loading: false,
+			saving: false,
+			error: '',
+			rawOcrOpen: false,
+			evidenceRowId: null,
+			rawText: '',
+			draft: null,
+			form: null
+		},
 		deleteConfirmation: null,
 		loading: true,
 		saving: false,
@@ -93,6 +200,7 @@ export default class PurchasePage extends AbstractClass {
 		super(hbapp)
 		this.handleKeydown = event => {
 			if (event.key === 'Escape' && this.state.deleteConfirmation) this.closeDeleteConfirmation()
+			else if (event.key === 'Escape' && this.state.receiptReview.open) this.closeReceiptReview()
 			else if (event.key === 'Escape' && this.state.receiptFlow.open) this.closeReceiptFlow()
 			else if (event.key === 'Escape' && this.state.editorOpen) this.closeEditor()
 		}
@@ -111,6 +219,7 @@ export default class PurchasePage extends AbstractClass {
 		this.revokeReceiptUrls()
 		overlayHost.clear('purchase-editor-modal')
 		overlayHost.clear('receipt-flow-modal')
+		overlayHost.clear('receipt-review-modal')
 	}
 
 	init() {
@@ -176,8 +285,18 @@ export default class PurchasePage extends AbstractClass {
 			return
 		}
 
+		if (type === 'click' && event.target.classList.contains('receipt-review-modal-backdrop')) {
+			this.closeReceiptReview()
+			return
+		}
+
 		if ((type === 'change' || type === 'input') && event.target.closest('[data-purchase-field]')) {
 			this.updatePurchaseField(event.target)
+			return
+		}
+
+		if ((type === 'change' || type === 'input') && event.target.closest('[data-review-field]')) {
+			this.updateReceiptReviewField(event.target)
 			return
 		}
 
@@ -192,6 +311,11 @@ export default class PurchasePage extends AbstractClass {
 			return
 		}
 
+		if ((type === 'change' || type === 'input') && event.target.closest('[data-review-item-field]')) {
+			this.updateReceiptReviewItemField(event.target)
+			return
+		}
+
 		if ((type === 'change' || type === 'input') && event.target.closest('[data-new-product-field]')) {
 			this.updateNewProductField(event.target)
 			return
@@ -202,6 +326,7 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'add-item') this.addItem()
 		if (action === 'remove-item') this.removeItem(target.dataset.rowId)
 		if (action === 'select-product') this.selectProduct(target.dataset.rowId, target.dataset.productId)
+		if (action === 'select-review-product') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
 		if (action === 'start-create-product') this.startCreateProduct(target.dataset.rowId)
 		if (action === 'cancel-create-product') this.cancelCreateProduct()
 		if (action === 'save-new-product') this.saveNewProduct()
@@ -223,6 +348,14 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'open-standalone-receipt') this.openStandaloneReceipt(target.dataset.receiptId)
 		if (action === 'delete-standalone-receipt') this.deleteStandaloneReceipt()
 		if (action === 'recognize-standalone-receipt') this.recognizeStandaloneReceipt()
+		if (action === 'review-standalone-receipt') this.openReceiptReview()
+		if (action === 'close-receipt-review') this.closeReceiptReview()
+		if (action === 'confirm-receipt-review') this.confirmReceiptReview()
+		if (action === 'add-review-item') this.addReceiptReviewItem()
+		if (action === 'remove-review-item') this.removeReceiptReviewItem(target.dataset.rowId)
+		if (action === 'toggle-review-evidence') this.toggleReceiptReviewEvidence(target.dataset.rowId)
+		if (action === 'toggle-review-raw') this.toggleReceiptReviewRawText()
+		if (action === 'use-review-items-total') this.useReviewItemsTotal()
 		if (action === 'manage-products') router.redirectRouter('/products')
 		if (action === 'go-purchase-analytics') router.redirectRouter('/purchases/analytics')
 	}
@@ -274,16 +407,29 @@ export default class PurchasePage extends AbstractClass {
 		this.state.createProductForm[input.name] = input.value
 	}
 
+	isReceiptReviewRow(rowId) {
+		return Boolean(this.state.receiptReview.open
+			&& this.state.receiptReview.form?.items?.some(item => String(item.rowId) === String(rowId)))
+	}
+
+	renderAfterProductFormChange(rowId = null) {
+		if (this.isReceiptReviewRow(rowId)) {
+			this.renderReceiptReviewModalPreservingScroll({scrollToRowId: rowId})
+			return
+		}
+		this.render()
+	}
+
 	getItem(rowId) {
 		return this.state.form.items.find(item => item.rowId === rowId)
+			|| this.state.receiptReview.form?.items?.find(item => item.rowId === rowId)
 	}
 
 	getSuggestions(query) {
-		const needle = normalizeSearchText(query)
-		if (!needle) return []
+		if (!normalizeSearchText(query)) return []
 		return this.state.products
 			.filter(product => product.status === 'active')
-			.filter(product => normalizeSearchText(product.name).includes(needle))
+			.filter(product => matchesProductQuery(product.name, query))
 			.slice(0, 6)
 	}
 
@@ -297,9 +443,32 @@ export default class PurchasePage extends AbstractClass {
 		row.categoryId = product.categoryId
 		row.categoryName = product.categoryName
 		row.measurementType = product.measurementType
-		row.unit = getAllowedUnits(product.measurementType)[0] || ''
+		if (!row.unit || !getAllowedUnits(product.measurementType).includes(row.unit)) {
+			row.unit = getAllowedUnits(product.measurementType)[0] || ''
+		}
 		row.suggestions = []
 		this.render()
+	}
+
+	selectReceiptReviewProduct(rowId, productId) {
+		const item = this.state.receiptReview.form?.items?.find(row => row.rowId === rowId)
+		const product = this.state.products.find(row => String(row.id) === String(productId))
+		if (!item || !product) return
+		item.productId = product.id
+		item.productServerId = product.serverId || item.productServerId || null
+		item.productName = product.name
+		item.productQuery = product.name
+		item.categoryId = product.categoryId
+		item.categoryName = product.categoryName
+		item.measurementType = product.measurementType
+		if (!item.unit || !getAllowedUnits(product.measurementType).includes(item.unit)) {
+			item.unit = getAllowedUnits(product.measurementType)[0] || item.unit || ''
+			this.updateReceiptReviewUnitOptionsDom(item)
+		}
+		item.suggestions = []
+		const input = document.querySelector(`[data-review-item-field][data-row-id="${rowId}"][name="productQuery"]`)
+		if (input) input.value = item.productQuery
+		this.updateReceiptReviewProductDom(item)
 	}
 
 	addItem() {
@@ -318,22 +487,34 @@ export default class PurchasePage extends AbstractClass {
 		const fruits = this.state.categories.find(category => category.name === 'Фрукти')
 		this.state.createProductForRowId = rowId
 		this.state.createProductForm = {
-			name: row?.productQuery || '',
+			name: row?.rawName || row?.productQuery || '',
 			categoryId: fruits?.id || this.state.categories[0]?.id || '',
 			measurementType: 'weight'
 		}
-		this.render()
+		this.renderAfterProductFormChange(rowId)
 	}
 
 	cancelCreateProduct() {
+		const rowId = this.state.createProductForRowId
 		this.state.createProductForRowId = null
 		this.state.createProductForm = null
-		this.render()
+		this.renderAfterProductFormChange(rowId)
 	}
 
 	async saveNewProduct() {
 		const form = this.state.createProductForm
 		if (!form?.name?.trim()) return
+		const rowId = this.state.createProductForRowId
+		const exactExisting = this.state.products.find(product => product.status === 'active'
+			&& normalizeComparableText(product.name) === normalizeComparableText(form.name))
+		if (exactExisting) {
+			if (this.isReceiptReviewRow(rowId)) this.selectReceiptReviewProduct(rowId, exactExisting.id)
+			else this.selectProduct(rowId, exactExisting.id)
+			this.state.createProductForRowId = null
+			this.state.createProductForm = null
+			this.renderAfterProductFormChange(rowId)
+			return
+		}
 		const category = this.state.categories.find(item => String(item.id) === String(form.categoryId))
 		const product = await this.apiService.createProduct({
 			name: form.name.trim(),
@@ -343,10 +524,11 @@ export default class PurchasePage extends AbstractClass {
 			status: 'active'
 		})
 		this.state.products = await this.apiService.localRepository.getProducts({includeDisabled: true})
-		this.selectProduct(this.state.createProductForRowId, product.id)
+		if (this.isReceiptReviewRow(rowId)) this.selectReceiptReviewProduct(rowId, product.id)
+		else this.selectProduct(rowId, product.id)
 		this.state.createProductForRowId = null
 		this.state.createProductForm = null
-		this.render()
+		this.renderAfterProductFormChange(rowId)
 	}
 
 	getCalculatedTotal() {
@@ -680,6 +862,341 @@ export default class PurchasePage extends AbstractClass {
 		this.render()
 	}
 
+	async openReceiptReview() {
+		const receipt = this.state.form.receipt
+		if (!receipt?.localId || !receipt.serverReceiptId) {
+			this.state.receiptFlow.error = 'Receipt must be synced before review.'
+			this.render()
+			return
+		}
+		if (receipt.ocr?.status !== 'completed') {
+			this.state.receiptFlow.error = 'Recognize receipt text before review.'
+			this.render()
+			return
+		}
+		this.state.receiptReview = {
+			open: true,
+			receiptLocalId: receipt.localId,
+			receiptServerId: receipt.serverReceiptId,
+			loading: true,
+			saving: false,
+			error: '',
+			rawOcrOpen: false,
+			evidenceRowId: null,
+			rawText: receipt.ocr?.rawText || '',
+			draft: null,
+			form: null
+		}
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		overlayHost.clear('receipt-flow-modal')
+		this.render()
+		try {
+			const parsed = await this.receiptApiService.parseReceipt(receipt.serverReceiptId)
+			if (!parsed?.draft) {
+				this.state.receiptReview.error = 'Receipt not found.'
+				this.state.receiptReview.loading = false
+				this.render()
+				return
+			}
+			this.state.receiptReview.draft = parsed.draft
+			this.state.receiptReview.form = this.createReceiptReviewForm(receipt, parsed.draft)
+			this.state.receiptReview.loading = false
+		} catch (error) {
+			this.state.receiptReview.loading = false
+			this.state.receiptReview.error = error?.message || 'Could not parse receipt.'
+		}
+		this.render()
+	}
+
+	createReceiptReviewForm(receipt, draft) {
+		const merchantId = this.findExactMerchantId(draft?.merchant)
+		const items = Array.isArray(draft?.items) && draft.items.length
+			? draft.items.map(item => createReceiptReviewItem(item))
+			: [createReceiptReviewItem()]
+		return {
+			clientMutationId: createReviewMutationId(receipt),
+			merchantId: merchantId || '',
+			purchasedAt: toDateTimeLocalValue(draft?.purchasedAt?.value),
+			paymentType: 'bank',
+			receiptTotal: draft?.total?.value === null || draft?.total?.value === undefined ? '' : normalizeDecimalString(draft.total.value),
+			receiptTotalSource: draft?.total?.value === null || draft?.total?.value === undefined ? 'unknown' : 'parser',
+			items,
+			warnings: Array.isArray(draft?.warnings) ? draft.warnings : []
+		}
+	}
+
+	findExactMerchantId(merchantHint) {
+		const hints = [
+			merchantHint?.normalizedHint,
+			merchantHint?.rawName
+		].map(normalizeComparableText).filter(Boolean)
+		if (!hints.length) return ''
+		const match = this.state.merchants.find(merchant => hints.includes(normalizeComparableText(merchant.name)))
+		return match?.id || ''
+	}
+
+	closeReceiptReview({render = true} = {}) {
+		if (this.state.receiptReview.saving) return
+		this.state.receiptReview = {
+			open: false,
+			receiptLocalId: null,
+			receiptServerId: null,
+			loading: false,
+			saving: false,
+			error: '',
+			rawOcrOpen: false,
+			evidenceRowId: null,
+			rawText: '',
+			draft: null,
+			form: null
+		}
+		overlayHost.clear('receipt-review-modal')
+		if (render) this.render()
+	}
+
+	updateReceiptReviewField(input) {
+		if (!this.state.receiptReview.form) return
+		this.state.receiptReview.form[input.name] = input.value
+		if (input.name === 'receiptTotal') {
+			this.state.receiptReview.form.receiptTotalSource = input.value.trim() ? 'user' : 'unknown'
+			this.updateReceiptReviewTotalsDom()
+		}
+	}
+
+	updateReceiptReviewItemField(input) {
+		const item = this.state.receiptReview.form?.items?.find(row => row.rowId === input.dataset.rowId)
+		if (!item) return
+		item[input.name] = input.value
+		if (input.name === 'productQuery') {
+			item.productId = null
+			item.productName = ''
+			item.suggestions = this.getSuggestions(input.value)
+			this.updateReceiptReviewProductDom(item)
+			return
+		}
+		if (input.name === 'total') this.updateReceiptReviewTotalsDom()
+		if (input.name === 'unit') this.updateReceiptReviewProductDom(item)
+	}
+
+	updateReceiptReviewTotalsDom() {
+		if (!this.state.receiptReview.form) return
+		const itemsTotal = this.getReceiptReviewItemsTotal()
+		const receiptTotal = this.state.receiptReview.form.receiptTotal
+		const hasReceiptTotal = this.hasKnownReceiptReviewTotal()
+		const totalWarning = this.getReceiptReviewTotalWarning()
+		const itemsTotalNode = document.querySelector('[data-review-items-total]')
+		const receiptTotalNode = document.querySelector('[data-review-receipt-total]')
+		const suggestionNode = document.querySelector('[data-review-suggestion]')
+		const warningNode = document.querySelector('[data-review-total-warning]')
+		if (itemsTotalNode) itemsTotalNode.textContent = formatMoney(itemsTotal)
+		if (receiptTotalNode) receiptTotalNode.textContent = formatOptionalMoney(receiptTotal)
+		if (suggestionNode) {
+			suggestionNode.hidden = hasReceiptTotal
+			const suggestedTotalNode = suggestionNode.querySelector('[data-review-suggested-total]')
+			const suggestedButtonNode = suggestionNode.querySelector('[data-review-use-suggested-total]')
+			if (suggestedTotalNode) suggestedTotalNode.textContent = formatMoney(itemsTotal)
+			if (suggestedButtonNode) suggestedButtonNode.textContent = `Use ${itemsTotal.toFixed(2)}`
+		}
+		if (warningNode) {
+			warningNode.textContent = totalWarning || ''
+			warningNode.className = totalWarning === 'Totals match' ? 'receipt-review-ok' : 'receipt-review-warning'
+			warningNode.hidden = !totalWarning
+		}
+	}
+
+	updateReceiptReviewProductDom(item) {
+		this.updateReceiptReviewSuggestionsDom(item)
+		this.updateReceiptReviewSelectedProductDom(item)
+		this.updateReceiptReviewItemStatusDom(item)
+	}
+
+	updateReceiptReviewSuggestionsDom(item) {
+		const container = document.querySelector(`[data-review-suggestions][data-row-id="${item.rowId}"]`)
+		if (!container) return
+		container.innerHTML = item.suggestions.length ? item.suggestions.map(product => `
+			<button type="button" data-purchase-action="select-review-product" data-row-id="${item.rowId}" data-product-id="${product.id}">
+				${this.escapeHtml(product.name)} <span>${this.escapeHtml(product.categoryName || '')}</span>
+			</button>
+		`).join('') : ''
+	}
+
+	updateReceiptReviewSelectedProductDom(item) {
+		const container = document.querySelector(`[data-review-selected-product][data-row-id="${item.rowId}"]`)
+		if (!container) return
+		container.className = item.productId ? 'receipt-review-selected-product' : 'receipt-review-product-help'
+		container.textContent = item.productId ? `Selected: ${item.productName}` : 'OCR text is not a selected Product.'
+	}
+
+	updateReceiptReviewItemStatusDom(item) {
+		const card = document.querySelector(`[data-review-item][data-row-id="${item.rowId}"]`)
+		const statusNode = document.querySelector(`[data-review-item-status][data-row-id="${item.rowId}"]`)
+		const status = this.getReceiptReviewItemStatus(item)
+		if (card) card.classList.toggle('needs-check', Boolean(status))
+		if (!statusNode) return
+		statusNode.textContent = status
+		statusNode.hidden = !status
+	}
+
+	updateReceiptReviewUnitOptionsDom(item) {
+		const select = document.querySelector(`[data-review-item-field][data-row-id="${item.rowId}"][name="unit"]`)
+		if (!select) return
+		const allowedUnits = getAllowedUnits(item.measurementType)
+		const unitOptions = allowedUnits.length ? allowedUnits : ['pcs', 'g', 'kg', 'ml', 'l']
+		select.innerHTML = unitOptions.map(unit => `<option value="${unit}" ${unit === item.unit ? 'selected' : ''}>${UNIT_LABELS[unit] || unit}</option>`).join('')
+		select.value = item.unit
+	}
+
+	renderReceiptReviewModalPreservingScroll({scrollToRowId = null} = {}) {
+		const body = document.querySelector('.receipt-review-body')
+		const scrollTop = body?.scrollTop || 0
+		this.renderReceiptReviewModal()
+		const nextBody = document.querySelector('.receipt-review-body')
+		if (!nextBody) return
+		nextBody.scrollTop = scrollTop
+		if (!scrollToRowId) return
+		const item = nextBody.querySelector(`[data-review-item][data-row-id="${scrollToRowId}"]`)
+		if (item) item.scrollIntoView({block: 'nearest'})
+	}
+
+	addReceiptReviewItem() {
+		if (!this.state.receiptReview.form) return
+		this.state.receiptReview.form.items.push(createReceiptReviewItem())
+		const items = this.state.receiptReview.form.items
+		this.renderReceiptReviewModalPreservingScroll({scrollToRowId: items[items.length - 1]?.rowId})
+	}
+
+	useReviewItemsTotal() {
+		if (!this.state.receiptReview.form) return
+		this.state.receiptReview.form.receiptTotal = normalizeDecimalString(this.getReceiptReviewItemsTotal())
+		this.state.receiptReview.form.receiptTotalSource = 'suggested'
+		const input = document.querySelector('[data-review-field][name="receiptTotal"]')
+		if (input) input.value = this.state.receiptReview.form.receiptTotal
+		this.updateReceiptReviewTotalsDom()
+	}
+
+	removeReceiptReviewItem(rowId) {
+		if (!this.state.receiptReview.form) return
+		const items = this.state.receiptReview.form.items
+		const index = items.findIndex(item => item.rowId === rowId)
+		const scrollToRowId = items[index + 1]?.rowId || items[index - 1]?.rowId || null
+		this.state.receiptReview.form.items = this.state.receiptReview.form.items.filter(item => item.rowId !== rowId)
+		if (!this.state.receiptReview.form.items.length) this.state.receiptReview.form.items.push(createReceiptReviewItem())
+		this.renderReceiptReviewModalPreservingScroll({scrollToRowId: scrollToRowId || this.state.receiptReview.form.items[0]?.rowId})
+	}
+
+	toggleReceiptReviewEvidence(rowId) {
+		this.state.receiptReview.evidenceRowId = this.state.receiptReview.evidenceRowId === rowId ? null : rowId
+		this.renderReceiptReviewModal()
+	}
+
+	toggleReceiptReviewRawText() {
+		this.state.receiptReview.rawOcrOpen = !this.state.receiptReview.rawOcrOpen
+		this.renderReceiptReviewModal()
+	}
+
+	getReceiptReviewItemsTotal() {
+		return (this.state.receiptReview.form?.items || [])
+			.reduce((sum, item) => sum + (parseDecimalInput(item.total) || 0), 0)
+	}
+
+	getReceiptReviewTotalWarning() {
+		const receiptTotal = parseDecimalInput(this.state.receiptReview.form?.receiptTotal)
+		if (receiptTotal === null) return 'Check receipt total'
+		const itemsTotal = this.getReceiptReviewItemsTotal()
+		const difference = Math.round((Math.abs(itemsTotal - receiptTotal) + Number.EPSILON) * 100) / 100
+		if (difference <= 0.05) return 'Totals match'
+		return `Totals differ by ${difference.toFixed(2)} грн`
+	}
+
+	hasKnownReceiptReviewTotal() {
+		return parseDecimalInput(this.state.receiptReview.form?.receiptTotal) !== null
+	}
+
+	getReceiptReviewItemStatus(item) {
+		if ((item.parserWarnings || []).length || item.confidence < 0.6) return 'Check this item'
+		if (!item.productId) return 'Select product'
+		return ''
+	}
+
+	buildReceiptReviewPayload() {
+		const form = this.state.receiptReview.form
+		const selectedMerchant = this.state.merchants.find(item => String(item.id) === String(form.merchantId))
+		const items = form.items.map(item => ({
+			item,
+			quantity: parseDecimalInput(item.quantity),
+			total: parseDecimalInput(item.total)
+		})).filter(({item, quantity, total}) => item.productId && quantity > 0 && total !== null && total >= 0)
+			.map(({item, quantity, total}) => ({
+				product_id: item.productServerId || item.productId,
+				quantity,
+				unit: item.unit,
+				total
+			}))
+		return {
+			client_mutation_id: form.clientMutationId,
+			merchant_id: selectedMerchant?.serverId || form.merchantId || null,
+			purchased_at: toApiDateTimeValue(form.purchasedAt),
+			payment_type: form.paymentType,
+			note: 'Created from receipt review',
+			items
+		}
+	}
+
+	validateReceiptReview() {
+		const form = this.state.receiptReview.form
+		if (!form) return 'Review is not loaded.'
+		if (!form.items.some(item => item.productId)) return 'Select at least one product before creating purchase.'
+		const invalidProduct = form.items.find(item => !item.productId)
+		if (invalidProduct) return 'Every review item must have an explicitly selected product, or be removed.'
+		const invalidAmount = form.items.find(item => {
+			const quantity = parseDecimalInput(item.quantity)
+			const total = parseDecimalInput(item.total)
+			return !(quantity > 0) || total === null || total < 0 || !item.unit
+		})
+		if (invalidAmount) return 'Check quantity, unit and total for every item.'
+		return ''
+	}
+
+	async confirmReceiptReview() {
+		if (this.state.receiptReview.saving) return
+		const validationError = this.validateReceiptReview()
+		if (validationError) {
+			this.state.receiptReview.error = validationError
+			this.renderReceiptReviewModal()
+			return
+		}
+		this.state.receiptReview.saving = true
+		this.state.receiptReview.error = ''
+		this.renderReceiptReviewModal()
+		try {
+			const result = await this.receiptApiService.confirmReceiptPurchase(
+				this.state.receiptReview.receiptServerId,
+				this.buildReceiptReviewPayload()
+			)
+			if (!result?.purchase) {
+				this.state.receiptReview.error = 'Receipt confirmation failed.'
+				this.state.receiptReview.saving = false
+				this.renderReceiptReviewModal()
+				return
+			}
+			await this.apiService.localRepository.mergeServerPurchases([result.purchase], {
+				userId: this.apiService.getUserId()
+			})
+			const localPurchase = await this.apiService.localRepository.getPurchase(result.purchase.id)
+			await this.receiptLocalRepository.linkStandaloneToPurchase(
+				this.state.receiptReview.receiptLocalId,
+				localPurchase || result.purchase
+			)
+			await this.refreshSelectedRangeFromLocal()
+			this.closeReceiptReview({render: false})
+			this.render()
+		} catch (error) {
+			this.state.receiptReview.saving = false
+			this.state.receiptReview.error = error?.message || 'Could not create purchase from receipt.'
+			this.renderReceiptReviewModal()
+		}
+	}
+
 	async deleteStandaloneReceipt() {
 		const receipt = this.state.form.receipt
 		if (!receipt?.localId) return
@@ -874,6 +1391,7 @@ export default class PurchasePage extends AbstractClass {
 		this.$hbapp.innerHTML = this.getTemplate()
 		this.renderEditorModal()
 		this.renderReceiptFlowModal()
+		this.renderReceiptReviewModal()
 	}
 
 	getTemplate() {
@@ -908,6 +1426,12 @@ export default class PurchasePage extends AbstractClass {
 		const html = this.getReceiptFlowModalTemplate()
 		if (html) overlayHost.render('receipt-flow-modal', html)
 		else overlayHost.clear('receipt-flow-modal')
+	}
+
+	renderReceiptReviewModal() {
+		const html = this.getReceiptReviewTemplate()
+		if (html) overlayHost.render('receipt-review-modal', html)
+		else overlayHost.clear('receipt-review-modal')
 	}
 
 	getEditorModalTemplate() {
@@ -1060,6 +1584,7 @@ export default class PurchasePage extends AbstractClass {
 					${hasText || failed ? 'Recognize again' : (isProcessing ? 'Recognizing receipt...' : 'Recognize receipt')}
 				</button>
 			</div>
+			${hasText ? `<button class="hboo-button product-primary-action receipt-review-open" type="button" data-purchase-action="review-standalone-receipt">Review receipt</button>` : ''}
 			${hasText ? `<pre class="receipt-ocr-raw">${this.escapeHtml(ocr.rawText || '')}</pre>` : ''}
 			${failed ? '<p class="receipt-ocr-note">Could not recognize receipt. Try again.</p>' : ''}
 		</section>`
@@ -1070,6 +1595,98 @@ export default class PurchasePage extends AbstractClass {
 		if (ocr?.status === 'failed') return '<p class="receipt-ocr-note">Could not recognize receipt</p>'
 		if (ocr?.status === 'processing' || ocr?.status === 'pending') return '<p class="receipt-ocr-note">Recognizing receipt...</p>'
 		return '<p class="receipt-ocr-note">Ready</p>'
+	}
+
+	getReceiptReviewTemplate() {
+		const review = this.state.receiptReview
+		if (!review.open) return ''
+		const form = review.form
+		const itemsTotal = this.getReceiptReviewItemsTotal()
+		const totalWarning = this.getReceiptReviewTotalWarning()
+		const hasReceiptTotal = this.hasKnownReceiptReviewTotal()
+		return `<div class="app-modal-backdrop receipt-review-modal-backdrop">
+			<div class="app-modal receipt-review-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-review-title">
+				<div class="app-modal-header">
+					<h4 id="receipt-review-title">Review receipt</h4>
+					<button class="app-modal-close" type="button" aria-label="Close" data-purchase-action="close-receipt-review">×</button>
+				</div>
+				<div class="app-modal-body receipt-review-body">
+					${review.loading ? '<div class="product-empty">Parsing receipt...</div>' : ''}
+					${!review.loading && form ? `<div class="receipt-review-form">
+						<div class="purchase-meta-grid receipt-review-meta">
+							<label>Store<select name="merchantId" data-review-field>
+								<option value="">Other / no merchant</option>
+								${this.state.merchants.map(merchant => `<option value="${merchant.id}" ${String(merchant.id) === String(form.merchantId) ? 'selected' : ''}>${this.escapeHtml(merchant.name)}</option>`).join('')}
+							</select></label>
+							<label>Date and time<input type="datetime-local" name="purchasedAt" value="${this.escapeHtml(form.purchasedAt)}" data-review-field></label>
+							<label>Payment<select name="paymentType" data-review-field>
+								<option value="bank" ${form.paymentType === 'bank' ? 'selected' : ''}>Bank</option>
+								<option value="cash" ${form.paymentType === 'cash' ? 'selected' : ''}>Cash</option>
+								<option value="other" ${form.paymentType === 'other' ? 'selected' : ''}>Other</option>
+							</select></label>
+							<label>Receipt total<input type="text" inputmode="decimal" name="receiptTotal" value="${this.escapeHtml(form.receiptTotal)}" data-review-field></label>
+						</div>
+						<div class="receipt-review-summary">
+							<span>Items total: <strong data-review-items-total>${formatMoney(itemsTotal)}</strong></span>
+							<span>Receipt total: <strong data-review-receipt-total>${formatOptionalMoney(form.receiptTotal)}</strong></span>
+						</div>
+						<div class="receipt-review-suggestion" data-review-suggestion ${hasReceiptTotal ? 'hidden' : ''}>
+							<span>Suggested total: <strong data-review-suggested-total>${formatMoney(itemsTotal)}</strong></span>
+							<small>Based on reviewed items, not receipt OCR.</small>
+							<button class="hboo-button" type="button" data-purchase-action="use-review-items-total" data-review-use-suggested-total>Use ${itemsTotal.toFixed(2)}</button>
+						</div>
+						<div class="${totalWarning === 'Totals match' ? 'receipt-review-ok' : 'receipt-review-warning'}" data-review-total-warning ${totalWarning ? '' : 'hidden'}>${this.escapeHtml(totalWarning)}</div>
+						${form.warnings.length ? `<div class="receipt-review-warning">Check receipt totals and parser warnings.</div>` : ''}
+						<div class="purchase-items-title">Items</div>
+						<div class="receipt-review-items">${form.items.map(item => this.getReceiptReviewItemTemplate(item)).join('')}</div>
+						<button class="purchase-add-item" type="button" data-purchase-action="add-review-item">+ Add item</button>
+						${this.getCreateProductTemplate()}
+						<button class="hboo-button receipt-review-raw-toggle" type="button" data-purchase-action="toggle-review-raw">${review.rawOcrOpen ? 'Hide OCR text' : 'Show full OCR text'}</button>
+						${review.rawOcrOpen ? `<pre class="receipt-ocr-raw">${this.escapeHtml(review.rawText || '')}</pre>` : ''}
+					</div>` : ''}
+					${review.error ? `<div class="purchase-save-error">${this.escapeHtml(review.error)}</div>` : ''}
+				</div>
+				<div class="app-modal-actions receipt-review-actions">
+					<button type="button" data-purchase-action="close-receipt-review" ${review.saving ? 'disabled' : ''}>Cancel</button>
+					<button class="purchase-save product-primary-action" type="button" data-purchase-action="confirm-receipt-review" ${review.loading || review.saving ? 'disabled' : ''}>${review.saving ? 'Creating purchase...' : 'Create purchase'}</button>
+				</div>
+			</div>
+		</div>`
+	}
+
+	getReceiptReviewItemTemplate(item) {
+		const allowedUnits = getAllowedUnits(item.measurementType)
+		const unitOptions = allowedUnits.length ? allowedUnits : ['pcs', 'g', 'kg', 'ml', 'l']
+		const status = this.getReceiptReviewItemStatus(item)
+		const evidenceOpen = this.state.receiptReview.evidenceRowId === item.rowId
+		return `<div class="receipt-review-item ${status ? 'needs-check' : ''}" data-review-item data-row-id="${item.rowId}">
+			<div class="receipt-review-item-head">
+				<strong>${this.escapeHtml(item.rawName || item.productName || 'Item')}</strong>
+				<span data-review-item-status data-row-id="${item.rowId}" ${status ? '' : 'hidden'}>${this.escapeHtml(status)}</span>
+			</div>
+			<div class="purchase-product-cell receipt-review-product">
+				<label>Product<input name="productQuery" value="${this.escapeHtml(item.productQuery)}" placeholder="Search existing product..." data-review-item-field data-row-id="${item.rowId}" autocomplete="off"></label>
+				<div class="purchase-suggestions" data-review-suggestions data-row-id="${item.rowId}">${item.suggestions.map(product => `
+					<button type="button" data-purchase-action="select-review-product" data-row-id="${item.rowId}" data-product-id="${product.id}">
+						${this.escapeHtml(product.name)} <span>${this.escapeHtml(product.categoryName || '')}</span>
+					</button>
+				`).join('')}</div>
+				<p class="${item.productId ? 'receipt-review-selected-product' : 'receipt-review-product-help'}" data-review-selected-product data-row-id="${item.rowId}">${item.productId ? `Selected: ${this.escapeHtml(item.productName)}` : 'OCR text is not a selected Product.'}</p>
+				<button class="purchase-create-product-link receipt-review-create-product" type="button" data-purchase-action="start-create-product" data-row-id="${item.rowId}">+ Create new product</button>
+			</div>
+			<div class="receipt-review-item-grid">
+				<label>Amount<input name="quantity" type="text" inputmode="decimal" value="${this.escapeHtml(item.quantity)}" data-review-item-field data-row-id="${item.rowId}"></label>
+				<label>Unit<select name="unit" data-review-item-field data-row-id="${item.rowId}">
+					${unitOptions.map(unit => `<option value="${unit}" ${unit === item.unit ? 'selected' : ''}>${UNIT_LABELS[unit] || unit}</option>`).join('')}
+				</select></label>
+				<label>Price<input name="total" type="text" inputmode="decimal" value="${this.escapeHtml(item.total)}" data-review-item-field data-row-id="${item.rowId}"></label>
+			</div>
+			<div class="receipt-review-item-actions">
+				${status ? `<button class="hboo-button" type="button" data-purchase-action="toggle-review-evidence" data-row-id="${item.rowId}">${evidenceOpen ? 'Hide OCR text' : 'Show OCR text'}</button>` : ''}
+				<button class="purchase-remove-item" type="button" data-purchase-action="remove-review-item" data-row-id="${item.rowId}">Remove</button>
+			</div>
+			${evidenceOpen ? `<pre class="receipt-ocr-raw">${this.escapeHtml(item.rawText || item.rawName || '')}</pre>` : ''}
+		</div>`
 	}
 
 	getStandaloneReceiptsTemplate() {
