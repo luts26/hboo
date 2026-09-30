@@ -6,6 +6,7 @@ import transactionHandler from '../handlers/transactionHandler.js';
 import categoryHandler from '../handlers/categoryHandler.js';
 import planningHandler from '../handlers/planningHandler.js';
 import productCatalogHandler from '../handlers/productCatalogHandler.js';
+import receiptHandler from '../handlers/receiptHandler.js';
 
 const routes = {
     'GET /api/health': {
@@ -110,6 +111,33 @@ const routes = {
     },
     'DELETE /api/purchases/:id': {
         handler: productCatalogHandler
+    },
+    'POST /api/purchases/:purchaseId/receipt': {
+        handler: receiptHandler
+    },
+    'GET /api/purchases/:purchaseId/receipt': {
+        handler: receiptHandler
+    },
+    'GET /api/purchases/:purchaseId/receipt/image': {
+        handler: receiptHandler
+    },
+    'DELETE /api/purchases/:purchaseId/receipt': {
+        handler: receiptHandler
+    },
+    'GET /api/receipts': {
+        handler: receiptHandler
+    },
+    'POST /api/receipts': {
+        handler: receiptHandler
+    },
+    'GET /api/receipts/:receiptId': {
+        handler: receiptHandler
+    },
+    'GET /api/receipts/:receiptId/image': {
+        handler: receiptHandler
+    },
+    'DELETE /api/receipts/:receiptId': {
+        handler: receiptHandler
     }
 };
 
@@ -155,6 +183,7 @@ export function findRoute(method, pathname) {
         }
 
         if (matched) {
+            if (routePath.endsWith('/receipt/image') || routePath.endsWith('/receipts/:receiptId/image')) params.mode = 'image';
             return {
                 route,
                 params

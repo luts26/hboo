@@ -4,6 +4,8 @@ import networkStatusService from './NetworkStatusService.js'
 import ProductCatalogLocalRepository, {isLocalId, toServerId} from './ProductCatalogLocalRepository.js'
 import ProductCatalogSyncQueue from './ProductCatalogSyncQueue.js'
 import {setState as setSyncState} from './ProductCatalogSyncState.js'
+import ReceiptLocalRepository from './ReceiptLocalRepository.js'
+import ReceiptApiService from './ReceiptApiService.js'
 
 const hasUsableApiAuth = () => {
 	const authState = getAuthState()
@@ -40,10 +42,14 @@ export default class ProductCatalogSyncService {
 	constructor({
 		localRepository = new ProductCatalogLocalRepository(),
 		queue = new ProductCatalogSyncQueue(),
+		receiptLocalRepository = new ReceiptLocalRepository({indexedDbClient: queue.indexedDbClient}),
+		receiptApiService = new ReceiptApiService(),
 		autoRegisterSyncTriggers = true
 	} = {}) {
 		this.localRepository = localRepository
 		this.queue = queue
+		this.receiptLocalRepository = receiptLocalRepository
+		this.receiptApiService = receiptApiService
 		this.syncPromise = null
 		this.syncDebounce = null
 		this.unsubscribeNetworkStatus = null
@@ -166,6 +172,7 @@ export default class ProductCatalogSyncService {
 		if (operation.entityType === 'product') return this.processProduct(operation)
 		if (operation.entityType === 'merchant') return this.processMerchant(operation)
 		if (operation.entityType === 'purchase') return this.processPurchase(operation)
+		if (operation.entityType === 'receipt') return this.processReceipt(operation)
 		return true
 	}
 
@@ -214,10 +221,50 @@ export default class ProductCatalogSyncService {
 		if (operation.action === 'create' || !purchase.serverId) {
 			const saved = await api.post('/purchases', toApiPurchase(purchase))
 			await this.localRepository.markPurchaseSynced(purchase.id, saved)
+			await this.receiptLocalRepository.updateServerPurchaseId(purchase.id, saved.id).catch(() => null)
 			return true
 		}
 		const saved = await api.put(`/purchases/${encodeURIComponent(purchase.serverId)}`, toApiPurchase(purchase))
 		await this.localRepository.markPurchaseSynced(purchase.id, saved)
+		await this.receiptLocalRepository.updateServerPurchaseId(purchase.id, saved.id).catch(() => null)
+		return true
+	}
+
+	async processReceipt(operation) {
+		const receipt = await this.receiptLocalRepository.getByLocalId(operation.entityLocalId, {includeDeleted: true})
+			|| await this.receiptLocalRepository.getByPurchaseLocalId(operation.entityLocalId, {includeDeleted: true})
+		if (!receipt) return true
+		if (!receipt.purchaseLocalId) return this.processStandaloneReceipt(operation, receipt)
+		const purchase = await this.localRepository.getPurchase(receipt.purchaseLocalId)
+		const purchaseServerId = toServerId(receipt.purchaseServerId || purchase?.serverId)
+		if (!purchaseServerId) {
+			throw new Error('Receipt sync is waiting for purchase sync')
+		}
+
+		if (operation.action === 'delete' || receipt.syncStatus === 'pending_delete') {
+			await this.receiptApiService.deleteReceipt(purchaseServerId)
+			await this.receiptLocalRepository.markDeleted(receipt.localId)
+			return true
+		}
+
+		if (!receipt.blob) throw new Error('Receipt image is missing locally')
+		const saved = await this.receiptApiService.uploadReceipt(purchaseServerId, {
+			...receipt,
+			purchaseServerId
+		})
+		await this.receiptLocalRepository.markSynced(receipt.localId, saved)
+		return true
+	}
+
+	async processStandaloneReceipt(operation, receipt) {
+		if (operation.action === 'delete' || receipt.syncStatus === 'pending_delete') {
+			if (receipt.serverReceiptId) await this.receiptApiService.deleteStandaloneReceipt(receipt.serverReceiptId)
+			await this.receiptLocalRepository.markDeleted(receipt.localId)
+			return true
+		}
+		if (!receipt.blob) throw new Error('Receipt image is missing locally')
+		const saved = await this.receiptApiService.uploadStandaloneReceipt(receipt)
+		await this.receiptLocalRepository.markSynced(receipt.localId, saved)
 		return true
 	}
 

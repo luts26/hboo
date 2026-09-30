@@ -70,8 +70,10 @@ test('service worker precaches the complete ES module graph from entry modules',
 	const requiredShellAssets = parseArrayConstant(swSource, 'REQUIRED_SHELL_ASSETS')
 	const moduleGraph = collectJavaScriptGraph(requiredShellAssets)
 
+	assert.match(swSource, /2026-09-29-receipts-v1/)
 	assert.ok(moduleGraph.has('/hbapp/index.js'))
 	assert.ok(moduleGraph.has('/hbapp/services/TransactionDateRange.js'))
+	assert.ok(moduleGraph.has('/hbapp/services/ReceiptLocalRepository.js'))
 
 	for (const modulePath of moduleGraph) {
 		assert.ok(fs.existsSync(path.join(frontendRoot, modulePath.replace(/^\//, ''))), `${modulePath} exists`)

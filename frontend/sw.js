@@ -1,4 +1,4 @@
-const HBOO_APP_VERSION = '2026-09-29-product-price-history-v1'
+const HBOO_APP_VERSION = '2026-09-29-receipts-v1'
 const HBOO_APP_SHELL_CACHE = `hboo-app-shell-${HBOO_APP_VERSION}`
 const HBOO_APP_SHELL_PREFIX = 'hboo-app-shell-'
 
@@ -7,8 +7,8 @@ const REQUIRED_SHELL_ASSETS = [
 	'/index.html',
 	'/planing',
 	'/manifest.webmanifest',
-	'/hbapp/assets/styles/main.css?v=9',
-	'/hbapp/index.js?v=9'
+	'/hbapp/assets/styles/main.css?v=10',
+	'/hbapp/index.js?v=10'
 ]
 
 const OPTIONAL_SHELL_ASSETS = [

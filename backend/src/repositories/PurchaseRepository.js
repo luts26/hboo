@@ -12,6 +12,7 @@ const purchaseFields = `
     p.transaction_id AS transactionId,
     p.total,
     p.note,
+    r.id AS receiptId,
     p.created_at AS createdAt,
     p.updated_at AS updatedAt
 `;
@@ -64,6 +65,7 @@ class PurchaseRepository {
             SELECT ${purchaseFields}
             FROM purchase p
             LEFT JOIN merchant m ON m.id = p.merchant_id
+            LEFT JOIN receipt r ON r.purchase_id = p.id
             WHERE p.user_id = ?
               AND p.purchased_at >= ?
               AND p.purchased_at <= ?
@@ -80,6 +82,7 @@ class PurchaseRepository {
             SELECT ${purchaseFields}
             FROM purchase p
             LEFT JOIN merchant m ON m.id = p.merchant_id
+            LEFT JOIN receipt r ON r.purchase_id = p.id
             WHERE p.user_id = ?
               AND p.id = ?
             LIMIT 1
@@ -98,6 +101,7 @@ class PurchaseRepository {
             SELECT ${purchaseFields}
             FROM purchase p
             LEFT JOIN merchant m ON m.id = p.merchant_id
+            LEFT JOIN receipt r ON r.purchase_id = p.id
             WHERE p.user_id = ?
               AND p.client_mutation_id = ?
             LIMIT 1

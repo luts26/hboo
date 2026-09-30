@@ -94,6 +94,77 @@ test('Purchase editor uses viewport overlay modal instead of permanent page form
 	assert.doesNotMatch(templateMethod, /purchase-layout/)
 })
 
+test('Purchases page exposes manual add and first-class scan receipt actions', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const template = source.match(/getTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(template, /data-purchase-action="new-purchase">[\s\S]*\+ Add purchase/)
+	assert.match(template, /data-purchase-action="scan-receipt">[\s\S]*Scan receipt/)
+	assert.doesNotMatch(source.match(/renderHeaderContextMenu[\s\S]*/)?.[0] || '', /Scan receipt/)
+})
+
+test('Purchase editor wires receipt workflow without polluting purchase JSON payload', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const apiServiceSource = read('hbapp/services/ProductCatalogApiService.js')
+	const syncServiceSource = read('hbapp/services/ProductCatalogSyncService.js')
+	const compactReceiptTemplate = source.match(/getCompactReceiptTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const receiptFlowTemplate = source.match(/getReceiptFlowModalTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const purchaseListTemplate = source.match(/getPurchasesListTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(source, /type="file" accept="image\/jpeg,image\/png,image\/webp,image\/\*" capture="environment"/)
+	assert.match(source, /prepareReceiptImage/)
+	assert.match(source, /ReceiptLocalRepository/)
+	assert.match(source, /persistReceiptState/)
+	assert.match(source, /URL\.createObjectURL/)
+	assert.match(source, /URL\.revokeObjectURL/)
+	assert.match(source, /purchase-receipt-indicator/)
+	assert.match(source, /renderReceiptFlowModal/)
+	assert.match(source, /openReceiptFirstFlow/)
+	assert.match(source, /saveStandaloneReceipt/)
+	assert.match(source, /useReceiptInPurchaseDraft/)
+	assert.match(receiptFlowTemplate, /receipt-flow-modal/)
+	assert.match(receiptFlowTemplate, /Save receipt/)
+	assert.match(receiptFlowTemplate, /Use receipt/)
+	assert.doesNotMatch(receiptFlowTemplate, /Continue manually/)
+	assert.match(source, /listStandaloneByUser/)
+	assert.match(source, /getStandaloneReceiptsTemplate/)
+	assert.match(source, /openStandaloneReceipt/)
+	assert.match(compactReceiptTemplate, /purchase-receipt-compact-card/)
+	assert.match(compactReceiptTemplate, /Attach receipt/)
+	assert.doesNotMatch(compactReceiptTemplate, /purchase-receipt-preview|<img/)
+	assert.doesNotMatch(purchaseListTemplate, /getReceiptImageBlob|receiptApiService|<img/)
+	assert.doesNotMatch(apiServiceSource.match(/const toApiPurchase = purchase => \(\{[\s\S]*?\n\}\)/)?.[0] || '', /receipt|blob|base64/i)
+	assert.match(syncServiceSource, /if \(operation\.entityType === 'receipt'\) return this\.processReceipt\(operation\)/)
+	assert.match(syncServiceSource, /Receipt sync is waiting for purchase sync/)
+})
+
+test('Receipt flow handoff preserves a single canonical Purchase form draft', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const handleAction = source.match(/handleAction\(action, target\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const closeReceiptFlow = source.match(/closeReceiptFlow\(\{[\s\S]*?\n\t\}/)?.[0] || ''
+	const saveMethod = source.match(/async savePurchase\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(handleAction, /scan-receipt/)
+	assert.match(handleAction, /open-receipt-flow/)
+	assert.match(source, /this\.state\.form\.receipt = receipt/)
+	assert.match(source, /this\.state\.form\.receiptAction = action/)
+	assert.match(source, /originalReceipt/)
+	assert.match(closeReceiptFlow, /this\.state\.form\.receipt = .*originalReceipt/s)
+	assert.match(source, /this\.state\.editorOpen = true/)
+	assert.match(saveMethod, /Add at least one item before saving the purchase\./)
+	assert.match(saveMethod, /await this\.persistReceiptState\(savedPurchase\)/)
+})
+
+test('Standalone Scan receipt saves receipt without opening Purchase modal or requiring items', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const saveStandalone = source.match(/async saveStandaloneReceipt\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(saveStandalone, /receiptLocalRepository\.saveStandalone/)
+	assert.match(saveStandalone, /entityType: 'receipt'/)
+	assert.match(saveStandalone, /entityLocalId: receipt\.localId/)
+	assert.doesNotMatch(saveStandalone, /savePurchase|saveForPurchase|items\.length|editorOpen = true/)
+})
+
 test('Purchase modal supports create edit cancel and local failure behavior', () => {
 	const source = read('hbapp/pages/PurchasePage.js')
 	const openPurchaseMethod = source.match(/async openPurchase\(purchaseId\) \{[\s\S]*?\n\t\}/)?.[0] || ''

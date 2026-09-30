@@ -34,7 +34,9 @@ services:
       - ./docker/mysql/migrations/20260928_product_catalog_purchases.sql:/docker-entrypoint-initdb.d/05-product-catalog-purchases.sql:ro
       - ./docker/mysql/migrations/20260928_product_taxonomy_bread_fish.sql:/docker-entrypoint-initdb.d/06-product-taxonomy-bread-fish.sql:ro
       - ./docker/mysql/migrations/20260929_purchase_client_mutation_id.sql:/docker-entrypoint-initdb.d/07-purchase-client-mutation-id.sql:ro
-      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/08-seed.sql:ro
+      - ./docker/mysql/migrations/20260929_receipts.sql:/docker-entrypoint-initdb.d/08-receipts.sql:ro
+      - ./docker/mysql/migrations/20260930_receipt_optional_purchase.sql:/docker-entrypoint-initdb.d/09-receipt-optional-purchase.sql:ro
+      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/10-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 10s
@@ -74,6 +76,7 @@ services:
       BANK_SERVICE_URL: ${DEV_BANK_SERVICE_URL:-}
       BANK_SERVICE_USER: ${DEV_BANK_SERVICE_USER:-change_me}
       BANK_SERVICE_PASSWORD: ${DEV_BANK_SERVICE_PASSWORD:-change_me}
+      RECEIPT_STORAGE_DIR: /data/receipts
     ports:
       - "${DEV_BACKEND_HOST:-127.0.0.2}:${DEV_BACKEND_PORT:-3000}:3000"
     expose:
@@ -81,6 +84,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    volumes:
+      - hboo-dev-receipts:/data/receipts
     networks:
       - hboo-dev
 
@@ -91,3 +96,5 @@ networks:
 volumes:
   hboo-dev-mysql-data:
     name: hboo-dev-mysql-data
+  hboo-dev-receipts:
+    name: hboo-dev-receipts

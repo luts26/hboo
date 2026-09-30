@@ -214,6 +214,8 @@ class ProductCatalogService {
             transactionId: purchase.transactionId || null,
             total: Number(purchase.total),
             note: purchase.note || null,
+            hasReceipt: Boolean(purchase.receiptId),
+            receipt: purchase.receiptId ? {id: Number(purchase.receiptId)} : null,
             items: Array.isArray(purchase.items) ? purchase.items.map(item => this.formatPurchaseItem(item)) : [],
             createdAt: purchase.createdAt,
             updatedAt: purchase.updatedAt

@@ -66,6 +66,7 @@ services:
       BANK_SERVICE_URL: ${REAL_BANK_SERVICE_URL:?set REAL_BANK_SERVICE_URL in real.env}
       BANK_SERVICE_USER: ${REAL_BANK_SERVICE_USER:?set REAL_BANK_SERVICE_USER in real.env}
       BANK_SERVICE_PASSWORD: ${REAL_BANK_SERVICE_PASSWORD:?set REAL_BANK_SERVICE_PASSWORD in real.env}
+      RECEIPT_STORAGE_DIR: /data/receipts
     expose:
       - "3000"
     ports:
@@ -73,6 +74,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    volumes:
+      - hboo-real-receipts:/data/receipts
     networks:
       - hboo-real
 
@@ -83,3 +86,5 @@ networks:
 volumes:
   hboo-real-mysql-data:
     name: hboo-real-mysql-data
+  hboo-real-receipts:
+    name: hboo-real-receipts

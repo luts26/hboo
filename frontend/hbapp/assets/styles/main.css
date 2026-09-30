@@ -5940,6 +5940,169 @@ textarea.planing-textarea {
 	width: 100%;
 }
 
+.purchase-receipt-section {
+	border-top: 1px solid rgba(119,139,165,.16);
+	display: grid;
+	gap: .75rem;
+	margin-top: 1rem;
+	padding-top: 1rem;
+}
+
+.purchase-receipt-input {
+	display: none;
+}
+
+.purchase-add-receipt,
+.purchase-receipt-actions button {
+	background: #ebf5fc;
+	border: none;
+	border-radius: 10px;
+	box-shadow: -2px -2px 4px #ffffff, 3px 3px 5px rgba(70,70,70,.15);
+	color: #778ba5;
+	cursor: pointer;
+	font-weight: 800;
+	min-height: 40px;
+	padding: .55rem .75rem;
+}
+
+.purchase-scan-action {
+	align-items: center;
+	display: inline-flex;
+	gap: .35rem;
+	justify-content: center;
+}
+
+.purchase-receipt-compact-card {
+	align-items: center;
+	background: #ebf5fc;
+	border: none;
+	border-radius: 10px;
+	box-shadow: inset -2px -2px 4px rgb(255, 255, 255), inset 2px 2px 4px rgba(0,0,0,.08);
+	color: #778ba5;
+	cursor: pointer;
+	display: grid;
+	gap: .55rem;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	padding: .75rem .85rem;
+	text-align: left;
+	width: 100%;
+}
+
+.purchase-receipt-compact-card strong,
+.purchase-receipt-compact-card em {
+	display: block;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.purchase-receipt-compact-card em {
+	color: #9baabd;
+	font-size: 10pt;
+	font-style: normal;
+	margin-top: .15rem;
+}
+
+.purchase-receipt-compact-card b {
+	color: #00865a;
+	font-size: 13pt;
+}
+
+.purchase-receipt-compact-card small {
+	color: #9baabd;
+	font-size: 10pt;
+	font-weight: 800;
+	white-space: nowrap;
+}
+
+.purchase-receipt-actions {
+	display: grid;
+	gap: .55rem;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.purchase-receipt-indicator {
+	color: #778ba5;
+	display: inline-block;
+	font-size: 11pt;
+	line-height: 1;
+	margin-left: .25rem;
+	vertical-align: middle;
+}
+
+.purchase-receipt-indicator.pending {
+	color: #c27a00;
+}
+
+.receipt-flow-modal {
+	max-height: calc(100vh - 24px);
+	max-width: 760px;
+	width: min(760px, calc(100vw - 24px));
+}
+
+.receipt-flow-body {
+	display: grid;
+	gap: .8rem;
+	max-height: calc(100vh - 190px);
+	overflow: auto;
+	padding: 1rem;
+}
+
+.receipt-flow-capture-card {
+	align-items: center;
+	border-radius: 10px;
+	box-shadow: inset -2px -2px 4px rgb(255, 255, 255), inset 2px 2px 4px rgba(0,0,0,.08);
+	display: grid;
+	gap: .9rem;
+	justify-items: center;
+	min-height: 280px;
+	padding: 1.2rem;
+	text-align: center;
+}
+
+.receipt-flow-capture-card p {
+	color: #9baabd;
+	font-size: 10pt;
+	font-weight: 800;
+	margin: 0;
+	max-width: 260px;
+}
+
+.receipt-flow-icon {
+	align-items: center;
+	border-radius: 50%;
+	box-shadow: -2px -2px 4px #ffffff, 3px 3px 5px rgba(70,70,70,.15);
+	color: #778ba5;
+	display: flex;
+	font-size: 32pt;
+	height: 92px;
+	justify-content: center;
+	width: 92px;
+}
+
+.receipt-flow-preview {
+	align-items: center;
+	border-radius: 10px;
+	box-shadow: inset -2px -2px 4px rgb(255, 255, 255), inset 2px 2px 4px rgba(0,0,0,.08);
+	display: flex;
+	justify-content: center;
+	max-height: min(62vh, 720px);
+	min-height: 260px;
+	overflow: auto;
+	padding: .5rem;
+}
+
+.receipt-flow-preview img {
+	display: block;
+	height: auto;
+	max-height: 100%;
+	max-width: 100%;
+	object-fit: contain;
+}
+
+.receipt-flow-actions {
+	padding: 1rem;
+}
+
 .purchase-editor-modal {
 	max-width: 920px;
 	width: min(920px, calc(100vw - 32px));
@@ -6039,6 +6202,9 @@ textarea.planing-textarea {
 .dark-theme .purchase-history-row,
 .dark-theme .purchase-delete,
 .dark-theme .purchase-add-item,
+.dark-theme .purchase-add-receipt,
+.dark-theme .purchase-receipt-actions button,
+.dark-theme .purchase-receipt-compact-card,
 .dark-theme .purchase-remove-item,
 .dark-theme .purchase-create-product-link,
 .dark-theme .purchase-suggestions,
@@ -6057,6 +6223,9 @@ textarea.planing-textarea {
 
 .dark-theme .product-row,
 .dark-theme .purchase-total-row,
+.dark-theme .receipt-flow-capture-card,
+.dark-theme .receipt-flow-icon,
+.dark-theme .receipt-flow-preview,
 .dark-theme .product-analytics-row,
 .dark-theme .product-analytics-detail-field {
 	box-shadow: inset -2px -2px 4px rgba(255,255,255,.05), inset 2px 2px 4px rgba(0,0,0,.28);
@@ -6070,6 +6239,10 @@ textarea.planing-textarea {
 
 	.purchase-item-row {
 		grid-template-columns: minmax(0, 1fr) 88px 76px;
+	}
+
+	.purchase-receipt-actions {
+		grid-template-columns: 1fr;
 	}
 
 	.purchase-product-cell,
@@ -6090,6 +6263,8 @@ textarea.planing-textarea {
 	}
 
 	.purchase-toolbar-actions {
+		display: grid;
+		grid-template-columns: 1fr;
 		justify-content: stretch;
 	}
 

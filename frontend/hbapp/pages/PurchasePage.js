@@ -3,6 +3,9 @@ import ConfirmModal from '../components/ConfirmModal.js'
 import router from '../router/router.js'
 import overlayHost from '../services/OverlayHost.js'
 import ProductCatalogApiService from '../services/ProductCatalogApiService.js'
+import ReceiptLocalRepository from '../services/ReceiptLocalRepository.js'
+import ReceiptApiService from '../services/ReceiptApiService.js'
+import {prepareReceiptImage} from '../services/ReceiptImageService.js'
 import {MEASUREMENT_LABELS, UNIT_LABELS, getAllowedUnits, normalizeSearchText} from '../services/ProductUnitService.js'
 import {getCurrentPurchaseRange} from '../services/PurchaseDateRange.js'
 import {subscribeProductCatalogChanges} from '../services/ProductCatalogEvents.js'
@@ -47,11 +50,15 @@ export default class PurchasePage extends AbstractClass {
 
 	pageName = 'purchases'
 	apiService = new ProductCatalogApiService()
+	receiptLocalRepository = new ReceiptLocalRepository()
+	receiptApiService = new ReceiptApiService()
+	activeReceiptUrls = new Set()
 	state = {
 		categories: [],
 		products: [],
 		merchants: [],
 		purchases: [],
+		standaloneReceipts: [],
 		range: getCurrentPurchaseRange(),
 		rangeUnavailableOffline: false,
 		form: {
@@ -60,12 +67,22 @@ export default class PurchasePage extends AbstractClass {
 			merchantId: '',
 			paymentType: 'bank',
 			note: '',
-			items: [createItem()]
+			items: [createItem()],
+			receipt: null,
+			receiptAction: null,
+			receiptError: ''
 		},
 		createProductForRowId: null,
 		createProductForm: null,
 		selectedPurchase: null,
 		editorOpen: false,
+		receiptFlow: {
+			open: false,
+			origin: null,
+			originalReceipt: null,
+			originalReceiptAction: null,
+			error: ''
+		},
 		deleteConfirmation: null,
 		loading: true,
 		saving: false,
@@ -76,6 +93,7 @@ export default class PurchasePage extends AbstractClass {
 		super(hbapp)
 		this.handleKeydown = event => {
 			if (event.key === 'Escape' && this.state.deleteConfirmation) this.closeDeleteConfirmation()
+			else if (event.key === 'Escape' && this.state.receiptFlow.open) this.closeReceiptFlow()
 			else if (event.key === 'Escape' && this.state.editorOpen) this.closeEditor()
 		}
 		document.addEventListener('keydown', this.handleKeydown)
@@ -90,7 +108,9 @@ export default class PurchasePage extends AbstractClass {
 	destroy() {
 		if (this.handleKeydown) document.removeEventListener('keydown', this.handleKeydown)
 		if (this.unsubscribeProductCatalogChanges) this.unsubscribeProductCatalogChanges()
+		this.revokeReceiptUrls()
 		overlayHost.clear('purchase-editor-modal')
+		overlayHost.clear('receipt-flow-modal')
 	}
 
 	init() {
@@ -101,11 +121,12 @@ export default class PurchasePage extends AbstractClass {
 			this.apiService.loadCatalog({refresh: true}),
 			this.apiService.hydrateGuaranteedPurchaseWindow({refresh: true}),
 			this.apiService.loadPurchasesByRange({refresh: false, range})
-		]).then(([catalog, , purchaseResult]) => {
+		]).then(async ([catalog, , purchaseResult]) => {
 			this.state.categories = catalog.categories || []
 			this.state.products = catalog.products || []
 			this.state.merchants = catalog.merchants || []
-			this.state.purchases = purchaseResult?.purchases || []
+			this.state.purchases = await this.enrichPurchasesWithReceiptState(purchaseResult?.purchases || [])
+			this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
 			this.state.rangeUnavailableOffline = Boolean(purchaseResult?.unavailableOffline)
 			this.state.loading = false
 			this.render()
@@ -124,7 +145,8 @@ export default class PurchasePage extends AbstractClass {
 			this.state.range.dateFrom,
 			this.state.range.dateTo
 		)
-		this.state.purchases = purchases
+		this.state.purchases = await this.enrichPurchasesWithReceiptState(purchases)
+		this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
 		this.state.rangeUnavailableOffline = purchases.length === 0 && !coverage.complete && !coverage.available
 		this.state.loading = false
 		this.render()
@@ -149,8 +171,19 @@ export default class PurchasePage extends AbstractClass {
 			return
 		}
 
+		if (type === 'click' && event.target.classList.contains('receipt-flow-modal-backdrop')) {
+			this.closeReceiptFlow()
+			return
+		}
+
 		if ((type === 'change' || type === 'input') && event.target.closest('[data-purchase-field]')) {
 			this.updatePurchaseField(event.target)
+			return
+		}
+
+		if (type === 'change' && event.target.closest('[data-receipt-input]')) {
+			this.handleReceiptFile(event.target.files?.[0]).catch(() => {})
+			event.target.value = ''
 			return
 		}
 
@@ -179,8 +212,32 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'delete-purchase') this.openDeleteConfirmation(target.dataset.purchaseId)
 		if (action === 'close-delete-confirm') this.closeDeleteConfirmation()
 		if (action === 'confirm-delete-purchase') this.deletePurchase()
+		if (action === 'scan-receipt') this.openReceiptFirstFlow()
+		if (action === 'open-receipt-flow') this.openReceiptFlowFromPurchase()
+		if (action === 'choose-receipt') this.chooseReceipt()
+		if (action === 'remove-receipt') this.removeReceipt()
+		if (action === 'close-receipt-flow') this.closeReceiptFlow()
+		if (action === 'continue-manually') this.continueReceiptFlowManually()
+		if (action === 'save-standalone-receipt') this.saveStandaloneReceipt()
+		if (action === 'use-receipt') this.useReceiptInPurchaseDraft()
+		if (action === 'open-standalone-receipt') this.openStandaloneReceipt(target.dataset.receiptId)
+		if (action === 'delete-standalone-receipt') this.deleteStandaloneReceipt()
 		if (action === 'manage-products') router.redirectRouter('/products')
 		if (action === 'go-purchase-analytics') router.redirectRouter('/purchases/analytics')
+	}
+
+	async enrichPurchasesWithReceiptState(purchases = []) {
+		const localReceipts = await this.receiptLocalRepository.listByUser(this.apiService.getUserId()).catch(() => [])
+		const byPurchase = new Map(localReceipts.map(receipt => [String(receipt.purchaseLocalId), receipt]))
+		return purchases.map(purchase => {
+			const receipt = byPurchase.get(String(purchase.id))
+			if (!receipt) return purchase
+			return {
+				...purchase,
+				hasReceipt: receipt.syncStatus !== 'pending_delete' || false,
+				receiptSyncStatus: receipt.syncStatus
+			}
+		})
 	}
 
 	updatePurchaseField(input) {
@@ -339,6 +396,8 @@ export default class PurchasePage extends AbstractClass {
 			merchantName: selectedMerchant?.name || null,
 			purchasedAt: toPurchasedAt(this.state.form.date),
 			paymentType: this.state.form.paymentType,
+			hasReceipt: Boolean(currentPurchase?.hasReceipt),
+			receipt: currentPurchase?.receipt || null,
 			note: this.state.form.note || null,
 			total: items.reduce((sum, item) => sum + item.total, 0),
 			items
@@ -348,12 +407,17 @@ export default class PurchasePage extends AbstractClass {
 	async savePurchase() {
 		if (this.state.saving) return
 		const payload = this.buildPurchasePayload()
-		if (!payload.items.length) return
+		if (!payload.items.length) {
+			this.state.saveError = 'Add at least one item before saving the purchase.'
+			this.render()
+			return
+		}
 		this.state.saving = true
 		this.state.saveError = ''
 		this.render()
 		try {
-			await this.apiService.savePurchase(payload)
+			const savedPurchase = await this.apiService.savePurchase(payload)
+			await this.persistReceiptState(savedPurchase)
 			await this.refreshSelectedRangeFromLocal()
 			this.state.saving = false
 			this.resetForm({render: false})
@@ -383,12 +447,276 @@ export default class PurchasePage extends AbstractClass {
 
 	closeEditor({render = true} = {}) {
 		if (this.state.saving) return
+		this.revokeReceiptUrls()
 		this.state.editorOpen = false
 		this.state.createProductForRowId = null
 		this.state.createProductForm = null
 		this.state.saveError = ''
 		overlayHost.clear('purchase-editor-modal')
+		overlayHost.clear('receipt-flow-modal')
 		if (render) this.render()
+	}
+
+	openReceiptFirstFlow() {
+		this.resetForm({render: false})
+		this.state.editorOpen = false
+		this.state.receiptFlow = {open: true, origin: 'standalone', originalReceipt: null, originalReceiptAction: null, error: ''}
+		this.render()
+	}
+
+	async openReceiptFlowFromPurchase() {
+		this.state.editorOpen = false
+		this.state.receiptFlow = {
+			open: true,
+			origin: 'purchase',
+			originalReceipt: this.state.form.receipt ? {...this.state.form.receipt, previewUrl: null} : null,
+			originalReceiptAction: this.state.form.receiptAction,
+			error: ''
+		}
+		await this.ensureReceiptPreviewLoaded()
+		this.render()
+	}
+
+	async handleReceiptFile(file) {
+		this.setReceiptError('')
+		try {
+			const image = await prepareReceiptImage(file)
+			this.setFormReceipt({
+				...image,
+				previewUrl: this.createReceiptUrl(image.blob),
+				source: 'local'
+			}, 'upsert')
+		} catch (error) {
+			this.setReceiptError(error?.message || 'Could not prepare receipt photo.')
+		}
+	}
+
+	chooseReceipt() {
+		const input = document.querySelector('[data-receipt-input]')
+		if (input) input.click()
+	}
+
+	removeReceipt() {
+		if (this.state.receiptFlow.origin === 'standalone-view') {
+			this.deleteStandaloneReceipt()
+			return
+		}
+		this.clearFormReceiptPreview()
+		this.state.form.receipt = null
+		this.state.form.receiptAction = 'delete'
+		this.setReceiptError('', {render: false})
+		if (this.state.receiptFlow.origin === 'purchase') {
+			this.useReceiptInPurchaseDraft()
+			return
+		}
+		this.render()
+	}
+
+	async ensureReceiptPreviewLoaded() {
+		if (this.state.form.receipt?.blob && this.state.form.receipt?.previewUrl) return
+		const purchase = this.state.selectedPurchase && String(this.state.selectedPurchase.id) === String(this.state.form.id)
+			? this.state.selectedPurchase
+			: this.state.purchases.find(item => String(item.id) === String(this.state.form.id))
+		if (!purchase && !this.state.form.receipt?.blob) return
+		const localReceipt = await this.receiptLocalRepository.getByPurchaseLocalId(purchase.id).catch(() => null)
+		if (localReceipt?.blob) {
+			this.setFormReceipt({
+				blob: localReceipt.blob,
+				mimeType: localReceipt.mimeType,
+				originalFilename: localReceipt.originalFilename,
+				size: localReceipt.size,
+				localId: localReceipt.localId,
+				serverReceiptId: localReceipt.serverReceiptId,
+				syncStatus: localReceipt.syncStatus,
+				previewUrl: this.createReceiptUrl(localReceipt.blob),
+				source: 'indexeddb'
+			}, null, {render: false})
+			return
+		}
+		if (!purchase.serverId || !purchase.hasReceipt) return
+		try {
+			const blob = await this.receiptApiService.getReceiptImageBlob(purchase.serverId)
+			if (!blob) return
+			this.setFormReceipt({
+				blob,
+				mimeType: blob.type || 'image/jpeg',
+				originalFilename: null,
+				size: blob.size,
+				serverReceiptId: purchase.receipt?.id || null,
+				syncStatus: 'synced',
+				previewUrl: this.createReceiptUrl(blob),
+				source: 'api'
+			}, null, {render: false})
+		} catch {
+			this.setReceiptError('Could not load receipt image.', {render: false})
+		}
+	}
+
+	closeReceiptFlow({returnToPurchase = this.state.receiptFlow.origin === 'purchase'} = {}) {
+		if (this.state.receiptFlow.origin === 'standalone' && !returnToPurchase) {
+			this.clearFormReceiptPreview()
+			this.state.form.receipt = null
+			this.state.form.receiptAction = null
+		}
+		if (this.state.receiptFlow.origin === 'purchase' && returnToPurchase) {
+			this.clearFormReceiptPreview()
+			const originalReceipt = this.state.receiptFlow.originalReceipt
+			this.state.form.receipt = originalReceipt?.blob
+				? {...originalReceipt, previewUrl: this.createReceiptUrl(originalReceipt.blob)}
+				: originalReceipt
+			this.state.form.receiptAction = this.state.receiptFlow.originalReceiptAction
+		}
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		overlayHost.clear('receipt-flow-modal')
+		if (returnToPurchase) this.state.editorOpen = true
+		this.render()
+	}
+
+	continueReceiptFlowManually() {
+		if (!this.state.form.receipt?.blob) {
+			this.state.receiptFlow.error = 'Add receipt photo before continuing.'
+			this.render()
+			return
+		}
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		this.state.editorOpen = true
+		overlayHost.clear('receipt-flow-modal')
+		this.render()
+	}
+
+	async saveStandaloneReceipt() {
+		if (!this.state.form.receipt?.blob) {
+			this.state.receiptFlow.error = 'Add receipt photo before saving.'
+			this.render()
+			return
+		}
+		const receipt = await this.receiptLocalRepository.saveStandalone({image: this.state.form.receipt})
+		await this.apiService.syncService.enqueueMutation({
+			entityType: 'receipt',
+			entityLocalId: receipt.localId,
+			action: 'upsert',
+			reason: 'standalone-receipt-save'
+		})
+		this.clearFormReceiptPreview()
+		this.state.form.receipt = null
+		this.state.form.receiptAction = null
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
+		overlayHost.clear('receipt-flow-modal')
+		this.render()
+		this.apiService.syncService.processQueue({reason: 'standalone-receipt-save'}).catch(() => {})
+	}
+
+	async openStandaloneReceipt(receiptId) {
+		const receipt = await this.receiptLocalRepository.getByLocalId(receiptId)
+		if (!receipt) return
+		this.resetForm({render: false})
+		this.state.form.receipt = {
+			...receipt,
+			previewUrl: receipt.blob ? this.createReceiptUrl(receipt.blob) : null,
+			source: 'standalone'
+		}
+		this.state.receiptFlow = {open: true, origin: 'standalone-view', originalReceipt: null, originalReceiptAction: null, error: ''}
+		if (!this.state.form.receipt.previewUrl && receipt.serverReceiptId) {
+			try {
+				const blob = await this.receiptApiService.getStandaloneReceiptImageBlob(receipt.serverReceiptId)
+				if (blob) {
+					this.state.form.receipt.blob = blob
+					this.state.form.receipt.previewUrl = this.createReceiptUrl(blob)
+				}
+			} catch {
+				this.state.receiptFlow.error = 'Could not load receipt image.'
+			}
+		}
+		this.render()
+	}
+
+	async deleteStandaloneReceipt() {
+		const receipt = this.state.form.receipt
+		if (!receipt?.localId) return
+		const pendingDelete = await this.receiptLocalRepository.markStandalonePendingDelete(receipt.localId)
+		if (pendingDelete) {
+			await this.apiService.syncService.enqueueMutation({
+				entityType: 'receipt',
+				entityLocalId: pendingDelete.localId,
+				action: 'delete',
+				reason: 'standalone-receipt-delete'
+			})
+		}
+		this.clearFormReceiptPreview()
+		this.state.form.receipt = null
+		this.state.form.receiptAction = null
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
+		overlayHost.clear('receipt-flow-modal')
+		this.render()
+		this.apiService.syncService.processQueue({reason: 'standalone-receipt-delete'}).catch(() => {})
+	}
+
+	useReceiptInPurchaseDraft() {
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		this.state.editorOpen = true
+		overlayHost.clear('receipt-flow-modal')
+		this.render()
+	}
+
+	async persistReceiptState(savedPurchase) {
+		if (this.state.form.receiptAction === 'delete') {
+			const deleted = await this.receiptLocalRepository.markPendingDelete(savedPurchase)
+			if (deleted) {
+				await this.apiService.syncService.enqueueMutation({
+					entityType: 'receipt',
+					entityLocalId: savedPurchase.id,
+					action: 'delete',
+					reason: 'receipt-delete'
+				})
+			}
+			return
+		}
+		if (this.state.form.receiptAction !== 'upsert' || !this.state.form.receipt?.blob) return
+		const receipt = await this.receiptLocalRepository.saveForPurchase({
+			purchase: savedPurchase,
+			image: this.state.form.receipt
+		})
+		await this.apiService.syncService.enqueueMutation({
+			entityType: 'receipt',
+			entityLocalId: receipt.purchaseLocalId,
+			action: 'upsert',
+			reason: 'receipt-save'
+		})
+	}
+
+	setFormReceipt(receipt, action = 'upsert', {render = true} = {}) {
+		this.clearFormReceiptPreview()
+		this.state.form.receipt = receipt
+		this.state.form.receiptAction = action
+		this.state.form.receiptError = ''
+		this.state.receiptFlow.error = ''
+		if (render) this.render()
+	}
+
+	setReceiptError(message, {render = true} = {}) {
+		this.state.form.receiptError = message
+		if (render) this.render()
+	}
+
+	createReceiptUrl(blob) {
+		const url = URL.createObjectURL(blob)
+		this.activeReceiptUrls.add(url)
+		return url
+	}
+
+	clearFormReceiptPreview() {
+		const url = this.state.form.receipt?.previewUrl
+		if (url) {
+			URL.revokeObjectURL(url)
+			this.activeReceiptUrls.delete(url)
+		}
+	}
+
+	revokeReceiptUrls() {
+		this.activeReceiptUrls.forEach(url => URL.revokeObjectURL(url))
+		this.activeReceiptUrls.clear()
 	}
 
 	async openDeleteConfirmation(purchaseId) {
@@ -454,7 +782,19 @@ export default class PurchasePage extends AbstractClass {
 				unit: item.unit,
 				total: normalizeDecimalString(item.total),
 				suggestions: []
-			}))
+			})),
+			receipt: null,
+			receiptAction: null,
+			receiptError: ''
+		}
+		if (purchase.hasReceipt || purchase.receipt?.id) {
+			this.state.form.receipt = {
+				serverReceiptId: purchase.receipt?.id || null,
+				originalFilename: null,
+				syncStatus: 'synced',
+				source: 'metadata'
+			}
+			this.state.form.receiptAction = null
 		}
 		if (!this.state.form.items.length) this.state.form.items.push(createItem())
 	}
@@ -466,19 +806,25 @@ export default class PurchasePage extends AbstractClass {
 			merchantId: '',
 			paymentType: 'bank',
 			note: '',
-			items: [createItem()]
+			items: [createItem()],
+			receipt: null,
+			receiptAction: null,
+			receiptError: ''
 		}
 		this.state.selectedPurchase = null
 		this.state.editorOpen = false
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
 		this.state.createProductForRowId = null
 		this.state.createProductForm = null
 		this.state.saveError = ''
+		this.revokeReceiptUrls()
 		if (render) this.render()
 	}
 
 	render() {
 		this.$hbapp.innerHTML = this.getTemplate()
 		this.renderEditorModal()
+		this.renderReceiptFlowModal()
 	}
 
 	getTemplate() {
@@ -494,9 +840,11 @@ export default class PurchasePage extends AbstractClass {
 						<button class="hboo-segment-btn purchase-domain-btn" type="button" role="tab" aria-selected="false" data-purchase-action="go-purchase-analytics">Analytics</button>
 					</div>
 					<button class="hboo-button product-primary-action" type="button" data-purchase-action="new-purchase">+ Add purchase</button>
+					<button class="hboo-button purchase-scan-action" type="button" data-purchase-action="scan-receipt"><span aria-hidden="true">▧</span> Scan receipt</button>
 				</div>
 			</div>
 			${this.getPurchasesListTemplate()}
+			${this.getStandaloneReceiptsTemplate()}
 			${this.getDeleteConfirmationTemplate()}
 		</section>`
 	}
@@ -505,6 +853,12 @@ export default class PurchasePage extends AbstractClass {
 		const html = this.getEditorModalTemplate()
 		if (html) overlayHost.render('purchase-editor-modal', html)
 		else overlayHost.clear('purchase-editor-modal')
+	}
+
+	renderReceiptFlowModal() {
+		const html = this.getReceiptFlowModalTemplate()
+		if (html) overlayHost.render('receipt-flow-modal', html)
+		else overlayHost.clear('receipt-flow-modal')
 	}
 
 	getEditorModalTemplate() {
@@ -561,6 +915,7 @@ export default class PurchasePage extends AbstractClass {
 			<div class="purchase-items">${this.state.form.items.map(item => this.getItemTemplate(item)).join('')}</div>
 			<button class="purchase-add-item" type="button" data-purchase-action="add-item">+ Add item</button>
 			${this.getCreateProductTemplate()}
+			${this.getCompactReceiptTemplate()}
 			<div class="purchase-total-row">
 				<span>Total</span>
 				<strong data-purchase-total>${formatMoney(this.getCalculatedTotal())}</strong>
@@ -571,6 +926,86 @@ export default class PurchasePage extends AbstractClass {
 				<button class="purchase-save product-primary-action" type="button" data-purchase-action="save-purchase" ${this.state.saving ? 'disabled' : ''}>${this.state.saving ? 'Saving...' : 'Save purchase'}</button>
 			</div>
 		</div>`
+	}
+
+	getCompactReceiptTemplate() {
+		const receipt = this.state.form.receipt
+		const hasReceipt = Boolean(receipt)
+		return `<div class="purchase-receipt-section">
+			<div class="purchase-items-title">Receipt</div>
+			${hasReceipt ? `<button class="purchase-receipt-compact-card" type="button" data-purchase-action="open-receipt-flow">
+				<span><strong>Receipt attached</strong><em>${this.escapeHtml(receipt.originalFilename || 'Receipt image')}</em></span>
+				<b aria-hidden="true">✓</b>
+				<small>View ›</small>
+			</button>` : `<button class="purchase-add-receipt" type="button" data-purchase-action="open-receipt-flow">Attach receipt</button>`}
+			${this.state.form.receiptError ? `<div class="purchase-save-error">${this.escapeHtml(this.state.form.receiptError)}</div>` : ''}
+		</div>`
+	}
+
+	getReceiptFlowModalTemplate() {
+		if (!this.state.receiptFlow.open) return ''
+		const receipt = this.state.form.receipt
+		const hasPreview = Boolean(receipt?.previewUrl)
+		const isAttachment = this.state.receiptFlow.origin === 'purchase'
+		const isStandaloneView = this.state.receiptFlow.origin === 'standalone-view'
+		const primaryAction = isAttachment ? 'use-receipt' : 'save-standalone-receipt'
+		const primaryLabel = isAttachment ? 'Use receipt' : 'Save receipt'
+		return `<div class="app-modal-backdrop receipt-flow-modal-backdrop">
+			<div class="app-modal receipt-flow-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-flow-title">
+				<div class="app-modal-header">
+					<h4 id="receipt-flow-title">Scan receipt</h4>
+					<button class="app-modal-close" type="button" aria-label="Close" data-purchase-action="close-receipt-flow">×</button>
+				</div>
+				<div class="app-modal-body receipt-flow-body">
+					<input class="purchase-receipt-input" type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" data-receipt-input>
+					${hasPreview ? this.getReceiptFlowPreviewTemplate(receipt) : this.getReceiptFlowCaptureTemplate()}
+					${this.state.form.receiptError ? `<div class="purchase-save-error">${this.escapeHtml(this.state.form.receiptError)}</div>` : ''}
+					${this.state.receiptFlow.error ? `<div class="purchase-save-error">${this.escapeHtml(this.state.receiptFlow.error)}</div>` : ''}
+				</div>
+				<div class="app-modal-actions receipt-flow-actions">
+					<button type="button" data-purchase-action="close-receipt-flow">Cancel</button>
+					${hasPreview && !isStandaloneView ? `<button class="product-primary-action" type="button" data-purchase-action="${primaryAction}">${primaryLabel}</button>` : ''}
+				</div>
+			</div>
+		</div>`
+	}
+
+	getReceiptFlowCaptureTemplate() {
+		return `<div class="receipt-flow-capture-card">
+			<div class="receipt-flow-icon" aria-hidden="true">▧</div>
+			<button class="purchase-add-receipt" type="button" data-purchase-action="choose-receipt">Add receipt photo</button>
+			<p>Take a photo or choose an image from your device</p>
+		</div>`
+	}
+
+	getReceiptFlowPreviewTemplate(receipt) {
+		return `<div class="receipt-flow-preview">
+			<img src="${this.escapeHtml(receipt.previewUrl)}" alt="Receipt preview">
+		</div>
+		<div class="purchase-receipt-actions">
+			<button type="button" data-purchase-action="choose-receipt">Replace</button>
+			<button type="button" data-purchase-action="remove-receipt">Remove</button>
+		</div>`
+	}
+
+	getStandaloneReceiptsTemplate() {
+		const receipts = this.state.standaloneReceipts || []
+		if (!receipts.length) return ''
+		return `<aside class="purchase-history receipt-inbox">
+			<h3>Receipts to review (${receipts.length})</h3>
+			${receipts.map(receipt => `<button class="purchase-history-row receipt-inbox-row" type="button" data-purchase-action="open-standalone-receipt" data-receipt-id="${this.escapeHtml(receipt.localId)}">
+				<span>${this.escapeHtml(receipt.originalFilename || 'Saved receipt')}</span>
+				<strong>${this.escapeHtml(this.getReceiptStatusLabel(receipt))}</strong>
+				<em>${this.escapeHtml(String(receipt.createdAt || '').slice(0, 16).replace('T', ' '))}</em>
+			</button>`).join('')}
+		</aside>`
+	}
+
+	getReceiptStatusLabel(receipt) {
+		if (receipt.syncStatus === 'synced') return 'Awaiting review'
+		if (receipt.syncStatus === 'error') return 'Sync error'
+		if (receipt.syncStatus === 'syncing') return 'Syncing'
+		return 'Saved locally'
 	}
 
 	getItemTemplate(item) {
@@ -619,7 +1054,7 @@ export default class PurchasePage extends AbstractClass {
 		const purchases = this.state.purchases.map(purchase => `<div class="purchase-history-row-wrap">
 			<button class="purchase-history-row" type="button" data-purchase-action="open-purchase" data-purchase-id="${purchase.id}">
 				<span>${this.escapeHtml(purchase.merchantName || 'No merchant')}</span>
-				<strong>${formatMoney(purchase.total)}</strong>
+				<strong>${formatMoney(purchase.total)} ${this.getReceiptIndicator(purchase)}</strong>
 				<em>${this.escapeHtml(String(purchase.purchasedAt || '').slice(0, 10))} · ${this.escapeHtml(purchase.paymentType)}${this.getSyncStatusLabel(purchase)}</em>
 			</button>
 			<button class="purchase-delete" type="button" data-purchase-action="delete-purchase" data-purchase-id="${purchase.id}" aria-label="Delete purchase">Delete</button>
@@ -631,6 +1066,12 @@ export default class PurchasePage extends AbstractClass {
 			<h3>Saved purchases</h3>
 			${body}
 		</aside>`
+	}
+
+	getReceiptIndicator(purchase) {
+		if (!purchase.hasReceipt) return ''
+		const pending = purchase.receiptSyncStatus && purchase.receiptSyncStatus !== 'synced'
+		return `<span class="purchase-receipt-indicator ${pending ? 'pending' : ''}" title="Receipt attached" aria-label="Receipt attached">▧</span>`
 	}
 
 	getSyncStatusLabel(purchase) {

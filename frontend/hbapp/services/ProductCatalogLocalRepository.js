@@ -106,6 +106,8 @@ const normalizePurchase = purchase => {
 		transactionId: purchase.transactionId || null,
 		total: Number(purchase.total) || 0,
 		note: purchase.note || null,
+		hasReceipt: Boolean(purchase.hasReceipt || purchase.receipt?.id),
+		receipt: purchase.receipt || null,
 		items: Array.isArray(purchase.items) ? purchase.items.map(item => ({
 			id: item.id || createLocalId('purchase-item'),
 			purchaseId: localId,

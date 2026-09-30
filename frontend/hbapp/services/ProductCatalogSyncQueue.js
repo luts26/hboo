@@ -62,7 +62,7 @@ export default class ProductCatalogSyncQueue {
 			.filter(record => record.type === OPERATION_TYPE)
 			.filter(record => ['pending', 'error', 'paused'].includes(record.status))
 			.sort((left, right) => {
-				const rank = {product: 1, merchant: 2, purchase: 3}
+				const rank = {product: 1, merchant: 2, purchase: 3, receipt: 4}
 				return (rank[left.entityType] || 9) - (rank[right.entityType] || 9)
 					|| Number(left.createdAt || 0) - Number(right.createdAt || 0)
 			})
