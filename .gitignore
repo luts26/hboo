@@ -13,6 +13,7 @@ bank-service/target/
 coverage/
 dist/
 .cache/
+tmp/
 .DS_Store
 
 *.pem

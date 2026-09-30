@@ -59,6 +59,30 @@ export default class ReceiptApiService {
 		throw createHttpError(response)
 	}
 
+	async getReceiptOcr(receiptServerId) {
+		const headers = authHeaders()
+		const response = await fetch(`${apiUrl}/receipts/${encodeURIComponent(receiptServerId)}/ocr`, {
+			headers,
+			cache: 'no-store'
+		})
+		observe(response, headers)
+		if (response.status === 200) return response.json()
+		if (response.status === 404) return null
+		throw createHttpError(response)
+	}
+
+	async runReceiptOcr(receiptServerId) {
+		const headers = authHeaders()
+		const response = await fetch(`${apiUrl}/receipts/${encodeURIComponent(receiptServerId)}/ocr`, {
+			method: 'POST',
+			headers
+		})
+		observe(response, headers)
+		if (response.status === 200) return response.json()
+		if (response.status === 404) return null
+		throw createHttpError(response)
+	}
+
 	async uploadReceipt(purchaseServerId, receipt) {
 		const headers = authHeaders()
 		const form = new FormData()

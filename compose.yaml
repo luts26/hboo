@@ -36,7 +36,8 @@ services:
       - ./docker/mysql/migrations/20260929_purchase_client_mutation_id.sql:/docker-entrypoint-initdb.d/07-purchase-client-mutation-id.sql:ro
       - ./docker/mysql/migrations/20260929_receipts.sql:/docker-entrypoint-initdb.d/08-receipts.sql:ro
       - ./docker/mysql/migrations/20260930_receipt_optional_purchase.sql:/docker-entrypoint-initdb.d/09-receipt-optional-purchase.sql:ro
-      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/10-seed.sql:ro
+      - ./docker/mysql/migrations/20260930_receipt_ocr.sql:/docker-entrypoint-initdb.d/10-receipt-ocr.sql:ro
+      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/11-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 10s
@@ -77,6 +78,9 @@ services:
       BANK_SERVICE_USER: ${DEV_BANK_SERVICE_USER:-change_me}
       BANK_SERVICE_PASSWORD: ${DEV_BANK_SERVICE_PASSWORD:-change_me}
       RECEIPT_STORAGE_DIR: /data/receipts
+      OCR_LANGUAGE: ukr+eng
+      OCR_MAX_CONCURRENT: 1
+      OCR_TIMEOUT_MS: 60000
     ports:
       - "${DEV_BACKEND_HOST:-127.0.0.2}:${DEV_BACKEND_PORT:-3000}:3000"
     expose:

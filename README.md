@@ -742,6 +742,38 @@ Transactions
 This keeps the current analytics useful with bank transaction data while
 leaving room for item-level purchase statistics later.
 
+## Receipt OCR v1
+
+Standalone receipt capture remains offline-first: the browser prepares the
+image, stores it in IndexedDB, and durable sync uploads it to private server
+storage when the backend is available.
+
+``` text
+Receipt capture
+    -> IndexedDB Blob
+    -> private receipt storage
+    -> local Tesseract OCR
+    -> receipt_ocr raw text
+```
+
+OCR v1 runs locally inside the HBOO backend container with Tesseract and the
+`ukr+eng` language mode. It extracts raw text only. It does not parse receipt
+structure, identify products, create purchases, create purchase items, or
+perform product matching.
+
+An experimental backend-only OCR preprocessing comparison tool is available
+for DEV receipts:
+
+``` shell
+docker compose exec backend npm run ocr:experiment -- --receipt-id=4 --user-id=1 --output
+```
+
+The command verifies that `DATABASE()` is `hboo_dev`, loads the existing
+private receipt image, and compares `original`, `grayscale`, `normalize`,
+`threshold`, and `upscale` profiles plus `original` and `normalize` runs with
+Tesseract PSM 6. The normal `POST /api/receipts/:id/ocr` path remains
+unchanged.
+
 ## Product Direction
 
 HBOO is primarily developed as a real personal finance tool rather than

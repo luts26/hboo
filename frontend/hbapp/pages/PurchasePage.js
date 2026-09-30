@@ -222,6 +222,7 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'use-receipt') this.useReceiptInPurchaseDraft()
 		if (action === 'open-standalone-receipt') this.openStandaloneReceipt(target.dataset.receiptId)
 		if (action === 'delete-standalone-receipt') this.deleteStandaloneReceipt()
+		if (action === 'recognize-standalone-receipt') this.recognizeStandaloneReceipt()
 		if (action === 'manage-products') router.redirectRouter('/products')
 		if (action === 'go-purchase-analytics') router.redirectRouter('/purchases/analytics')
 	}
@@ -628,6 +629,54 @@ export default class PurchasePage extends AbstractClass {
 				this.state.receiptFlow.error = 'Could not load receipt image.'
 			}
 		}
+		if (receipt.serverReceiptId && navigator.onLine !== false) {
+			try {
+				const ocr = await this.receiptApiService.getReceiptOcr(receipt.serverReceiptId)
+				if (ocr?.status) {
+					const updated = await this.receiptLocalRepository.cacheOcrResult(receipt.localId, ocr)
+					this.state.form.receipt.ocr = updated?.ocr || ocr
+					this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
+				}
+			} catch {
+				// Existing cached OCR remains available offline or after transient API failures.
+			}
+		}
+		this.render()
+	}
+
+	async recognizeStandaloneReceipt() {
+		const receipt = this.state.form.receipt
+		if (!receipt?.localId || !receipt.serverReceiptId || receipt.ocr?.status === 'processing') return
+		this.state.form.receipt.ocr = {
+			...(receipt.ocr || {}),
+			receiptId: receipt.serverReceiptId,
+			status: 'processing',
+			rawText: null,
+			engine: receipt.ocr?.engine || 'tesseract',
+			language: receipt.ocr?.language || 'ukr+eng',
+			error: null
+		}
+		this.state.receiptFlow.error = ''
+		this.render()
+		try {
+			const ocr = await this.receiptApiService.runReceiptOcr(receipt.serverReceiptId)
+			if (!ocr) {
+				this.state.receiptFlow.error = 'Receipt not found.'
+				this.render()
+				return
+			}
+			const updated = await this.receiptLocalRepository.cacheOcrResult(receipt.localId, ocr)
+			this.state.form.receipt.ocr = updated?.ocr || ocr
+			this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
+		} catch {
+			this.state.form.receipt.ocr = {
+				...(this.state.form.receipt.ocr || {}),
+				status: 'failed',
+				rawText: null,
+				error: 'OCR processing failed'
+			}
+			this.state.receiptFlow.error = 'Could not recognize receipt.'
+		}
 		this.render()
 	}
 
@@ -959,6 +1008,7 @@ export default class PurchasePage extends AbstractClass {
 				<div class="app-modal-body receipt-flow-body">
 					<input class="purchase-receipt-input" type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" data-receipt-input>
 					${hasPreview ? this.getReceiptFlowPreviewTemplate(receipt) : this.getReceiptFlowCaptureTemplate()}
+					${isStandaloneView ? this.getReceiptOcrTemplate(receipt) : ''}
 					${this.state.form.receiptError ? `<div class="purchase-save-error">${this.escapeHtml(this.state.form.receiptError)}</div>` : ''}
 					${this.state.receiptFlow.error ? `<div class="purchase-save-error">${this.escapeHtml(this.state.receiptFlow.error)}</div>` : ''}
 				</div>
@@ -988,6 +1038,40 @@ export default class PurchasePage extends AbstractClass {
 		</div>`
 	}
 
+	getReceiptOcrTemplate(receipt) {
+		const ocr = receipt?.ocr || null
+		const isSynced = receipt?.syncStatus === 'synced' && Boolean(receipt?.serverReceiptId)
+		const isProcessing = ocr?.status === 'processing' || ocr?.status === 'pending'
+		const hasText = ocr?.status === 'completed'
+		const failed = ocr?.status === 'failed'
+		if (!isSynced) {
+			return `<section class="receipt-ocr-section">
+				<div class="purchase-items-title">Text recognition</div>
+				<p class="receipt-ocr-note">Text recognition will be available after sync.</p>
+			</section>`
+		}
+		return `<section class="receipt-ocr-section">
+			<div class="receipt-ocr-header">
+				<div>
+					<div class="purchase-items-title">Text recognition</div>
+					${this.getReceiptOcrStatusTemplate(ocr)}
+				</div>
+				<button class="hboo-button product-primary-action" type="button" data-purchase-action="recognize-standalone-receipt" ${isProcessing ? 'disabled' : ''}>
+					${hasText || failed ? 'Recognize again' : (isProcessing ? 'Recognizing receipt...' : 'Recognize receipt')}
+				</button>
+			</div>
+			${hasText ? `<pre class="receipt-ocr-raw">${this.escapeHtml(ocr.rawText || '')}</pre>` : ''}
+			${failed ? '<p class="receipt-ocr-note">Could not recognize receipt. Try again.</p>' : ''}
+		</section>`
+	}
+
+	getReceiptOcrStatusTemplate(ocr) {
+		if (ocr?.status === 'completed') return '<p class="receipt-ocr-note">Text recognized</p>'
+		if (ocr?.status === 'failed') return '<p class="receipt-ocr-note">Could not recognize receipt</p>'
+		if (ocr?.status === 'processing' || ocr?.status === 'pending') return '<p class="receipt-ocr-note">Recognizing receipt...</p>'
+		return '<p class="receipt-ocr-note">Ready</p>'
+	}
+
 	getStandaloneReceiptsTemplate() {
 		const receipts = this.state.standaloneReceipts || []
 		if (!receipts.length) return ''
@@ -1002,6 +1086,9 @@ export default class PurchasePage extends AbstractClass {
 	}
 
 	getReceiptStatusLabel(receipt) {
+		if (receipt.ocr?.status === 'completed') return 'Text recognized'
+		if (receipt.ocr?.status === 'failed') return 'OCR failed'
+		if (receipt.ocr?.status === 'processing' || receipt.ocr?.status === 'pending') return 'Recognizing'
 		if (receipt.syncStatus === 'synced') return 'Awaiting review'
 		if (receipt.syncStatus === 'error') return 'Sync error'
 		if (receipt.syncStatus === 'syncing') return 'Syncing'

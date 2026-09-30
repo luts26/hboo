@@ -97,7 +97,9 @@ VALUES
     ('Паперові товари', 140, 'active'),
     ('Особиста гігієна', 150, 'active'),
     ('Побутова хімія', 160, 'active'),
-    ('Інше', 170, 'active')
+    ('Бакалія', 170, 'active'),
+    ('Товари для дому', 180, 'active'),
+    ('Інше', 190, 'active')
 ON DUPLICATE KEY UPDATE
     sort_order = VALUES(sort_order),
     status = VALUES(status);
@@ -110,6 +112,8 @@ VALUES
     ('Бульварчик', 'active'),
     ('Novus', 'active'),
     ('Аврора', 'active'),
+    ('Рошен', 'active'),
+    ('Брусилівські ковбаси', 'active'),
     ('Базар', 'active')
 ON DUPLICATE KEY UPDATE status = VALUES(status);
 

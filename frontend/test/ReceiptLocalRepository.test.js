@@ -156,3 +156,36 @@ test('standalone delete removes local-only receipt and marks synced receipt pend
 	assert.equal((await repository.listStandaloneByUser()).length, 0)
 	assert.equal((await repository.listStandaloneByUser(7, {includeDeleted: true})).length, 1)
 })
+
+test('standalone OCR result is cached with raw line breaks and survives reload lookup', async () => {
+	const {repository} = setup(7)
+	const receipt = await repository.saveStandalone({image: fakeImage()})
+	await repository.markSynced(receipt.localId, {id: 55, purchaseId: null, mimeType: 'image/jpeg', sizeBytes: 12})
+
+	const updated = await repository.cacheOcrResult(receipt.localId, {
+		receiptId: 55,
+		status: 'completed',
+		rawText: 'TEST MARKET\nMILK\nTOTAL 77.00',
+		engine: 'tesseract',
+		engineVersion: 'tesseract 5-test',
+		language: 'ukr+eng',
+		durationMs: 123
+	})
+	const reloaded = await repository.getByLocalId(receipt.localId)
+
+	assert.equal(updated.ocr.status, 'completed')
+	assert.equal(reloaded.ocr.rawText, 'TEST MARKET\nMILK\nTOTAL 77.00')
+	assert.equal(reloaded.ocr.language, 'ukr+eng')
+	assert.equal(reloaded.ocr.durationMs, 123)
+})
+
+test('unsynced standalone receipt can keep local image while OCR is absent', async () => {
+	const {repository} = setup(7)
+	const receipt = await repository.saveStandalone({image: fakeImage()})
+	const reloaded = await repository.getByLocalId(receipt.localId)
+
+	assert.equal(reloaded.syncStatus, 'pending_upload')
+	assert.equal(reloaded.serverReceiptId, null)
+	assert.equal(reloaded.ocr, null)
+	assert.equal(reloaded.blob.type, 'image/jpeg')
+})

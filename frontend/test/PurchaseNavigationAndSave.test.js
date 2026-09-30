@@ -165,6 +165,22 @@ test('Standalone Scan receipt saves receipt without opening Purchase modal or re
 	assert.doesNotMatch(saveStandalone, /savePurchase|saveForPurchase|items\.length|editorOpen = true/)
 })
 
+test('Standalone receipt OCR renders raw text without creating purchase or product data', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const recognizeMethod = source.match(/async recognizeStandaloneReceipt\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const ocrTemplate = source.match(/getReceiptOcrTemplate\(receipt\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(source, /data-purchase-action="recognize-standalone-receipt"/)
+	assert.match(recognizeMethod, /receiptApiService\.runReceiptOcr/)
+	assert.match(recognizeMethod, /receiptLocalRepository\.cacheOcrResult/)
+	assert.doesNotMatch(recognizeMethod, /savePurchase|saveForPurchase|createProduct|items|merchantId|productId/)
+	assert.match(ocrTemplate, /receipt-ocr-raw/)
+	assert.match(ocrTemplate, /ocr\.rawText/)
+	assert.match(ocrTemplate, /disabled/)
+	assert.match(ocrTemplate, /Text recognition will be available after sync/)
+	assert.doesNotMatch(ocrTemplate, /Create purchase|PurchaseItem|Product/)
+})
+
 test('Purchase modal supports create edit cancel and local failure behavior', () => {
 	const source = read('hbapp/pages/PurchasePage.js')
 	const openPurchaseMethod = source.match(/async openPurchase\(purchaseId\) \{[\s\S]*?\n\t\}/)?.[0] || ''

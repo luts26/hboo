@@ -32,10 +32,28 @@ const normalizeReceipt = receipt => {
 		mimeType: receipt.mimeType || 'image/jpeg',
 		originalFilename: receipt.originalFilename || null,
 		size: Number(receipt.size || receipt.blob?.size || 0),
+		ocr: normalizeOcr(receipt.ocr),
 		syncStatus,
 		error: receipt.error || null,
 		createdAt: receipt.createdAt || nowIso(),
 		updatedAt: nowIso()
+	}
+}
+
+const normalizeOcr = ocr => {
+	if (!ocr) return null
+	return {
+		receiptId: toServerId(ocr.receiptId),
+		status: ocr.status || null,
+		rawText: ocr.rawText === undefined || ocr.rawText === null ? null : String(ocr.rawText),
+		engine: ocr.engine || null,
+		engineVersion: ocr.engineVersion || null,
+		language: ocr.language || null,
+		error: ocr.error || null,
+		durationMs: ocr.durationMs === undefined || ocr.durationMs === null ? null : Number(ocr.durationMs),
+		createdAt: ocr.createdAt || null,
+		updatedAt: ocr.updatedAt || nowIso(),
+		cachedAt: ocr.cachedAt || nowIso()
 	}
 }
 
@@ -177,6 +195,18 @@ export default class ReceiptLocalRepository {
 		})
 		await this.indexedDbClient.put(STORE, record)
 		notifyProductCatalogChanged({entityType: 'purchase', action: 'receipt-synced'})
+		return cloneReceipt(record)
+	}
+
+	async cacheOcrResult(receiptLocalId, ocr) {
+		const existing = await this.indexedDbClient.get(STORE, receiptLocalId)
+		if (!existing) return null
+		const record = normalizeReceipt({
+			...existing,
+			ocr: normalizeOcr({...ocr, cachedAt: nowIso()})
+		})
+		await this.indexedDbClient.put(STORE, record)
+		notifyProductCatalogChanged({entityType: 'purchase', action: 'receipt-ocr-cache'})
 		return cloneReceipt(record)
 	}
 

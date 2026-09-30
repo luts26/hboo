@@ -7,10 +7,12 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "ocr:experiment": "node scripts/receipt-ocr-experiment.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "mysql2": "^3.24.4"
+    "mysql2": "^3.24.4",
+    "sharp": "^0.35.5"
   }
 }
