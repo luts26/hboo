@@ -7,6 +7,7 @@ import ReceiptLocalRepository from '../services/ReceiptLocalRepository.js'
 import ReceiptApiService from '../services/ReceiptApiService.js'
 import {prepareReceiptImage} from '../services/ReceiptImageService.js'
 import {MEASUREMENT_LABELS, UNIT_LABELS, getAllowedUnits, normalizeSearchText} from '../services/ProductUnitService.js'
+import {matchesProductQuery} from '../services/ProductSearchService.js'
 import {getCurrentPurchaseRange} from '../services/PurchaseDateRange.js'
 import {subscribeProductCatalogChanges} from '../services/ProductCatalogEvents.js'
 
@@ -131,14 +132,6 @@ const toApiDateTimeValue = value => {
 }
 
 const normalizeComparableText = value => normalizeSearchText(value).replace(/\s+/g, ' ').trim()
-const matchesProductQuery = (productName, query) => {
-	const needle = normalizeSearchText(query)
-	if (!needle) return false
-	const haystack = normalizeSearchText(productName)
-	if (haystack.includes(needle)) return true
-	const tokens = needle.split(/\s+/).filter(Boolean)
-	return tokens.length > 1 && tokens.every(token => haystack.includes(token))
-}
 
 export default class PurchasePage extends AbstractClass {
 

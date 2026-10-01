@@ -4029,7 +4029,8 @@ textarea.planing-textarea {
 	align-items: center;
 	display: grid;
 	gap: .5rem;
-	grid-template-columns: minmax(0, 1fr) 42px;
+	grid-template-columns: minmax(0, 1fr) minmax(170px, .55fr) 42px;
+	position: relative;
 }
 
 .planing-checklist-input {
@@ -4631,6 +4632,35 @@ textarea.planing-textarea {
 	display: flex;
 	gap: .75rem;
 	margin-bottom: 1rem;
+}
+
+.planing-shopping-add-form {
+	display: grid;
+	gap: .5rem;
+	margin: .75rem 0 1rem;
+}
+
+.planing-shopping-input {
+	width: 100%;
+}
+
+.planing-shopping-details {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 88px auto;
+	gap: .5rem;
+}
+
+.planing-checklist-form-row .planing-shopping-details {
+	grid-template-columns: minmax(76px, 1fr) 82px;
+	min-width: 0;
+}
+
+.planing-shopping-suggestions:empty {
+	display: none;
+}
+
+.planing-shopping-suggestions {
+	top: calc(100% + .25rem);
 }
 
 .planing-shopping-count {
@@ -6488,6 +6518,20 @@ textarea.planing-textarea {
 }
 
 @media (max-width: 600px) {
+	.planing-checklist-form-row {
+		grid-template-columns: minmax(0, 1fr) 42px;
+	}
+
+	.planing-checklist-form-row .purchase-product-cell,
+	.planing-checklist-form-row .planing-shopping-details {
+		grid-column: 1 / -1;
+	}
+
+	.planing-checklist-form-row .planing-checklist-remove-btn {
+		grid-column: 2;
+		grid-row: 1;
+	}
+
 	.product-workspace,
 	.purchase-workspace {
 		padding-right: 0;

@@ -58,7 +58,17 @@ const normalizeComparableItem = item => ({
 	actualAmount: toAmount(item.actualAmount ?? item.actual_amount),
 	status: item.status || 'pending',
 	plannedAt: toPlanningDateKey(item.date ?? item.plannedAt ?? item.planned_at ?? Date.now()),
-	transactionId: item.transactionId ?? item.transaction_id ?? null
+	transactionId: item.transactionId ?? item.transaction_id ?? null,
+	shoppingItems: (item.shoppingItems || item.shopping_items || item.checklist || []).map((shoppingItem, index) => ({
+		id: String(shoppingItem.serverId ?? shoppingItem.server_id ?? shoppingItem.id ?? shoppingItem.localId ?? shoppingItem.local_id ?? ''),
+		localId: String(shoppingItem.localId ?? shoppingItem.local_id ?? shoppingItem.id ?? ''),
+		productId: shoppingItem.productId ?? shoppingItem.product_id ?? null,
+		name: shoppingItem.name || shoppingItem.title || '',
+		amount: shoppingItem.amount === undefined || shoppingItem.amount === '' ? null : toAmount(shoppingItem.amount),
+		unit: shoppingItem.unit || null,
+		checked: Boolean(shoppingItem.checked),
+		position: Number.isFinite(Number(shoppingItem.position)) ? Number(shoppingItem.position) : index
+	})).sort((left, right) => left.position - right.position || left.localId.localeCompare(right.localId))
 })
 
 const normalizeComparablePeriod = period => ({
@@ -591,21 +601,35 @@ class PlanningStore {
 	}
 
 	async togglePlanningChecklistItem(itemId, checklistId) {
-		const item = this.state.planningItems.find(planningItem => String(planningItem.id) === String(itemId))
-		if (!item || !Array.isArray(item.checklist)) return this.getState()
+		return this.togglePlanningShoppingItem(itemId, checklistId)
+	}
 
-		const checklist = item.checklist.map(checklistItem => {
-			if (String(checklistItem.id) !== String(checklistId)) return checklistItem
+	async updatePlanningShoppingItems(itemId, shoppingItems, {reason = 'shopping-list-update'} = {}) {
+		await this.repository.updateItem(itemId, {
+			shoppingItems,
+			checklist: shoppingItems
+		})
+		const planningState = await this.repository.getPlanningState()
+		this.applyPlanningState(planningState, {saveError: null})
+		await this.enqueueAutosync({reason})
+		return this.getState()
+	}
+
+	async togglePlanningShoppingItem(itemId, shoppingItemId) {
+		const item = this.state.planningItems.find(planningItem => String(planningItem.id) === String(itemId))
+		const shoppingItems = item?.shoppingItems || item?.checklist || []
+		if (!item || !Array.isArray(shoppingItems)) return this.getState()
+
+		const nextItems = shoppingItems.map(shoppingItem => {
+			if (![shoppingItem.id, shoppingItem.localId].map(String).includes(String(shoppingItemId))) return shoppingItem
 			return {
-				...checklistItem,
-				checked: !checklistItem.checked
+				...shoppingItem,
+				checked: !shoppingItem.checked,
+				updatedAt: Date.now()
 			}
 		})
 
-		await this.repository.updateItem(itemId, {checklist}, {markDirty: false})
-		const planningState = await this.repository.getPlanningState()
-		this.applyPlanningState(planningState, {saveError: null})
-		return this.getState()
+		return this.updatePlanningShoppingItems(itemId, nextItems, {reason: 'shopping-item-toggle'})
 	}
 
 	async removePlanningItem(id) {

@@ -1241,17 +1241,23 @@ test('change analysis reports update/delete overlaps but ignores independent cre
 	assert.equal(analysis.remote.createdIds.has('101'), true)
 })
 
-test('semantic comparison ignores statistics and local checklist UI state', () => {
+test('semantic comparison ignores statistics but tracks shopping list domain state', () => {
 	const left = {
 		period: period(),
-		items: [item('100', {checklist: [{id: 'a', title: 'Buy', checked: false}]})],
+		items: [item('100', {shoppingItems: [{localId: 'a', name: 'Buy', checked: false, position: 0}]})],
 		statistics: {actualSpent: 100}
 	}
 	const right = {
 		period: period(),
-		items: [item('100', {checklist: [{id: 'b', title: 'Other', checked: true}]})],
+		items: [item('100', {shoppingItems: [{localId: 'a', name: 'Buy', checked: false, position: 0}]})],
+		statistics: {actualSpent: 200}
+	}
+	const changed = {
+		period: period(),
+		items: [item('100', {shoppingItems: [{localId: 'a', name: 'Other', checked: true, position: 0}]})],
 		statistics: {actualSpent: 200}
 	}
 
 	assert.equal(isSamePlanningState(left, right), true)
+	assert.equal(isSamePlanningState(left, changed), false)
 })

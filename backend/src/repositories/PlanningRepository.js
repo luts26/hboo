@@ -108,38 +108,48 @@ class PlanningRepository {
     }
 
     async createItem(item) {
-        const [result] = await pool.execute(`
-            INSERT INTO planning_item (
-                period_id,
-                category_id,
-                title,
-                description,
-                planned_amount,
-                actual_amount,
-                status,
-                planned_at,
-                completed_at,
-                cancelled_at,
-                transaction_id,
-                created_at,
-                updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        `, [
-            item.periodId,
-            item.categoryId,
-            item.title,
-            item.description,
-            item.plannedAmount,
-            item.actualAmount,
-            item.status,
-            item.plannedAt,
-            item.completedAt,
-            item.cancelledAt,
-            item.transactionId
-        ]);
-
-        return this.findItemById(item.userId, result.insertId);
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+            const [result] = await connection.execute(`
+                INSERT INTO planning_item (
+                    period_id,
+                    category_id,
+                    title,
+                    description,
+                    planned_amount,
+                    actual_amount,
+                    status,
+                    planned_at,
+                    completed_at,
+                    cancelled_at,
+                    transaction_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            `, [
+                item.periodId,
+                item.categoryId,
+                item.title,
+                item.description,
+                item.plannedAmount,
+                item.actualAmount,
+                item.status,
+                item.plannedAt,
+                item.completedAt,
+                item.cancelledAt,
+                item.transactionId
+            ]);
+            await this.replaceShoppingItemsWithConnection(connection, item.userId, result.insertId, item.shoppingItems || []);
+            await connection.commit();
+            return this.findItemById(item.userId, result.insertId);
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
     }
 
     async findItemById(userId, itemId) {
@@ -171,7 +181,7 @@ class PlanningRepository {
             LIMIT 1
         `, [itemId, userId]);
 
-        return rows[0] ?? null;
+        return rows[0] ? await this.attachShoppingItems(userId, rows[0], connection) : null;
     }
 
     async findItemsByPeriodId(userId, periodId) {
@@ -199,7 +209,7 @@ class PlanningRepository {
             ORDER BY pi.planned_at ASC, pi.id ASC
         `, [periodId, userId]);
 
-        return rows;
+        return this.attachShoppingItemsToMany(userId, rows);
     }
 
     async updateItem(userId, itemId, item) {
@@ -246,6 +256,10 @@ class PlanningRepository {
             return null;
         }
 
+        if (Array.isArray(item.shoppingItems)) {
+            await this.replaceShoppingItemsWithConnection(connection, userId, itemId, item.shoppingItems);
+        }
+
         return this.findItemByIdWithConnection(connection, userId, itemId);
     }
 
@@ -272,6 +286,143 @@ class PlanningRepository {
         `, [categoryId]);
 
         return rows.length > 0;
+    }
+
+    async productExists(productId, connection = pool) {
+        const [rows] = await connection.execute(`
+            SELECT id
+            FROM product
+            WHERE id = ?
+              AND status = 'active'
+            LIMIT 1
+        `, [productId]);
+
+        return rows.length > 0;
+    }
+
+    async attachShoppingItems(userId, item, connection = pool) {
+        const [rows] = await connection.execute(`
+            SELECT
+                psi.id,
+                psi.local_id AS localId,
+                psi.planning_item_id AS planningItemId,
+                psi.product_id AS productId,
+                p.name AS productName,
+                psi.name,
+                psi.amount,
+                psi.unit,
+                psi.checked,
+                psi.position,
+                psi.created_at AS createdAt,
+                psi.updated_at AS updatedAt
+            FROM planning_shopping_item psi
+            INNER JOIN planning_item pi ON pi.id = psi.planning_item_id
+            INNER JOIN planning_period pp ON pp.id = pi.period_id
+            LEFT JOIN product p ON p.id = psi.product_id
+            WHERE psi.planning_item_id = ?
+              AND pp.user_id = ?
+            ORDER BY psi.position ASC, psi.id ASC
+        `, [item.id, userId]);
+
+        return {
+            ...item,
+            shoppingItems: rows
+        };
+    }
+
+    async attachShoppingItemsToMany(userId, items) {
+        if (!items.length) return [];
+        const ids = items.map(item => Number(item.id));
+        const placeholders = ids.map(() => '?').join(',');
+        const [rows] = await pool.execute(`
+            SELECT
+                psi.id,
+                psi.local_id AS localId,
+                psi.planning_item_id AS planningItemId,
+                psi.product_id AS productId,
+                p.name AS productName,
+                psi.name,
+                psi.amount,
+                psi.unit,
+                psi.checked,
+                psi.position,
+                psi.created_at AS createdAt,
+                psi.updated_at AS updatedAt
+            FROM planning_shopping_item psi
+            INNER JOIN planning_item pi ON pi.id = psi.planning_item_id
+            INNER JOIN planning_period pp ON pp.id = pi.period_id
+            LEFT JOIN product p ON p.id = psi.product_id
+            WHERE psi.planning_item_id IN (${placeholders})
+              AND pp.user_id = ?
+            ORDER BY psi.position ASC, psi.id ASC
+        `, [...ids, userId]);
+        const byItemId = new Map();
+        rows.forEach(row => {
+            const key = String(row.planningItemId);
+            if (!byItemId.has(key)) byItemId.set(key, []);
+            byItemId.get(key).push(row);
+        });
+
+        return items.map(item => ({
+            ...item,
+            shoppingItems: byItemId.get(String(item.id)) || []
+        }));
+    }
+
+    async replaceShoppingItemsWithConnection(connection, userId, itemId, shoppingItems) {
+        const [ownedRows] = await connection.execute(`
+            SELECT psi.local_id AS localId
+            FROM planning_shopping_item psi
+            INNER JOIN planning_item pi ON pi.id = psi.planning_item_id
+            INNER JOIN planning_period pp ON pp.id = pi.period_id
+            WHERE psi.planning_item_id = ?
+              AND pp.user_id = ?
+        `, [itemId, userId]);
+        const nextLocalIds = new Set(shoppingItems.map(item => item.localId));
+
+        for (const row of ownedRows) {
+            if (nextLocalIds.has(row.localId)) continue;
+            await connection.execute(`
+                DELETE FROM planning_shopping_item
+                WHERE planning_item_id = ?
+                  AND local_id = ?
+            `, [itemId, row.localId]);
+        }
+
+        for (const item of shoppingItems) {
+            await connection.execute(`
+                INSERT INTO planning_shopping_item (
+                    local_id,
+                    planning_item_id,
+                    product_id,
+                    name,
+                    amount,
+                    unit,
+                    checked,
+                    position,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE
+                    product_id = VALUES(product_id),
+                    name = VALUES(name),
+                    amount = VALUES(amount),
+                    unit = VALUES(unit),
+                    checked = VALUES(checked),
+                    position = VALUES(position),
+                    updated_at = NOW()
+            `, [
+                item.localId,
+                itemId,
+                item.productId,
+                item.name,
+                item.amount,
+                item.unit,
+                item.checked ? 1 : 0,
+                item.position
+            ]);
+        }
     }
 }
 

@@ -82,12 +82,47 @@ const normalizeChecklist = checklist => {
 	const items = checklist
 		.map(item => ({
 			id: String(item?.id || createId('checklist')),
+			localId: String(item?.localId || item?.local_id || item?.id || createId('shopping')),
+			serverId: item?.serverId ?? item?.server_id ?? (isTemporaryId(item?.id) ? null : item?.id) ?? null,
+			productId: item?.productId ?? item?.product_id ?? null,
 			title: String(item?.title || '').trim(),
+			name: String(item?.name || item?.title || '').trim(),
+			amount: item?.amount ?? null,
+			unit: item?.unit || null,
 			checked: Boolean(item?.checked)
 		}))
-		.filter(item => item.title)
+		.filter(item => item.name || item.title)
 
 	return items.length ? items : undefined
+}
+
+const normalizeShoppingItems = items => {
+	if (!Array.isArray(items)) return undefined
+	const now = Date.now()
+	const normalized = items
+		.map((item, index) => {
+			const localId = String(item?.localId || item?.local_id || item?.id || createId('shopping'))
+			const serverId = item?.serverId ?? item?.server_id ?? (!isTemporaryId(item?.id) ? item?.id : null)
+			const name = String(item?.name || item?.title || '').trim()
+			return {
+				id: String(item?.id || serverId || localId),
+				localId,
+				serverId: serverId === undefined ? null : serverId,
+				productId: item?.productId ?? item?.product_id ?? null,
+				name,
+				title: name,
+				amount: item?.amount === '' || item?.amount === undefined ? null : item?.amount,
+				unit: item?.unit || null,
+				checked: Boolean(item?.checked),
+				position: Number.isFinite(Number(item?.position)) ? Number(item.position) : index,
+				createdAt: toNumber(item?.createdAt ?? item?.created_at) || now,
+				updatedAt: toNumber(item?.updatedAt ?? item?.updated_at) || now
+			}
+		})
+		.filter(item => item.name)
+		.sort((a, b) => a.position - b.position || String(a.localId).localeCompare(String(b.localId)))
+
+	return normalized.length ? normalized : undefined
 }
 
 const normalizePeriod = period => {
@@ -139,9 +174,25 @@ const normalizeItem = (item, periodId) => {
 		createdAt,
 		updatedAt: toNumber(item?.updatedAt) || createdAt
 	}
-	const checklist = normalizeChecklist(item?.checklist)
+	const shoppingItems = normalizeShoppingItems(item?.shoppingItems || item?.shopping_items || item?.checklist)
+	const checklist = normalizeChecklist(item?.checklist || shoppingItems)
 
-	if (checklist) normalizedItem.checklist = checklist
+	if (shoppingItems) normalizedItem.shoppingItems = shoppingItems
+	else delete normalizedItem.shoppingItems
+	if (checklist) normalizedItem.checklist = checklist.map((shoppingItem, index) => ({
+		id: String(shoppingItem.localId || shoppingItem.id || createId('checklist')),
+		localId: String(shoppingItem.localId || shoppingItem.id || createId('shopping')),
+		serverId: shoppingItem.serverId ?? null,
+		productId: shoppingItem.productId ?? null,
+		title: shoppingItem.name || shoppingItem.title,
+		name: shoppingItem.name || shoppingItem.title,
+		amount: shoppingItem.amount ?? null,
+		unit: shoppingItem.unit || null,
+		checked: Boolean(shoppingItem.checked),
+		position: Number.isFinite(Number(shoppingItem.position)) ? Number(shoppingItem.position) : index,
+		createdAt: shoppingItem.createdAt,
+		updatedAt: shoppingItem.updatedAt
+	}))
 	else delete normalizedItem.checklist
 
 	return normalizedItem
@@ -312,7 +363,12 @@ class LocalStoragePlanningRepository {
 		const normalizedItems = items.map(item => {
 			const localItem = normalizeItem(item, normalizedPeriod.id)
 			const currentItem = storage.items.find(storedItem => String(storedItem.id) === String(localItem.id))
-			if (currentItem?.checklist) localItem.checklist = currentItem.checklist
+			if (!localItem.shoppingItems && currentItem?.shoppingItems) {
+				localItem.shoppingItems = currentItem.shoppingItems
+				localItem.checklist = currentItem.shoppingItems
+			} else if (currentItem?.checklist && !localItem.checklist) {
+				localItem.checklist = currentItem.checklist
+			}
 			return localItem
 		})
 		const serverSnapshot = {
@@ -494,7 +550,12 @@ class LocalStoragePlanningRepository {
 		const storage = this.readStorage()
 		const normalizedItem = normalizeItem(item, periodId)
 		const currentItem = storage.items.find(storedItem => String(storedItem.id) === String(localItemId))
-		if (currentItem?.checklist) normalizedItem.checklist = currentItem.checklist
+		if (!normalizedItem.shoppingItems && currentItem?.shoppingItems) {
+			normalizedItem.shoppingItems = currentItem.shoppingItems
+			normalizedItem.checklist = currentItem.shoppingItems
+		} else if (currentItem?.checklist && !normalizedItem.checklist) {
+			normalizedItem.checklist = currentItem.checklist
+		}
 
 		let itemReplaced = false
 		const items = storage.items
@@ -564,7 +625,8 @@ class LocalStoragePlanningRepository {
 			if (String(storedItem.id) !== String(normalizedItem.id)) return storedItem
 			return {
 				...normalizedItem,
-				checklist: storedItem.checklist
+				shoppingItems: normalizedItem.shoppingItems || storedItem.shoppingItems,
+				checklist: normalizedItem.shoppingItems || normalizedItem.checklist || storedItem.shoppingItems || storedItem.checklist
 			}
 		})
 		const itemExists = items.some(storedItem => String(storedItem.id) === String(normalizedItem.id))
@@ -638,6 +700,21 @@ const itemToRecord = (item, userId) => {
 	})
 }
 
+const shoppingItemToRecord = (shoppingItem, planningItem, userId) => {
+	const normalizedShoppingItem = normalizeShoppingItems([shoppingItem])?.[0]
+	const planningItemServerId = getServerId(planningItem.id)
+
+	return omitUndefined({
+		...normalizedShoppingItem,
+		localId: normalizedShoppingItem.localId,
+		serverId: normalizedShoppingItem.serverId ?? getServerId(normalizedShoppingItem.id),
+		userId: Number(userId),
+		planningItemLocalId: getEntityLocalId(userId, 'item', planningItem.id),
+		planningItemServerId,
+		syncStatus: 'local'
+	})
+}
+
 const recordToPeriod = record => normalizePeriod(record)
 
 const recordToItem = record => {
@@ -653,6 +730,19 @@ const recordToItem = record => {
 	} = record || {}
 
 	return normalizeItem(item, item.periodId)
+}
+
+const recordToShoppingItem = record => {
+	const {
+		userId,
+		planningItemLocalId,
+		planningItemServerId,
+		syncStatus,
+		deletedAt,
+		...item
+	} = record || {}
+
+	return normalizeShoppingItems([item])?.[0] || null
 }
 
 const normalizeStorageData = data => {
@@ -787,19 +877,41 @@ export default class PlanningLocalRepository {
 			return emptyStorage
 		}
 
-		const [periodRecords, itemRecords, snapshotRecords] = await Promise.all([
+		const [periodRecords, itemRecords, shoppingItemRecords, snapshotRecords] = await Promise.all([
 			this.indexedDbClient.getAll('planningPeriods'),
 			this.indexedDbClient.getAll('planningItems'),
+			this.indexedDbClient.getAll('planningShoppingItems'),
 			this.indexedDbClient.getAll('planningServerSnapshots')
 		])
 		const periodLocalIds = new Set(Array.isArray(meta.periodLocalIds) ? meta.periodLocalIds : [])
 		const itemLocalIds = new Set(Array.isArray(meta.itemLocalIds) ? meta.itemLocalIds : [])
+		const shoppingItemLocalIds = new Set(Array.isArray(meta.shoppingItemLocalIds) ? meta.shoppingItemLocalIds : [])
 		const periods = periodRecords
 			.filter(record => Number(record.userId) === userId && periodLocalIds.has(record.localId))
 			.map(recordToPeriod)
+		const shoppingItemsByPlanningItemLocalId = new Map()
+		shoppingItemRecords
+			.filter(record => Number(record.userId) === userId && shoppingItemLocalIds.has(record.localId))
+			.map(recordToShoppingItem)
+			.filter(Boolean)
+			.forEach(shoppingItem => {
+				const record = shoppingItemRecords.find(candidate => candidate.localId === shoppingItem.localId)
+				const key = record?.planningItemLocalId
+				if (!key) return
+				if (!shoppingItemsByPlanningItemLocalId.has(key)) shoppingItemsByPlanningItemLocalId.set(key, [])
+				shoppingItemsByPlanningItemLocalId.get(key).push(shoppingItem)
+			})
 		const items = itemRecords
 			.filter(record => Number(record.userId) === userId && itemLocalIds.has(record.localId))
-			.map(recordToItem)
+			.map(record => {
+				const item = recordToItem(record)
+				const shoppingItems = shoppingItemsByPlanningItemLocalId.get(record.localId)
+				if (shoppingItems?.length) {
+					item.shoppingItems = shoppingItems
+					item.checklist = shoppingItems
+				}
+				return item
+			})
 		const currentPeriodId = String(meta.currentPeriodId || periods[0]?.id || '')
 		const currentPeriodLocalId = currentPeriodId ? getEntityLocalId(userId, 'period', currentPeriodId) : null
 		const snapshot = snapshotRecords.find(record => Number(record.userId) === userId && record.periodLocalId === currentPeriodLocalId)
@@ -839,13 +951,18 @@ export default class PlanningLocalRepository {
 		const storage = normalizeStorageData(data)
 		const periodRecords = storage.periods.map(period => periodToRecord(period, userId))
 		const itemRecords = storage.items.map(item => itemToRecord(item, userId))
+		const shoppingItemRecords = storage.items.flatMap(item => {
+			const shoppingItems = normalizeShoppingItems(item.shoppingItems || item.checklist) || []
+			return shoppingItems.map(shoppingItem => shoppingItemToRecord(shoppingItem, item, userId))
+		})
 		const currentPeriodLocalId = storage.currentPeriodId
 			? getEntityLocalId(userId, 'period', storage.currentPeriodId)
 			: null
 
 		await Promise.all([
 			...periodRecords.map(record => this.indexedDbClient.put('planningPeriods', record)),
-			...itemRecords.map(record => this.indexedDbClient.put('planningItems', record))
+			...itemRecords.map(record => this.indexedDbClient.put('planningItems', record)),
+			...shoppingItemRecords.map(record => this.indexedDbClient.put('planningShoppingItems', record))
 		])
 
 		if (storage.serverSnapshot?.period) {
@@ -867,6 +984,7 @@ export default class PlanningLocalRepository {
 			currentPeriodLocalId,
 			periodLocalIds: periodRecords.map(record => record.localId),
 			itemLocalIds: itemRecords.map(record => record.localId),
+			shoppingItemLocalIds: shoppingItemRecords.map(record => record.localId),
 			deletedItemIds: storage.deletedItemIds,
 			dirty: storage.dirty,
 			updatedAt: Date.now()
@@ -874,13 +992,16 @@ export default class PlanningLocalRepository {
 
 		const periodLocalIds = new Set(periodRecords.map(record => record.localId))
 		const itemLocalIds = new Set(itemRecords.map(record => record.localId))
+		const shoppingItemLocalIds = new Set(shoppingItemRecords.map(record => record.localId))
 		const stalePeriodIds = (previousMeta?.periodLocalIds || []).filter(localId => !periodLocalIds.has(localId))
 		const staleItemIds = (previousMeta?.itemLocalIds || []).filter(localId => !itemLocalIds.has(localId))
+		const staleShoppingItemIds = (previousMeta?.shoppingItemLocalIds || []).filter(localId => !shoppingItemLocalIds.has(localId))
 
 		await Promise.all([
 			...stalePeriodIds.map(localId => this.indexedDbClient.delete('planningPeriods', localId)),
 			...stalePeriodIds.map(localId => this.indexedDbClient.delete('planningServerSnapshots', localId)),
-			...staleItemIds.map(localId => this.indexedDbClient.delete('planningItems', localId))
+			...staleItemIds.map(localId => this.indexedDbClient.delete('planningItems', localId)),
+			...staleShoppingItemIds.map(localId => this.indexedDbClient.delete('planningShoppingItems', localId))
 		])
 	}
 

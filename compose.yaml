@@ -37,7 +37,8 @@ services:
       - ./docker/mysql/migrations/20260929_receipts.sql:/docker-entrypoint-initdb.d/08-receipts.sql:ro
       - ./docker/mysql/migrations/20260930_receipt_optional_purchase.sql:/docker-entrypoint-initdb.d/09-receipt-optional-purchase.sql:ro
       - ./docker/mysql/migrations/20260930_receipt_ocr.sql:/docker-entrypoint-initdb.d/10-receipt-ocr.sql:ro
-      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/11-seed.sql:ro
+      - ./docker/mysql/migrations/20261001_planning_shopping_items.sql:/docker-entrypoint-initdb.d/11-planning-shopping-items.sql:ro
+      - ./docker/mysql/seeds/dev.sql:/docker-entrypoint-initdb.d/12-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 10s

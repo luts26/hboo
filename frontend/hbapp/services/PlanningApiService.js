@@ -164,7 +164,21 @@ export default class PlanningApiService {
 				: Number(item.actualAmount),
 			status: item.status || 'pending',
 			planned_at: toApiDate(item.date || Date.now()),
-			transaction_id: item.transactionId || null
+			transaction_id: item.transactionId || null,
+			shopping_items: (item.shoppingItems || item.checklist || []).map((shoppingItem, index) => ({
+				id: Number.isFinite(Number(shoppingItem.serverId ?? shoppingItem.id)) && !String(shoppingItem.id).includes('-')
+					? Number(shoppingItem.serverId ?? shoppingItem.id)
+					: null,
+				local_id: String(shoppingItem.localId || shoppingItem.id || ''),
+				product_id: shoppingItem.productId ? Number(shoppingItem.productId) : null,
+				name: shoppingItem.name || shoppingItem.title,
+				amount: shoppingItem.amount === null || shoppingItem.amount === undefined || shoppingItem.amount === ''
+					? null
+					: Number(shoppingItem.amount),
+				unit: shoppingItem.unit || null,
+				checked: Boolean(shoppingItem.checked),
+				position: Number.isFinite(Number(shoppingItem.position)) ? Number(shoppingItem.position) : index
+			})).filter(shoppingItem => shoppingItem.name)
 		}
 	}
 }

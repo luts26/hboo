@@ -3,6 +3,7 @@ import transactionRepository from '../repositories/TransactionRepository.js';
 import pool from '../database/mysql.js';
 
 const STATUSES = ['pending', 'completed', 'cancelled'];
+const SHOPPING_UNITS = ['g', 'kg', 'ml', 'l', 'pcs'];
 const SMART_MATCH_LIMIT = 3;
 const SMART_MATCH_MIN_SCORE = 50;
 const SMART_MATCH_WEIGHTS = {
@@ -667,7 +668,10 @@ class PlanningService {
             cancelledAt: currentItem?.cancelledAt ?? null,
             transactionId: data.transaction_id !== undefined
                 ? this.optionalString(data.transaction_id)
-                : currentItem?.transactionId ?? null
+                : currentItem?.transactionId ?? null,
+            shoppingItems: data.shopping_items !== undefined
+                ? await this.buildShoppingItems(data.shopping_items)
+                : currentItem?.shoppingItems ?? []
         };
 
         if (status === 'pending') {
@@ -686,6 +690,41 @@ class PlanningService {
         }
 
         return item;
+    }
+
+    async buildShoppingItems(items) {
+        if (!Array.isArray(items)) {
+            throw this.validationError('shopping_items must be an array');
+        }
+
+        const result = [];
+        for (const [index, rawItem] of items.entries()) {
+            const productId = rawItem.product_id === undefined
+                ? null
+                : this.optionalId(rawItem.product_id, 'product_id');
+            if (productId !== null && !(await planningRepository.productExists(productId))) {
+                throw this.validationError('product_id is invalid');
+            }
+            const unit = rawItem.unit === undefined || rawItem.unit === null || rawItem.unit === ''
+                ? null
+                : this.requireShoppingUnit(rawItem.unit);
+            const amount = rawItem.amount === undefined || rawItem.amount === null || rawItem.amount === ''
+                ? null
+                : this.requirePositiveNumber(rawItem.amount, 'amount');
+
+            result.push({
+                id: rawItem.id ? this.optionalId(rawItem.id, 'shopping item id') : null,
+                localId: this.requireString(rawItem.local_id || rawItem.localId || `shopping-${index}`, 'local_id'),
+                productId,
+                name: this.requireString(rawItem.name, 'name'),
+                amount,
+                unit,
+                checked: Boolean(rawItem.checked),
+                position: Number.isInteger(Number(rawItem.position)) ? Number(rawItem.position) : index
+            });
+        }
+
+        return result;
     }
 
     requireId(value, field) {
@@ -722,6 +761,26 @@ class PlanningService {
         }
 
         return this.requireAmount(value, field);
+    }
+
+    requirePositiveNumber(value, field) {
+        const amount = Number(value);
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw this.validationError(`${field} must be greater than 0`);
+        }
+
+        return amount;
+    }
+
+    requireShoppingUnit(value) {
+        const unit = this.requireString(value, 'unit');
+
+        if (!SHOPPING_UNITS.includes(unit)) {
+            throw this.validationError('unit is invalid');
+        }
+
+        return unit;
     }
 
     requireDate(value, field) {
@@ -847,6 +906,24 @@ class PlanningService {
             completedAt: item.completedAt ? this.formatDateTime(item.completedAt) : null,
             cancelledAt: item.cancelledAt ? this.formatDateTime(item.cancelledAt) : null,
             transactionId: item.transactionId,
+            shoppingItems: (item.shoppingItems || []).map(shoppingItem => this.formatShoppingItem(shoppingItem)),
+            createdAt: this.formatDateTime(item.createdAt),
+            updatedAt: this.formatDateTime(item.updatedAt)
+        };
+    }
+
+    formatShoppingItem(item) {
+        return {
+            id: Number(item.id),
+            localId: item.localId,
+            planningItemId: Number(item.planningItemId),
+            productId: item.productId === null ? null : Number(item.productId),
+            productName: item.productName || null,
+            name: item.name,
+            amount: item.amount === null ? null : Number(item.amount),
+            unit: item.unit || null,
+            checked: Boolean(item.checked),
+            position: Number(item.position) || 0,
             createdAt: this.formatDateTime(item.createdAt),
             updatedAt: this.formatDateTime(item.updatedAt)
         };
