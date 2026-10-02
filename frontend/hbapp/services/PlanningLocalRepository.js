@@ -213,6 +213,21 @@ const normalizeServerSnapshot = snapshot => {
 	}
 }
 
+const comparePeriodsByCurrentPriority = (left, right) => {
+	const endDiff = toNumber(right?.dateTo) - toNumber(left?.dateTo)
+	if (endDiff) return endDiff
+	const startDiff = toNumber(right?.dateFrom) - toNumber(left?.dateFrom)
+	if (startDiff) return startDiff
+	return String(right?.id || '').localeCompare(String(left?.id || ''))
+}
+
+const getSelectedCurrentPeriod = data => {
+	const periods = Array.isArray(data?.periods) ? data.periods : []
+	return periods.find(period => String(period.id) === String(data?.currentPeriodId))
+		|| periods.slice().sort(comparePeriodsByCurrentPriority)[0]
+		|| null
+}
+
 const getLegacyItems = legacyData => {
 	if (Array.isArray(legacyData)) return legacyData
 	if (Array.isArray(legacyData?.items)) return legacyData.items
@@ -311,7 +326,8 @@ class LocalStoragePlanningRepository {
 		const storedData = readJson(storageKey, null)
 		if (storedData?.version === STORAGE_VERSION && Array.isArray(storedData.periods) && Array.isArray(storedData.items)) {
 			const periods = storedData.periods.map(period => normalizePeriod(period))
-			const currentPeriodId = String(storedData.currentPeriodId || periods[0]?.id || '')
+			const fallbackPeriod = getSelectedCurrentPeriod({...storedData, periods})
+			const currentPeriodId = String(storedData.currentPeriodId || fallbackPeriod?.id || '')
 			return {
 				...storedData,
 				currentPeriodId,
@@ -347,7 +363,7 @@ class LocalStoragePlanningRepository {
 
 	async getPlanningState() {
 		const data = this.readStorage()
-		const currentPeriod = data.periods.find(period => String(period.id) === String(data.currentPeriodId)) || data.periods[0] || null
+		const currentPeriod = getSelectedCurrentPeriod(data)
 
 		return {
 			...data,
@@ -428,6 +444,30 @@ class LocalStoragePlanningRepository {
 
 		this.writeStorage({...storage, periods, dirty: markDirty ? true : storage.dirty})
 		return updatedPeriod
+	}
+
+	async createCurrentPeriod(data, {markDirty = true} = {}) {
+		const storage = this.readStorage()
+		const now = Date.now()
+		const period = normalizePeriod({
+			...getDefaultPeriodRange(),
+			...data,
+			id: createId('period'),
+			status: 'new',
+			createdAt: now,
+			updatedAt: now
+		})
+
+		this.writeStorage({
+			...storage,
+			currentPeriodId: period.id,
+			periods: [
+				...storage.periods.filter(storedPeriod => String(storedPeriod.id) !== String(period.id)),
+				period
+			],
+			dirty: markDirty ? true : storage.dirty
+		})
+		return period
 	}
 
 	async createItem(data, {markDirty = true} = {}) {
@@ -596,6 +636,7 @@ class LocalStoragePlanningRepository {
 	}
 
 	async markCleanFromState({period, items, statistics = null}) {
+		const storage = this.readStorage()
 		const normalizedPeriod = normalizePeriod(period)
 		const normalizedItems = items.map(item => normalizeItem(item, normalizedPeriod.id))
 		const serverSnapshot = {
@@ -605,11 +646,17 @@ class LocalStoragePlanningRepository {
 			updatedAt: Date.now()
 		}
 
+		const periods = [
+			...storage.periods.filter(storedPeriod => String(storedPeriod.id) !== String(normalizedPeriod.id)),
+			normalizedPeriod
+		]
+		const otherItems = storage.items.filter(item => String(item.periodId) !== String(normalizedPeriod.id))
+
 		this.writeStorage({
-			version: STORAGE_VERSION,
+			...storage,
 			currentPeriodId: normalizedPeriod.id,
-			periods: [normalizedPeriod],
-			items: normalizedItems,
+			periods,
+			items: [...otherItems, ...normalizedItems],
 			serverSnapshot,
 			deletedItemIds: [],
 			dirty: false
@@ -747,7 +794,8 @@ const recordToShoppingItem = record => {
 
 const normalizeStorageData = data => {
 	const periods = Array.isArray(data?.periods) ? data.periods.map(period => normalizePeriod(period)) : []
-	const currentPeriodId = String(data?.currentPeriodId || periods[0]?.id || '')
+	const fallbackPeriod = getSelectedCurrentPeriod({...data, periods})
+	const currentPeriodId = String(data?.currentPeriodId || fallbackPeriod?.id || '')
 
 	return {
 		version: STORAGE_VERSION,
@@ -912,7 +960,8 @@ export default class PlanningLocalRepository {
 				}
 				return item
 			})
-		const currentPeriodId = String(meta.currentPeriodId || periods[0]?.id || '')
+		const fallbackPeriod = getSelectedCurrentPeriod({periods, currentPeriodId: meta.currentPeriodId})
+		const currentPeriodId = String(meta.currentPeriodId || fallbackPeriod?.id || '')
 		const currentPeriodLocalId = currentPeriodId ? getEntityLocalId(userId, 'period', currentPeriodId) : null
 		const snapshot = snapshotRecords.find(record => Number(record.userId) === userId && record.periodLocalId === currentPeriodLocalId)
 		const serverSnapshot = snapshot?.snapshot ? normalizeServerSnapshot(snapshot.snapshot) : null
@@ -1007,7 +1056,7 @@ export default class PlanningLocalRepository {
 
 	async getPlanningState() {
 		const data = await this.readStorage()
-		const currentPeriod = data.periods.find(period => String(period.id) === String(data.currentPeriodId)) || data.periods[0] || null
+		const currentPeriod = getSelectedCurrentPeriod(data)
 
 		return {
 			...data,
@@ -1083,6 +1132,30 @@ export default class PlanningLocalRepository {
 
 		await this.writeStorage({...storage, periods, dirty: markDirty ? true : storage.dirty})
 		return updatedPeriod
+	}
+
+	async createCurrentPeriod(data, {markDirty = true} = {}) {
+		const storage = await this.readStorage()
+		const now = Date.now()
+		const period = normalizePeriod({
+			...getDefaultPeriodRange(),
+			...data,
+			id: createId('period'),
+			status: 'new',
+			createdAt: now,
+			updatedAt: now
+		})
+
+		await this.writeStorage({
+			...storage,
+			currentPeriodId: period.id,
+			periods: [
+				...storage.periods.filter(storedPeriod => String(storedPeriod.id) !== String(period.id)),
+				period
+			],
+			dirty: markDirty ? true : storage.dirty
+		})
+		return period
 	}
 
 	async createItem(data, {markDirty = true} = {}) {
@@ -1246,6 +1319,7 @@ export default class PlanningLocalRepository {
 	}
 
 	async markCleanFromState({period, items, statistics = null}) {
+		const storage = await this.readStorage()
 		const normalizedPeriod = normalizePeriod(period)
 		const normalizedItems = items.map(item => normalizeItem(item, normalizedPeriod.id))
 		const serverSnapshot = {
@@ -1255,11 +1329,17 @@ export default class PlanningLocalRepository {
 			updatedAt: Date.now()
 		}
 
+		const periods = [
+			...storage.periods.filter(storedPeriod => String(storedPeriod.id) !== String(normalizedPeriod.id)),
+			normalizedPeriod
+		]
+		const otherItems = storage.items.filter(item => String(item.periodId) !== String(normalizedPeriod.id))
+
 		await this.writeStorage({
-			version: STORAGE_VERSION,
+			...storage,
 			currentPeriodId: normalizedPeriod.id,
-			periods: [normalizedPeriod],
-			items: normalizedItems,
+			periods,
+			items: [...otherItems, ...normalizedItems],
 			serverSnapshot,
 			deletedItemIds: [],
 			dirty: false

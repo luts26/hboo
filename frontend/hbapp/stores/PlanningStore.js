@@ -574,6 +574,14 @@ class PlanningStore {
 		return this.setPeriod(period)
 	}
 
+	async startNewPeriod(period) {
+		await this.repository.createCurrentPeriod(period)
+		const planningState = await this.repository.getPlanningState()
+		this.applyPlanningState(planningState, {saveError: null})
+		await this.enqueueAutosync({reason: 'period-create'})
+		return this.getState()
+	}
+
 	async createPlanningItem(data) {
 		await this.repository.createItem(data)
 		const planningState = await this.repository.getPlanningState()
@@ -822,7 +830,10 @@ class PlanningStore {
 		const period = source.period || source.currentPeriod
 		const items = source.items || source.planningItems || []
 		const snapshot = source.serverSnapshot
-		const snapshotItems = Array.isArray(snapshot?.items) ? snapshot.items : []
+		const snapshotMatchesCurrentPeriod = snapshot?.period
+			&& period?.id
+			&& String(snapshot.period.id) === String(period.id)
+		const snapshotItems = snapshotMatchesCurrentPeriod && Array.isArray(snapshot?.items) ? snapshot.items : []
 		const snapshotItemsById = new Map(snapshotItems.map(item => [String(item.id), item]))
 		const currentPersistedIds = new Set()
 		const creates = []
@@ -854,7 +865,7 @@ class PlanningStore {
 			}
 		})
 		const createPeriod = !period?.id || isTemporaryId(period.id)
-		const updatePeriod = snapshot?.period
+		const updatePeriod = snapshotMatchesCurrentPeriod
 			&& !isTemporaryId(period?.id)
 			&& isPlanningPeriodChanged(period, snapshot.period)
 		const deletes = Array.from(deletedIds)
@@ -1096,6 +1107,19 @@ class PlanningStore {
 	async assertPlanningPushPreflight({plan, localPlanningState}) {
 		const base = localPlanningState.serverSnapshot
 		const remote = await this.fetchRemotePlanningStateForPreflight()
+
+		if (plan.createPeriod && plan.period?.status === 'new') {
+			return true
+		}
+
+		if (
+			plan.createPeriod
+			&& base?.period
+			&& plan.period?.id
+			&& String(plan.period.id) !== String(base.period.id)
+		) {
+			return true
+		}
 
 		if (!base?.period) {
 			if (!remote?.period && this.isLocalOnlyInitialPlan(plan)) {

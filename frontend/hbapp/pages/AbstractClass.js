@@ -42,6 +42,14 @@ export default class AbstractClass {
 			: `${d.getFullYear()}-${this.addZero(d.getMonth() + 1)}-${this.addZero(d.getDate())}`
 	}
 
+	timeStampToStringDayMonth(timeStamp = null) {
+		let d = new Date()
+		if (timeStamp) {
+			d = new Date(Number(timeStamp))
+		}
+		return `${this.addZero(d.getDate())}.${this.addZero(d.getMonth() + 1)}`
+	}
+
 	timeStampToStringTime(timeStamp = null, sec = true) {
 		let d = new Date()
 		if (timeStamp) {

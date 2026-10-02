@@ -82,3 +82,32 @@
 - Before any allowed DEV database operation, verify `DATABASE()` and `CURRENT_USER()`.
 - Stop immediately if the selected database is not exactly `hboo_dev`.
 - `AGENTS.md` is an operational rule for coding agents, not a hard OS sandbox.
+
+## Token-efficient development workflow
+
+Default to focused, minimal changes.
+
+- Inspect only files directly relevant to the task.
+- Avoid broad repository exploration unless required to understand the change.
+- Do not perform unrelated refactoring.
+- Reuse existing architecture and services before introducing new abstractions.
+- Keep final reports concise: what changed, files changed, and manual validation steps.
+
+### Testing
+
+For small or low-risk UI/UX changes:
+- Do not add new tests unless they provide clear regression value.
+- Do not run the full test suite.
+- Do not run browser automation unless explicitly requested.
+- Prefer lightweight syntax/lint checks when appropriate.
+- Manual browser validation will normally be performed by the developer.
+
+For changes involving financial calculations, database migrations, sync/offline
+behavior, idempotency, bank imports, receipt parsing, or other data-integrity
+logic:
+- Add or update focused regression tests when useful.
+- Run only the smallest relevant test subset first.
+- Run broader tests only when the change has significant cross-cutting impact.
+
+If the task prompt explicitly specifies a testing strategy, the task prompt
+takes precedence over these defaults.

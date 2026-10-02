@@ -2491,7 +2491,7 @@ img.pb-icon {
 	box-shadow: 0 0 0 2px rgba(119,139,165,.08);
 	height: .5rem;
 	position: absolute;
-	right: 3.48rem;
+	right: 3.13rem;
 	top: .1rem;
 	width: .5rem;
 }
@@ -2997,7 +2997,7 @@ img.pb-icon {
 }
 
 .transaction-container {
-	padding-right: 1rem;
+	padding-right: .5rem;
 }
 
 .transaction-more {
@@ -3801,7 +3801,7 @@ img.pb-icon {
 }
 
 .planing-container {
-	padding-right: 1rem;
+	padding-right: .5rem;
 }
 
 .planing-toolbar {
@@ -3818,7 +3818,6 @@ img.pb-icon {
 }
 
 .planing-period-summary {
-	align-items: center;
 	background: transparent;
 	border: none;
 	border-radius: 8px;
@@ -3828,7 +3827,7 @@ img.pb-icon {
 	display: flex;
 	flex: 1;
 	gap: 1rem;
-	justify-content: space-between;
+	justify-content: space-evenly;
 	min-width: 0;
 	padding: .1rem 0;
 	text-align: left;
@@ -3845,11 +3844,18 @@ img.pb-icon {
 	overflow-wrap: anywhere;
 }
 
+.planing-period-ended-label {
+	color: #b46a00;
+	font-size: 10pt;
+	font-weight: 700;
+	margin-top: .35rem;
+}
+
 .planing-period-metrics {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 1rem;
-	justify-content: flex-end;
+	text-align: center;
 }
 
 .planing-period-metrics > div {
@@ -3876,6 +3882,32 @@ img.pb-icon {
 	font-size: 10pt;
 	font-weight: 700;
 	white-space: nowrap;
+}
+
+.planing-period-ended-actions {
+	align-items: center;
+	display: flex;
+	flex-direction: column;
+	flex-wrap: wrap;
+	gap: .6rem;
+	justify-content: center;
+}
+
+.planing-period-action-btn {
+	background: transparent;
+	border: 1px solid #c9d6e4;
+	border-radius: 8px;
+	color: #778ba5;
+	cursor: pointer;
+	font-size: 10pt;
+	font-weight: 700;
+	padding: .55rem .8rem;
+	white-space: nowrap;
+}
+
+.planing-period-action-primary {
+	background: var(--hboo-accent);
+	color: #fff;
 }
 
 .planing-period-form {
@@ -4117,18 +4149,16 @@ textarea.planing-textarea {
 	padding-bottom: 2rem;
 }
 
-.planing-mode-switch {
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	margin-top: 1rem;
-	max-width: 360px;
+.planing-actions-box {
+	display: flex;
+	align-items: center;
+	justify-content: space-around;
+	margin-top: 2rem;
 }
 
-.planing-list-header {
-	align-items: center;
-	display: flex;
-	gap: 1rem;
-	justify-content: flex-end;
-	margin-bottom: 1rem;
+.planing-mode-switch {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	max-width: 360px;
 }
 
 .planing-fact-view {
@@ -4981,16 +5011,6 @@ textarea.planing-textarea {
 		right: 1.6rem;
 	}
 
-/*	.theme-toggler,*/
-/*	.transactions-today-date {*/
-	/*.syncdata-container {
-		display: none;
-	}*/
-
-/*	.header .app-name {
-		margin: 5px;
-	}*/
-
 	.label-header:hover .sub-menu {
 		opacity: 0;
 		height: 0;
@@ -5309,7 +5329,7 @@ textarea.planing-textarea {
 
 	.planing-mode-switch {
 		max-width: none;
-		width: 100%;
+		width: 76%;
 	}
 
 	.planing-period-summary {
@@ -6646,5 +6666,23 @@ textarea.planing-textarea {
 
 	.product-row-actions button {
 		flex: 1;
+	}
+
+	.planing-period-main {
+		display: grid;
+	    grid-template-columns: repeat(2, 1fr);
+	}
+
+	.planing-period-main > div:nth-child(3) {
+        grid-column: 2;
+	}
+
+	.planing-period-range,
+	.planing-period-ended-label {
+		margin-top: 0;
+	}
+
+	.planing-period-ended-actions {
+		flex-direction: row;
 	}
 }

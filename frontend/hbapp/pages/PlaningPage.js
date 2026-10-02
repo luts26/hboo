@@ -194,6 +194,20 @@ export default class PlaningPage extends AbstractClass {
 		return isEndOfDay ? endOfDay(date) : startOfDay(date)
 	}
 
+	getDefaultNewPeriod() {
+		const now = new Date()
+		return {
+			dateFrom: startOfDay(now),
+			dateTo: endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+			periodBudget: 0
+		}
+	}
+
+	isCurrentPeriodEnded() {
+		const dateTo = Number(this.state.currentPeriod?.dateTo) || 0
+		return Boolean(dateTo && dateTo < startOfDay(new Date()))
+	}
+
 	getSelectedItem() {
 		return this.state.summary.items.find(item => String(item.id) === String(this.state.selectedItemId)) || null
 	}
@@ -329,14 +343,16 @@ export default class PlaningPage extends AbstractClass {
 
 	getPeriodSummaryTemplate() {
 		const period = this.state.currentPeriod || {}
-		const fromDate = this.timeStampToStringDate(period.dateFrom)
-		const toDate = this.timeStampToStringDate(period.dateTo)
+		const fromDate = this.timeStampToStringDayMonth(period.dateFrom)
+		const toDate = this.timeStampToStringDayMonth(period.dateTo)
+		const endedClass = this.isCurrentPeriodEnded() ? ' is-ended' : ''
 
 		return `
-			<button class="planing-period-summary" type="button" title="Edit period">
+			<button class="planing-period-summary${endedClass}" type="button" title="Edit period">
 				<div class="planing-period-main">
 					<div class="planing-summary-label">Current period</div>
-					<div class="planing-period-range">${fromDate} - ${toDate}</div>
+					<div class="planing-period-range">${fromDate}-${toDate}</div>
+					${this.isCurrentPeriodEnded() ? '<div class="planing-period-ended-label">Period ended</div>' : ''}
 				</div>
 				<div class="planing-period-metrics">
 					<div>
@@ -352,8 +368,17 @@ export default class PlaningPage extends AbstractClass {
 						<strong>${this.getActualSpentLabel()}</strong>
 					</div>
 				</div>
-				<!--span class="planing-period-edit">Edit period</span-->
 			</button>`
+	}
+
+	getPeriodEndedActionsTemplate() {
+		if (!this.isCurrentPeriodEnded()) return ''
+
+		return `
+			<div class="planing-period-ended-actions">
+				<button class="planing-period-action-btn" type="button" data-action="planning-period-edit">Edit period</button>
+				<button class="planing-period-action-btn planing-period-action-primary" type="button" data-action="planning-period-new">New period</button>
+			</div>`
 	}
 
 	getCategoryOptions(activeId = '') {
@@ -674,7 +699,9 @@ export default class PlaningPage extends AbstractClass {
 	}
 
 	getPeriodFormTemplate() {
-		const period = this.state.currentPeriod || {}
+		const period = this.state.modal === 'newPeriod'
+			? this.getDefaultNewPeriod()
+			: (this.state.currentPeriod || {})
 		const fromDate = this.timeStampToStringDate(period.dateFrom, '-')
 		const toDate = this.timeStampToStringDate(period.dateTo, '-')
 		const periodBudget = Number(period.periodBudget) || ''
@@ -920,6 +947,7 @@ export default class PlaningPage extends AbstractClass {
 		const item = this.getSelectedItem()
 		const modalTitle = {
 			period: 'Edit period',
+			newPeriod: 'Start new period',
 			add: 'Add expense',
 			complete: 'Complete expense',
 			detail: this.state.modalView === 'shoppingList' ? 'Shopping list' : (this.state.modalView === 'transactions' ? 'Transactions' : 'Expense details'),
@@ -927,6 +955,7 @@ export default class PlaningPage extends AbstractClass {
 		}[this.state.modal]
 		const modalContent = {
 			period: () => this.getPeriodFormTemplate(),
+			newPeriod: () => this.getPeriodFormTemplate(),
 			add: () => this.getExpenseFormTemplate(),
 			complete: () => item ? this.getManualCompletionTemplate(item) : '',
 			detail: () => item
@@ -966,10 +995,13 @@ export default class PlaningPage extends AbstractClass {
 			${this.getPageHeaderTemplate()}
 			<div class="planing-toolbar">
 				${this.getPeriodSummaryTemplate()}
+				${this.getPeriodEndedActionsTemplate()}
 			</div>
-			${this.getPlanningModeSwitchTemplate()}
+			<div class="planing-actions-box">
+				<div>${planActionsHtml}</div>
+				${this.getPlanningModeSwitchTemplate()}
+			</div>
 			<div class="planing-list">
-				${planActionsHtml}
 				${isPlanVsFact ? this.getPlanVsFactTemplate() : this.getItemsTemplate()}
 			</div>
 		</div>`
@@ -1283,11 +1315,17 @@ export default class PlaningPage extends AbstractClass {
 		const dateTo = this.getDateInputTimestamp(formData.get('dateTo'), true)
 		if (!dateFrom || !dateTo || dateFrom > dateTo) return
 
-		await planningStore.updateCurrentPeriod({
+		const periodData = {
 			dateFrom,
 			dateTo,
 			periodBudget: Math.max(0, Number(formData.get('periodBudget')) || 0)
-		})
+		}
+
+		if (this.state.modal === 'newPeriod') {
+			await planningStore.startNewPeriod(periodData)
+		} else {
+			await planningStore.updateCurrentPeriod(periodData)
+		}
 		this.closeModal()
 	}
 
@@ -1303,6 +1341,9 @@ export default class PlaningPage extends AbstractClass {
 			if (event.target.closest('.planing-modal-close')) return this.closeModal()
 			if (event.target.classList.contains('planing-modal-backdrop')) return this.closeModal()
 			if (event.target.closest('.planing-period-summary')) return this.openModal('period')
+			const periodActionTarget = event.target.closest('[data-action="planning-period-edit"], [data-action="planning-period-new"]')
+			if (periodActionTarget?.dataset.action === 'planning-period-edit') return this.openModal('period')
+			if (periodActionTarget?.dataset.action === 'planning-period-new') return this.openModal('newPeriod')
 			if (event.target.closest('.planing-add-btn')) return this.openModal('add')
 			if (event.target.closest('.planing-cancel-edit-btn')) return this.closeModal()
 			if (event.target.closest('.planing-detail .planing-edit-btn')) return this.openModal('edit', this.state.selectedItemId)
