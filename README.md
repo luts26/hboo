@@ -1,48 +1,105 @@
-# HBOO — Home Bookkeeping
+# HBOO --- Home Bookkeeping
 
 ### Personal Finance & Planning
 
-HBOO is a **local-first personal finance PWA** for bank synchronization,
-transaction tracking, financial planning, and spending analytics.
+HBOO is a **local-first personal finance PWA** for financial planning,
+bank synchronization, transaction tracking, purchases, receipt
+processing, product analytics, and offline-first personal finance
+workflows.
 
 It started as a personal tool for working with real financial data and
-evolved into a full-stack application that combines banking
-integrations, offline-first data management, financial planning, and
-multi-device synchronization.
+evolved into a full-stack application that connects **financial intent**
+with **actual spending**:
 
-The project is designed around a practical question:
+``` text
+Planning → Shopping List
+              ↓
+       Bank Transactions
+
+Receipt → OCR → Parse → Review
+                    ↓
+             Purchase → Products
+                          ↓
+               Analytics / Price History
+```
+
+The project is built around a practical question:
 
 > **How much can I safely spend today without breaking my financial
 > plan?**
 
 <p align="center">
-<img src="docs/screenshots/home-desktop.png" width="90%" alt="HBOO Home analytics dashboard">
+<img src="docs/screenshots/home-desktop.png" width="90%" alt="HBOO financial analytics dashboard">
 </p>
 
 ## Highlights
 
-- **Bank integrations** — Monobank and PrivatBank balances and
-  transactions
-- **Financial Planning** — budgets, planned expenses, Actual Spending,
-  and safe-to-spend calculations
-- **Financial Analytics** — Income vs Expenses trends, category spending,
-  local-history coverage awareness, and transaction drill-down
-- **Smart Completion** — suggests bank transactions that may correspond
-  to planned expenses
-- **Local-first PWA** — financial data remains available without a
-  network connection
-- **Offline Planning** — create, edit, complete, and cancel planning
-  items offline
-- **Durable synchronization** — queued local changes automatically
-  synchronize after reconnect
-- **Multi-device conflict protection** — server revalidation prevents
-  silent overwrites
-- **IndexedDB persistence** — balances, transactions, categories,
-  planning data, and sync state are stored locally
-- **Local App Lock** — optional PIN protection for the application UI
-- **Responsive UI** — desktop browser and fullscreen mobile PWA
-- **Isolated environments** — separate DEV and REAL Docker environments
-  with synthetic development data
+-   **Financial Planning** --- custom planning periods, budgets, planned
+    expenses, Actual Spending, Plan vs Fact, and safe-to-spend
+    calculations
+-   **Product-aware Shopping Lists** --- canonical Products or free-text
+    items, optional physical quantity and unit, checked state, offline
+    persistence and synchronization
+-   **Bank integrations** --- Monobank and PrivatBank balances and
+    transactions
+-   **Financial Analytics** --- Income vs Expenses, category spending,
+    Financial Position, transaction drill-down, and local-history
+    coverage awareness
+-   **Purchases & Products** --- structured purchases, product catalog,
+    categories, merchants, physical quantities, and factual prices
+-   **Product Analytics** --- spending, purchased quantities, normalized
+    unit prices, price history, recent purchases, and prices by store
+-   **Receipt workflow** --- camera/gallery capture, private receipt
+    storage, local Tesseract OCR, conservative parsing, Review, and
+    conversion into Purchase + Purchase Items
+-   **Smart Completion** --- suggests bank transactions that may
+    correspond to planned expenses
+-   **Local-first PWA** --- core financial data remains usable without a
+    network connection
+-   **Durable synchronization** --- queued local changes automatically
+    synchronize after reconnect
+-   **Multi-device conflict protection** --- server revalidation
+    prevents silent overwrites
+-   **IndexedDB persistence** --- balances, transactions, categories,
+    Planning, Shopping Lists, Purchases, Products, receipts, and sync
+    state are cached locally where applicable
+-   **Local App Lock** --- optional PIN protection for the application
+    UI
+-   **Responsive UI** --- desktop browser and fullscreen mobile PWA
+-   **Isolated environments** --- separate DEV and REAL Docker
+    environments with synthetic development data
+
+## Product Idea
+
+Most personal-finance applications are strongest at answering:
+
+> Where did my money go?
+
+HBOO also focuses on:
+
+-   How much can I safely spend today?
+-   How much is reserved for future expenses?
+-   What did I plan to spend vs. what did I actually spend?
+-   What products did I plan to buy vs. what did I purchase?
+-   How much of a product did I buy over time?
+-   How have product prices changed between stores and periods?
+-   How is my financial position changing over time?
+
+The long-term goal is to connect four layers:
+
+``` text
+Current State
+Balances / assets
+      ↓
+Planning
+Periods / expenses / Shopping Lists
+      ↓
+Fact
+Transactions / receipts / purchases / products
+      ↓
+Forecast & Insights
+Safe-to-spend / future cash flow / spending optimization
+```
 
 ## Tech Overview
 
@@ -52,19 +109,19 @@ Installed PWA / Browser
           ▼
    Vanilla JavaScript
           │
-   Stores / Services
+    Stores / Services
           │
-    ┌─────┴─────┐
-    ▼           ▼
- IndexedDB    Node.js API
-                  │
-             ┌────┴────┐
-             ▼         ▼
-           MySQL    Spring Boot
-                         │
-                  ┌──────┴──────┐
-                  ▼             ▼
-              Monobank      PrivatBank
+     ┌────┴─────┐
+     ▼          ▼
+ IndexedDB   Node.js API
+                 │
+            ┌────┴────┐
+            ▼         ▼
+          MySQL    Spring Boot
+                       │
+                 ┌─────┴─────┐
+                 ▼           ▼
+             Monobank    PrivatBank
 ```
 
 **Frontend:** Vanilla JavaScript, ES Modules, IndexedDB, Service Worker,
@@ -73,6 +130,9 @@ Web App Manifest, Web Crypto, CSS/SASS
 **Backend:** Node.js using native `node:http`, REST API, MySQL
 
 **Bank integration:** Java, Spring Boot, Monobank API, PrivatBank API
+
+**Receipt OCR:** Tesseract OCR (`ukr+eng`) running locally in the
+backend environment
 
 **Infrastructure:** Docker, Docker Compose, Nginx, HTTPS, MySQL 8
 
@@ -87,42 +147,400 @@ HBOO is designed so that temporary loss of the backend or internet
 connection does not make the core application unusable.
 
 ``` text
-App shell          → Service Worker / Cache Storage
-Financial data     → IndexedDB
-Planning changes   → Local state + durable sync queue
-Bank refresh       → Online integration
-Smart Completion   → Online enrichment
+App shell             → Service Worker / Cache Storage
+Financial data        → IndexedDB
+Planning changes      → Local state + durable sync queue
+Shopping Lists        → Planning local-first synchronization
+Purchases             → Local persistence + durable synchronization
+Receipt drafts        → IndexedDB Blob + durable upload
+Bank refresh          → Online integration
+Smart Completion      → Online enrichment
+OCR / Receipt Review  → Backend-required processing
 ```
 
-Previously loaded balances and transactions remain available offline,
-while Planning can be modified offline and synchronized later.
+Previously loaded balances, transactions, categories, Products,
+Purchases, Planning data, and supported receipt data remain available
+locally.
 
 Planning synchronization performs server revalidation before pushing
-local changes. Independent changes can be synchronized while conflicting
+local changes. Independent changes can synchronize while conflicting
 modifications are stopped instead of silently overwriting data.
 
-## Product Direction Overview
+## Screenshots
 
-HBOO now combines daily financial state, planning, bank transactions, and
-**local-first analytics** in a single application.
+### Planning & Safe-to-Spend
 
-The Home dashboard provides:
+Planning is based on a **user-defined spending budget**, not directly on
+the total bank balance.
 
-- Income vs Expenses analytics for 6- and 12-month periods
-- monthly Income / Expenses / Net details
-- spending by category for selected periods
-- local transaction-history coverage awareness
-- category-to-Transactions drill-down
-- offline analytics from locally cached transaction history
+<p align="center">
+<img src="docs/screenshots/planning-desktop.png" width="90%" alt="HBOO financial planning">
+</p>
 
-The next major product area is **Plan vs Fact**, connecting planned expenses
-with their actual bank transactions and comparing planned and actual spending.
+The current period exposes Budget, Free amount, Actual Spent,
+Recommended Limit, Available Today, and the number of days remaining.
 
-Future development includes recurring planning items, receipt scanning and
-structured purchase extraction, allowing transaction-level analytics to expand
-into **purchase, product, store, quantity, and price-history analytics**.
+Planning periods have an explicit lifecycle. When a planned date range
+ends, the period is not silently completed: it can be extended or the
+user can explicitly start a new period. Historical items remain attached
+to their original period.
 
-------------------------------------------------------------------------
+### Plan vs Fact
+
+Plan vs Fact compares completed planned expenses with actual spending.
+
+
+<p align="center">
+<img src="docs/screenshots/plan-vs-fact-desktop.png" width="90%" alt="HBOO Plan vs Fact">
+</p>
+
+It provides a foundation for comparing expected and factual spending
+while preserving Planning as a future-looking financial tool.
+
+### Transactions
+
+<p align="center">
+<img src="docs/screenshots/transactions-desktop.png" width="90%" alt="HBOO transactions">
+</p>
+
+Transactions support multiple banks, date/category filtering, grouping
+by day, income/expense summaries, local range queries, manual refresh,
+and offline browsing of cached history.
+
+### Purchases
+
+<p align="center">
+<img src="docs/screenshots/purchases-desktop.png" width="90%" alt="HBOO purchases">
+</p>
+
+A Purchase represents factual item-level spending and may contain
+multiple Purchase Items. Cash/manual purchases can exist independently
+from bank transactions and receipts.
+
+### Product Analytics
+
+<p align="center">
+<img src="docs/screenshots/product-analytics-desktop.png" width="49%" alt="HBOO product analytics">
+<img src="docs/screenshots/product-analytics-detail-desktop.png" width="49%" alt="HBOO product analytics detail">
+</p>
+
+Product Analytics supports:
+
+-   spending by product category
+-   total purchases / items / Products
+-   purchased physical quantities
+-   Product Detail
+-   normalized price per `kg`, `l`, or `pcs`
+-   price history
+-   prices by store
+-   recent purchases
+-   period selection
+
+Physical quantity and money are intentionally separate concepts. For
+example:
+
+``` text
+Milk
+Amount: 900 ml
+Price: 46.50 UAH
+
+Normalized analytics price:
+51.67 UAH/l
+```
+
+### Receipt OCR & Review
+
+<p align="center">
+<img src="docs/screenshots/receipt-ocr-desktop.png" width="90%" alt="HBOO receipt OCR">
+</p>
+
+The receipt pipeline is implemented as:
+
+``` text
+Capture / Gallery
+      ↓
+Offline receipt draft
+      ↓
+Private server storage
+      ↓
+Local Tesseract OCR
+      ↓
+Conservative receipt parser
+      ↓
+Review / correction
+      ↓
+Explicit Product selection
+      ↓
+Purchase + Purchase Items
+```
+
+OCR raw text is retained as evidence. Parsing does not silently repair
+suspicious financial values, and Product selection remains explicit
+rather than aggressively auto-matching uncertain OCR text.
+
+## Mobile PWA
+
+HBOO is designed for desktop financial analysis and practical mobile
+use.
+
+<p align="center">
+<img src="docs/screenshots/mobile-shopping-list.png" width="30%" alt="HBOO mobile Shopping List">
+<img src="docs/screenshots/mobile-product-detail.png" width="30%" alt="HBOO mobile Product Detail">
+<img src="docs/screenshots/mobile-receipt.png" width="30%" alt="HBOO mobile receipt OCR">
+</p>
+
+The mobile workflow is especially useful for Shopping Lists, checking
+Product history while shopping, and capturing receipts.
+
+The installed PWA supports fullscreen operation and offline startup.
+
+## Financial Planning
+
+Planning items represent concrete expected expenses rather than category
+budgets.
+
+Current functionality includes:
+
+-   custom Planning Periods
+-   period budgets
+-   explicit creation of a new period
+-   extension/editing of the current period
+-   historical period preservation
+-   planned expenses and categories
+-   pending / completed / cancelled states
+-   Actual Spending
+-   remaining budget
+-   recommended daily spending
+-   Available Today
+-   offline create / edit / complete / cancel
+-   durable autosync after reconnect
+-   multi-device revalidation and conflict protection
+-   Shopping Lists attached to Planning items
+-   Product autocomplete from the local Product catalog
+-   canonical Product references or free-text Shopping List items
+-   optional planned physical amount/unit
+-   checked/unchecked Shopping List state
+-   manual Planning ↔ bank transaction matching
+-   Smart Completion suggestions
+
+## Shopping Lists
+
+Shopping Lists are part of Planning rather than a separate temporary
+checklist.
+
+A list can contain:
+
+``` text
+Milk             900 ml
+Bread            400 g
+Eggs              10 pcs
+Chicken fillet   1.5 kg
+Buckwheat          1 kg
+Oil              850 ml
+```
+
+`Amount + Unit` represent the **planned physical quantity**, not money.
+
+The approximate financial budget remains on the Planning item itself.
+
+Shopping List items can reference a canonical Product or remain free
+text. This keeps the fast in-store checklist workflow while preparing
+HBOO for future Product-level Plan vs Fact analysis.
+
+## Bank Balances
+
+HBOO provides a unified overview of:
+
+-   Monobank
+-   PrivatBank
+-   aggregated current balance
+-   individual bank balances
+-   balance history
+-   manual bank synchronization
+-   locally cached balance snapshots
+-   data freshness
+-   offline access to the last known balance
+
+
+<p align="center">
+<img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balances">
+</p>
+
+## Home Analytics & Financial Position
+
+Home is a read-only local-first projection over data already stored by
+HBOO. Opening Home does not trigger bank synchronization.
+
+Current analytics include:
+
+-   Income vs Expenses for 6- and 12-month periods
+-   monthly Income / Expenses / Net
+-   spending by category
+-   custom-period analysis
+-   category-to-Transactions drill-down
+-   Financial Position / balance history
+-   complete / partial / unavailable local-history awareness
+-   offline analytics from cached transaction history
+
+Missing history is represented explicitly instead of silently treating
+missing data as zero.
+
+## Planning and Transaction Matching
+
+HBOO can associate planned expenses with persisted bank transactions.
+
+Manual linking remains available as a fallback.
+
+### Smart Completion
+
+Smart Completion ranks likely transactions using signals such as:
+
+-   merchant similarity
+-   category
+-   date
+-   amount proximity
+
+The matcher intentionally prefers missing an uncertain suggestion over
+presenting an aggressive false positive.
+
+Suggestions are advisory. A transaction is attached only after explicit
+confirmation.
+
+## Purchases and Product Model
+
+The Product domain is separate from financial categories.
+
+``` text
+Purchase
+   └── Purchase Items
+          └── Product
+                 └── Product Category
+```
+
+Purchases also reference a Merchant where known.
+
+Product measurements use physical units:
+
+-   weight --- `g`, `kg`
+-   volume --- `ml`, `l`
+-   count --- `pcs`
+
+The factual price belongs to the full physical amount purchased.
+Normalized unit price is derived for analytics rather than entered
+manually.
+
+## Receipt Processing
+
+Standalone receipts can be captured before a Purchase exists.
+
+``` text
+Receipt
+  purchase_id = NULL
+      ↓
+OCR
+      ↓
+Parse
+      ↓
+Review
+      ↓
+Create Purchase
+      ↓
+receipt.purchase_id = Purchase.id
+```
+
+Receipt capture is offline-first: the image is prepared in the browser,
+stored in IndexedDB, and synchronized to private backend storage when
+connectivity is available.
+
+Tesseract runs locally in the HBOO backend environment rather than
+sending private receipt images to a cloud OCR provider.
+
+The parser preserves OCR evidence and uses conservative
+arithmetic/context validation. Plausible but suspicious OCR numbers are
+not silently trusted.
+
+## PWA and Offline Operation
+
+Current offline capabilities include:
+
+-   installable PWA
+-   offline cold start
+-   last known Balance
+-   cached Transactions
+-   cached Categories
+-   cached Product catalog
+-   Planning read/create/edit/complete/cancel
+-   Planning Period creation/editing
+-   Shopping Lists
+-   durable queued Planning synchronization
+-   local Purchase workflows supported by the current sync model
+-   receipt draft persistence
+-   automatic synchronization after connectivity/authentication recovery
+
+Bank synchronization, Smart Completion, OCR execution, and server-side
+Receipt Review operations require backend connectivity.
+
+## Local-First Data Flow
+
+``` text
+Page / Component
+       │
+       ▼
+     Store
+     /   \
+    ▼     ▼
+ Local    API
+Repository Service
+    │       │
+    ▼       ▼
+IndexedDB Backend
+```
+
+Local data can be rendered immediately while network operations enrich
+or synchronize it when connectivity is available.
+
+## Planning Synchronization
+
+Planning uses a durable local synchronization queue. Local edits survive
+page reloads and connectivity loss.
+
+Before pushing dirty Planning state, HBOO compares:
+
+``` text
+BASE   = last known server snapshot
+LOCAL  = current IndexedDB state
+REMOTE = fresh server state
+```
+
+Independent changes can synchronize while overlapping changes are
+stopped as conflicts instead of silently overwriting remote data.
+
+## Connection and Sync Status
+
+The UI distinguishes:
+
+``` text
+Synced
+Syncing...
+Offline
+Sign in to sync
+Sync error
+Sync conflict
+```
+
+## Authentication and Local App Lock
+
+Backend authentication and local application access are separate
+concerns.
+
+If the API session expires, HBOO can continue using local data.
+Re-authentication does not discard the current route or offline state.
+
+HBOO can optionally protect the local UI with a PIN. The verifier is
+derived locally using Web Crypto PBKDF2 with SHA-256 and a random salt.
+The plaintext PIN is not persisted.
+
+App Lock is an application UI access layer, not encryption at rest.
 
 ## Repository Structure
 
@@ -146,42 +564,35 @@ compose.yaml
     DEV example environment configuration without secrets
 ```
 
-## Application Architecture
+## Frontend Architecture
+
+The frontend is built with **Vanilla JavaScript** without React, Vue,
+Angular, or another frontend framework.
+
+This is intentional: HBOO implements its own application structure and
+works directly with browser mechanisms rather than relying on framework
+abstractions.
 
 ``` text
-Browser / Installed PWA
-        |
-        | HTTPS
-        v
-      Nginx
-       |
-       +-- Frontend
-       |     +-- Router / Pages / Components
-       |     +-- Stores / Services
-       |     +-- IndexedDB local repositories
-       |     +-- Service Worker
-       |     +-- Planning sync queue
-       |
-       +-- /api/*
-              |
-              v
-        Node.js REST API
-          |          |
-          |          +-- Spring Bank Service
-          |                  +-- Monobank API
-          |                  +-- PrivatBank API
-          |
-          v
-        MySQL
+HBOO
+├── Application Core
+├── Router
+├── Pages
+│   ├── Home
+│   ├── Balance
+│   ├── Transactions
+│   ├── Planning
+│   ├── Purchases
+│   ├── Product Analytics
+│   ├── Deposits
+│   └── Settings
+├── Components
+├── Stores
+├── Services
+├── Local Repositories
+├── API Services
+└── Reusable UI Helpers
 ```
-
-The Node.js service is the primary backend used by the frontend. It
-handles authentication, application logic, planning synchronization,
-transaction normalization, and database access.
-
-The Spring Boot service acts as a dedicated bank integration layer. It
-communicates with external banking APIs and synchronizes balance and
-transaction data.
 
 ## DEV Local Environment
 
@@ -191,20 +602,18 @@ synthetic data.
 
 Prerequisites:
 
-- Docker
-- Docker Compose
-- mkcert
-
-DEV architecture:
+-   Docker
+-   Docker Compose
+-   mkcert
 
 ``` text
 https://dev.hboo.local
-    -> hboo-dev-nginx
-    -> frontend/
-    -> hboo-dev-backend
-    -> hboo-dev-mysql
-    -> hboo_dev
-    -> synthetic data only
+    → hboo-dev-nginx
+    → frontend/
+    → hboo-dev-backend
+    → hboo-dev-mysql
+    → hboo_dev
+    → synthetic data only
 ```
 
 Adminer:
@@ -213,11 +622,7 @@ Adminer:
 http://dev.hboo.local:8080
 ```
 
-The web document root is `frontend/`. Public URLs do not include
-`/frontend/`.
-
-Configure the DEV hostname. `127.0.0.2` keeps DEV ports separate from
-the REAL runtime on `127.0.0.1`.
+Configure the DEV hostname:
 
 ``` bash
 sudo sh -c 'echo "127.0.0.2 dev.hboo.local" >> /etc/hosts'
@@ -233,7 +638,7 @@ mkcert \
   dev.hboo.local localhost 127.0.0.2
 ```
 
-Start and stop:
+Start / stop:
 
 ``` bash
 docker compose up -d
@@ -246,578 +651,199 @@ Open:
 https://dev.hboo.local/
 ```
 
-Default DEV host bindings:
+DEV uses `hboo_dev` and synthetic financial data only. Local database
+dumps and real credentials must not be committed.
 
-``` text
-dev.hboo.local -> 127.0.0.2
-HTTP            -> 127.0.0.2:80
-HTTPS           -> 127.0.0.2:443
-Backend         -> 127.0.0.2:3000
-MySQL           -> 127.0.0.2:3307
-Adminer         -> 127.0.0.2:8080
-```
+## REAL Runtime and Deployment
 
-The MySQL service uses the persistent Docker volume
-`hboo-dev-mysql-data`. `compose.yaml` always creates and uses
-`hboo_dev`. DEV MySQL is Docker-only and contains synthetic data only.
+REAL is a deployment target, not the active development working tree.
 
-Local database dumps must not be committed. Public development data
-lives in sanitized schema, migration, and seed files under
-`docker/mysql/`.
-
-## REAL Runtime Template
-
-REAL is a deployment target, not the development working tree. Safe
-templates live under `docker/runtime-example/` and are intended to be
-copied manually to a separate runtime directory:
-
-``` text
-~/hboo-runtime/
-    real.env
-    compose.real.yaml
-    app/
-    nginx/
-    certs/
-```
-
-Do not create or store REAL credentials in this repository.
-
-DEV and REAL use separate databases, container names, networks, volumes,
-hostnames, and loopback addresses.
-
-## Source Isolation and Deployment
-
-The active development repository must not be mounted directly into
-REAL.
-
-``` text
-~/projects/hboo/
-    active DEV working copy
-
-~/hboo-runtime/app/
-    clean deployed Git snapshot
-```
-
-Development flow:
+Safe runtime templates live under `docker/runtime-example/`. REAL uses
+separate configuration, credentials, database, network, volumes,
+hostname, and deployment checkout.
 
 ``` text
 working tree
-    -> DEV
-    -> test with synthetic data
-    -> commit
-    -> merge into main
-    -> push
+    → DEV
+    → validate with synthetic data
+    → commit
+    → merge/push
+    → clean REAL checkout
+    → reviewed DB migrations
+    → rebuild/recreate affected services
+    → smoke test
 ```
 
-Deployment flow:
-
-``` text
-main
-    -> clean REAL checkout
-    -> pull committed revision
-    -> apply reviewed DB migrations if needed
-    -> recreate or rebuild affected services
-    -> smoke test
-```
-
-Environment-only changes require recreating the affected container so it
-receives the new environment. Application image changes require
-rebuilding the corresponding image.
-
-REAL is a deployment target, not a source of commits.
+REAL credentials and financial data are never part of the repository.
 
 ## Database Migrations
 
 ``` text
 create migration
-    -> apply/test against hboo_dev
-    -> commit with application code
-    -> push
-    -> backup REAL database
-    -> apply reviewed migration to REAL
-    -> deploy compatible application version
+    → apply/test against hboo_dev
+    → commit with application code
+    → backup REAL database
+    → apply reviewed migration to REAL
+    → deploy compatible application version
 ```
 
-Do not execute REAL migrations from the development environment. Before
-an allowed DEV DB operation, verify that the selected database is
-exactly `hboo_dev`.
+DEV bootstrap data is deterministic and synthetic so the application can
+be used for development, analytics validation, and portfolio screenshots
+without exposing real financial information.
 
-## Features
+## Roadmap
 
-### Home Analytics
+The next stages focus on connecting Planning, bank facts, Purchases,
+Products, and forecasting into one explainable financial model.
 
-Home is the main financial analytics dashboard. It is a read-only local-first
-projection over transaction, category, balance, and planning data already
-available in HBOO. Opening Home does not trigger bank synchronization.
+### Planning → Fact linkage
 
-It provides:
+-   optional structured Merchant / Store on Planning items
+-   robust Purchase ↔ Bank Transaction linking
+-   complete Planning ↔ Transaction ↔ Purchase / Receipt chain
+-   improved transaction and receipt candidate ranking
+-   Product matching using OCR evidence, aliases, Shopping List context,
+    merchant, and purchase history
+-   user-confirmed Product aliases as a recognition dictionary
+-   Product-level Plan vs Fact:
+    -   planned and purchased
+    -   planned but not found
+    -   additional purchases
 
-- Income vs Expenses for 6- and 12-month periods
-- monthly Income / Expenses / Net details through compact chart tooltips
-- spending by category for custom periods
-- category-to-Transactions drill-down with the selected date range preserved
-- awareness of complete, partial, and unavailable local transaction history
-- offline analytics from previously cached transaction data
+### Deeper statistics
 
-Incomplete history is represented explicitly rather than silently treating
-missing local data as zero spending. Analytics use the same IndexedDB-backed
-local-first model as the rest of HBOO.
+-   spending totals for arbitrary periods
+-   comparisons between periods
+-   average daily / weekly / monthly spending
+-   spending trends by financial category
+-   spending trends by Product category
+-   Merchant / store spending statistics
+-   Product quantities purchased over time (`kg`, `l`, `pcs`)
+-   price inflation / price-change views by Product
+-   recurring expense detection
+-   subscription and regular-payment insights
+-   long-term balance and net cash-flow statistics
 
-### Bank Balances
+The goal is not only to show individual transactions, but to answer
+questions such as:
 
-HBOO provides a unified overview of balances from multiple banking
-providers:
+> How much did I spend during the last 30 / 90 / 365 days?
 
-- Monobank
-- PrivatBank
-- aggregated total balance
-- individual bank balances
-- manual bank synchronization
-- locally cached balance snapshots
-- data freshness information
-- offline access to the last known balance
+> Which categories, stores, and Products changed my spending the most?
 
-Bank synchronization is performed through explicit backend refresh
-operations. The frontend remains usable with previously persisted data
-when bank integrations are unavailable.
+> Is my average monthly spending increasing or decreasing?
 
-<p align="center">
+### Forecast Engine
 
-<img src="docs/screenshots/balance-desktop.png" width="90%" alt="HBOO balance dashboard">
+A deterministic, explainable forecast is planned before any AI-based
+forecasting.
 
-</p>
-
-### Transactions
-
-The Transactions module provides a unified view of persisted transaction
-history from connected banks.
-
-It supports:
-
-- multiple banks
-- date and category filtering
-- transaction grouping by day
-- daily totals
-- income / expense summaries
-- expandable transaction details
-- IndexedDB transaction cache
-- local-first range queries
-- persisted filter state
-- manual synchronization
-- offline browsing of previously loaded transactions
-
-<p align="center">
-
-<img src="docs/screenshots/transactions-desktop.png" width="90%" alt="HBOO transactions">
-
-</p>
-
-### Financial Planning
-
-Financial planning is based on a **user-defined spending budget**, not
-directly on the total bank balance.
+The forecast can combine:
 
 ``` text
-Current bank balance       60,000 UAH
-
-Budget until salary        20,000 UAH
-Mandatory expenses          8,000 UAH
-Other planned expenses      5,000 UAH
-                           ----------
-Remaining budget             7,000 UAH
+Current balance
++ known future income
+- explicit Planning items
+- recurring expenses
+- expected historical spending
+= projected future balance
 ```
 
-The Planning module supports:
+Planned outputs include:
 
-- custom planning periods and period budgets
-- planned expenses and categories
-- pending / completed / disabled states
-- remaining budget calculation
-- recommended daily spending
-- amount available today
-- Actual Spending
-- manual matching of planned items to bank transactions
-- Smart Completion transaction suggestions
-- offline create / edit / complete / cancel
-- durable autosync after reconnect
-- multi-device revalidation
-- pre-push conflict protection
+-   projected balance over time
+-   expected spending until the next income
+-   minimum projected balance
+-   future risk periods
+-   expected Free / Available amount
+-   warnings when planned spending is likely to require credit funds
+-   What-if scenarios such as:
+    -   "Can I buy this for 8,000 UAH on October 15?"
+    -   "Will I remain above my reserve until salary?"
 
-<p align="center">
+### Spending Optimization
 
-<img src="docs/screenshots/planning-desktop.png" width="90%" alt="HBOO financial planning">
+A future Insights layer can help answer:
 
-</p>
+-   Where can spending be reduced without breaking mandatory plans?
+-   Which categories consistently exceed their normal level?
+-   Which purchases or subscriptions are recurring but low-value?
+-   Which stores are usually more expensive for Products I regularly
+    buy?
+-   How much should be reserved to avoid using credit funds before the
+    next income?
+-   What daily spending limit would keep the projected balance above a
+    configured reserve?
+-   Which planned expense could be postponed with the smallest impact?
 
-## Planning and Transaction Matching
+Recommendations should remain explainable: HBOO should show the data and
+assumptions behind a suggestion rather than presenting a black-box
+instruction.
 
-Planning items represent concrete expected expenses rather than category
-budgets.
+### AI-assisted Insights
 
-HBOO can associate planned expenses with persisted bank transactions.
-This provides the foundation for Plan vs Fact analysis and prevents a
-completed expense from continuing to behave as a future reserve.
+AI integration is a possible later layer, not a dependency of the core
+financial model.
 
-Manual transaction linking remains available as a fallback.
+Potential uses include:
 
-### Smart Completion
+-   natural-language questions about personal financial history
+-   summaries of spending changes between periods
+-   explanation of unusual spending patterns
+-   assistance with transaction / Purchase / Product categorization
+-   receipt/Product matching assistance for uncertain cases
+-   personalized spending optimization suggestions
+-   explanation of forecast risks and possible alternatives
+-   conversational What-if analysis
 
-Smart Completion suggests likely transactions for pending planning
-items.
-
-Candidate ranking uses signals such as merchant similarity, category,
-transaction date, and amount proximity. The matching strategy
-intentionally prefers missing an uncertain suggestion over presenting
-aggressive false positives.
-
-Suggestions are advisory. A transaction is not attached to a planning
-item until the user confirms it.
-
-## Financial Summary
-
-Planning information is available outside the Planning page through a
-shared financial summary.
+Examples:
 
 ``` text
-Available Today
-Recommended Limit
-Spent Today
+"Why did I spend more this month than last month?"
 
-Period Budget
-Planned
-Remaining
-Days Left
+"How much did I spend on groceries during the last 3 months?"
+
+"What expenses could I reduce to avoid using credit funds before salary?"
+
+"How much can I safely spend this weekend?"
+
+"Which products became noticeably more expensive?"
 ```
 
-This makes the planning state part of the overall application rather
-than an isolated calculator.
-
-## PWA and Offline Operation
-
-HBOO is an installable Progressive Web App.
-
-``` text
-App shell
-    -> Service Worker / Cache Storage
-
-Financial data
-    -> IndexedDB
-
-Planning changes
-    -> local state + durable sync queue
-
-Bank refresh
-    -> online-only integration
-```
-
-The Service Worker caches the static application graph required for
-startup. API requests remain network operations rather than static
-cached resources.
-
-Current offline capabilities include:
-
-- PWA installation
-- offline cold start
-- Balance from the last known local snapshot
-- cached Transactions
-- cached Categories
-- Planning read/create/edit/complete/cancel
-- durable queued Planning synchronization
-- automatic synchronization after connectivity or authentication
-  recovery
-
-Bank synchronization and Smart Completion remain online operations.
-
-## Local-First Data Flow
-
-``` text
-Page / Component
-       |
-       v
-     Store
-    /     \
-   v       v
-Local      API
-Repository Service
-   |       |
-   v       v
-IndexedDB Backend
-```
-
-Local data can be rendered immediately, while network operations enrich
-or synchronize it when connectivity is available.
-
-## Planning Synchronization
-
-Planning uses a durable local synchronization queue. Local edits are
-preserved across page reloads and connectivity loss.
-
-The synchronization model distinguishes browser network availability,
-API authentication, pending local changes, active synchronization,
-errors, and conflicts.
-
-Before pushing dirty Planning state, HBOO compares:
-
-``` text
-BASE   = last known server snapshot
-LOCAL  = current IndexedDB state
-REMOTE = fresh server state
-```
-
-Independent changes can be merged through granular synchronization.
-Overlapping edits to the same persisted planning item are stopped as
-conflicts instead of silently overwriting remote data.
-
-Strong server-side revision/ETag concurrency control is a possible
-future improvement.
-
-## Connection and Sync Status
-
-The UI distinguishes states such as:
-
-``` text
-Synced
-Syncing...
-Offline
-Sign in to sync
-Sync error
-Sync conflict
-```
-
-Data freshness is also shown contextually for Balance, Transactions, and
-Planning.
-
-## Authentication and Local App Lock
-
-Backend authentication and local application access are separate
-concerns.
-
-If the API session expires, HBOO can continue using local data.
-Re-authentication does not discard the current route or offline state.
-
-HBOO can optionally protect the local UI with a PIN. The verifier is
-derived locally using Web Crypto PBKDF2 with SHA-256 and a random salt.
-The plaintext PIN is not persisted.
-
-App Lock supports configurable inactivity timeouts and a privacy shield
-while the application is backgrounded.
-
-App Lock is an **application UI access layer, not encryption at rest**.
-It does not make IndexedDB inaccessible to someone with access to the
-browser profile or device storage.
-
-## Frontend Architecture
-
-The frontend is built with **vanilla JavaScript** without React, Vue,
-Angular, or another frontend framework.
-
-This was an intentional decision: to design the application architecture
-and work directly with browser mechanisms rather than relying on
-framework abstractions.
-
-``` text
-HBOO
-|
-+-- Application Core
-+-- Router
-+-- Pages
-|   +-- Home
-|   +-- Balance
-|   +-- Transactions
-|   +-- Planning
-|   +-- Deposits
-|   +-- Settings
-+-- Components
-+-- Stores
-+-- Services
-+-- Local Repositories
-+-- API Services
-+-- Reusable UI Helpers
-```
-
-The frontend includes routing, pages and components, shared application
-state, lifecycle-like behavior, centralized event delegation, stores,
-services, repositories, and reusable UI components.
-
-## Mobile UI
-
-HBOO is designed for both desktop and mobile usage.
-
-<p align="center">
-
-<img src="docs/screenshots/home-mobile.png" width="30%" alt="HBOO Home analytics mobile">
-<img src="docs/screenshots/sidebar-mobile.png" width="30%" alt="HBOO mobile financial workspace sidebar">
-<img src="docs/screenshots/planning-mobile.png" width="30%" alt="HBOO planning mobile">
-
-</p>
-
-The installed PWA supports fullscreen operation and offline startup. The
-mobile experience intentionally avoids a conventional bottom navigation bar:
-the HBOO brand returns to Home, while the financial workspace/sidebar is
-revealed with the mobile swipe interaction. The same local-first financial
-model and application architecture are shared with desktop.
-
-## From FIPL to HBOO Planning
-
-The current Planning functionality evolved from a standalone experiment
-called **FIPL (Financial Planner)**.
-
-FIPL was a rapid prototype for period-based financial planning. Its
-successful concepts were later redesigned around HBOO’s Store / Service
-/ Repository and local-first architecture.
-
-## Tech Stack
-
-### Frontend
-
-- JavaScript / ES Modules
-- HTML
-- CSS / SASS
-- IndexedDB
-- Local Storage for lightweight preferences and compatibility state
-- Service Worker
-- Web App Manifest / PWA
-- Web Crypto
-- Responsive Web Design
-
-### Backend
-
-- Node.js
-- Native `node:http`
-- MySQL / mysql2
-- REST API
-- Java / Spring Boot bank integration service
-- Monobank API
-- PrivatBank API
-
-The main backend intentionally uses Node.js without Express, NestJS, or
-an ORM.
-
-### Infrastructure
-
-- Docker
-- Docker Compose
-- Nginx
-- HTTPS
-- MySQL 8
-- mkcert for local trusted HTTPS
-
-## Analytics
-
-Home Analytics is implemented as a local-first read model over data already
-stored by HBOO rather than as a separate backend analytics subsystem.
-
-``` text
-Home
-+-- Income vs Expenses
-|   +-- 6 months
-|   +-- 1 year
-|   +-- monthly Income / Expenses / Net
-|   +-- local-history coverage
-+-- Spending by Category
-|   +-- selected period
-|   +-- category drill-down to Transactions
-+-- Financial context
-    +-- Available Today
-    +-- Planning
-    +-- Balance
-    +-- Transactions
-```
-
-Analytics are calculated from locally cached transaction history. Coverage
-metadata distinguishes complete, partial, and unavailable history so missing
-data is not presented as a real zero. Category metadata comes from the same
-language-scoped category cache used by the rest of the application.
-
-A later receipt-processing layer can extend this into deeper drill-down:
-
-``` text
-Transactions
-    -> Categories
-    -> Purchases
-    -> Products
-    -> Price history / stores / quantities
-```
-
-This keeps the current analytics useful with bank transaction data while
-leaving room for item-level purchase statistics later.
-
-## Receipt OCR v1
-
-Standalone receipt capture remains offline-first: the browser prepares the
-image, stores it in IndexedDB, and durable sync uploads it to private server
-storage when the backend is available.
-
-``` text
-Receipt capture
-    -> IndexedDB Blob
-    -> private receipt storage
-    -> local Tesseract OCR
-    -> receipt_ocr raw text
-```
-
-OCR v1 runs locally inside the HBOO backend container with Tesseract and the
-`ukr+eng` language mode. It extracts raw text only. It does not parse receipt
-structure, identify products, create purchases, create purchase items, or
-perform product matching.
-
-An experimental backend-only OCR preprocessing comparison tool is available
-for DEV receipts:
-
-``` shell
-docker compose exec backend npm run ocr:experiment -- --receipt-id=4 --user-id=1 --output
-```
-
-The command verifies that `DATABASE()` is `hboo_dev`, loads the existing
-private receipt image, and compares `original`, `grayscale`, `normalize`,
-`threshold`, and `upscale` profiles plus `original` and `normalize` runs with
-Tesseract PSM 6. The normal `POST /api/receipts/:id/ocr` path remains
-unchanged.
-
-## Product Direction
-
-HBOO is primarily developed as a real personal finance tool rather than
-as a demonstration project.
-
-### Near-term
-
-- Plan vs Fact analytics
-- recurring planning items
-- improved Planning conflict-resolution UI
-- broader offline financial calculations
-- migration tracking and deployment hardening
-
-### Future
-
-- receipt scanning and structured purchase extraction
-- item-level purchase analytics
-- product and price history
-- store-level spending insights
-- savings and financial goals
-- balance history
-- cash-flow forecasting
-- spending pattern analysis
-- PWA notifications
-- AI-assisted transaction and purchase categorization
-- AI-powered financial insights and budget optimization suggestions
-- natural-language queries about personal financial data
+AI should work on top of deterministic HBOO data and calculations. Core
+balances, totals, forecasts, and financial rules should remain
+reproducible and understandable without AI.
+
+### Other planned improvements
+
+-   recurring Planning items
+-   explicit carry-forward of selected unfinished Planning items into a
+    new period
+-   stronger server-side revision / ETag concurrency control
+-   improved Planning conflict-resolution UI
+-   broader offline financial calculations
+-   savings / financial goals
+-   PWA notifications
+-   migration tracking and deployment hardening
+-   further Receipt OCR/parser improvements based on real-world evidence
 
 ## Security and Data Safety
 
 HBOO works with financial data, so DEV and REAL environments are
 intentionally isolated.
 
-- no REAL credentials in Git
-- no real bank tokens in DEV
-- DEV uses synthetic financial data
-- REAL uses a separate database and runtime
-- generated certificates and private keys are not committed
-- database migrations are reviewed before REAL execution
-- transaction imports use provider transaction IDs to prevent duplicate
-  imports
-
-The repository contains safe development/runtime templates rather than
-production secrets.
+-   no REAL credentials in Git
+-   no real bank tokens in DEV
+-   DEV uses synthetic financial data
+-   REAL uses a separate database and runtime
+-   generated certificates and private keys are not committed
+-   database migrations are reviewed before REAL execution
+-   transaction imports use provider transaction IDs to prevent
+    duplicate imports
+-   receipt images are stored privately rather than as public static
+    assets
+-   local OCR avoids sending receipt images to third-party cloud OCR
+    services
 
 ## Project Background
 
@@ -837,8 +863,23 @@ validation remain developer-driven.
 
 **Active development**
 
-The current milestone is a local-first PWA with bank synchronization,
-offline financial data, durable Planning synchronization, conflict-aware
-multi-device behavior, and a local-first Home analytics dashboard.
+Current milestone:
 
-The next major product area is **Plan vs Fact**.
+-   local-first PWA
+-   Monobank / PrivatBank synchronization
+-   offline financial history
+-   Planning Period lifecycle
+-   durable Planning + Shopping List synchronization
+-   Plan vs Fact
+-   Purchases and Product catalog
+-   Product Analytics and price history
+-   standalone receipt capture
+-   local OCR
+-   receipt parsing and Review
+-   Receipt → Purchase conversion
+-   deterministic synthetic DEV dataset for safe development and demos
+
+The next major milestone is to connect **Planning → Transaction →
+Purchase / Receipt → Product** more deeply and use that factual history
+for **forecasting, spending optimization, and explainable financial
+insights**.

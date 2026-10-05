@@ -261,3 +261,417 @@ FROM (
 INNER JOIN users u ON u.username = 'demo.user'
 INNER JOIN purchase p ON p.user_id = u.id AND p.client_mutation_id = seed.client_mutation_id
 INNER JOIN product pr ON pr.name = seed.product_name;
+
+-- DEV-only screenshot / portfolio demo dataset.
+-- Synthetic deterministic data for hboo_dev. No REAL data, no bank API calls.
+
+INSERT INTO `mono` (
+    `id`,
+    `balance`,
+    `c_id`,
+    `cashback_type`,
+    `credit_limit`,
+    `currency_code`,
+    `date`,
+    `iban`,
+    `send_id`,
+    `type`
+) VALUES
+    (3026, 3550000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-09-28 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3027, 3120000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-09-29 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3028, 2740000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-09-30 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3029, 7650000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-10-01 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3030, 7210000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-10-02 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3031, 6845000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-10-03 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3032, 6420000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-10-04 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black'),
+    (3033, 6040000, 'test-mono-card-alpha', 'UAH', 3000000, 980, UNIX_TIMESTAMP('2026-10-05 10:00:00'), 'TEST-MONO-IBAN-ALPHA', 'test-mono-send-alpha', 'demo-black');
+
+INSERT INTO `mono_transaction` (
+    `id`,
+    `amount`,
+    `cashback_amount`,
+    `commission_rate`,
+    `currency_code`,
+    `description`,
+    `mcc`,
+    `operation_amount`,
+    `original_mcc`,
+    `receipt_id`,
+    `t_id`,
+    `time`
+) VALUES
+    (4201, '-1387.40', '13.87', '0.00', '980', 'АТБ продукти', 5411, -138740, 5411, 'dev-demo-mono-receipt-202609-001', 'dev-demo-mono-202609-001', UNIX_TIMESTAMP('2026-09-22 18:10:00')),
+    (4202, '-465.00', '4.65', '0.00', '980', 'Аптека ліки', 5912, -46500, 5912, 'dev-demo-mono-receipt-202609-002', 'dev-demo-mono-202609-002', UNIX_TIMESTAMP('2026-09-23 11:45:00')),
+    (4203, '-820.00', '0.00', '0.00', '980', 'Київстар мобільний звязок', 4814, -82000, 4814, 'dev-demo-mono-receipt-202609-003', 'dev-demo-mono-202609-003', UNIX_TIMESTAMP('2026-09-24 09:20:00')),
+    (4204, '-2240.00', '0.00', '0.00', '980', 'Комунальні платежі', 4900, -224000, 4900, 'dev-demo-mono-receipt-202609-004', 'dev-demo-mono-202609-004', UNIX_TIMESTAMP('2026-09-24 20:05:00')),
+    (4205, '-312.50', '3.12', '0.00', '980', 'Кафе обід', 5812, -31250, 5812, 'dev-demo-mono-receipt-202609-005', 'dev-demo-mono-202609-005', UNIX_TIMESTAMP('2026-09-25 13:30:00')),
+    (4206, '-940.20', '9.40', '0.00', '980', 'Сільпо продукти', 5411, -94020, 5411, 'dev-demo-mono-receipt-202609-006', 'dev-demo-mono-202609-006', UNIX_TIMESTAMP('2026-09-26 19:15:00')),
+    (4207, '-580.00', '5.80', '0.00', '980', 'Аврора побутові товари', 5399, -58000, 5399, 'dev-demo-mono-receipt-202609-007', 'dev-demo-mono-202609-007', UNIX_TIMESTAMP('2026-09-27 16:40:00')),
+    (4208, '-1540.00', '0.00', '0.00', '980', 'Одяг', 5944, -154000, 5944, 'dev-demo-mono-receipt-202609-008', 'dev-demo-mono-202609-008', UNIX_TIMESTAMP('2026-09-28 18:25:00')),
+    (4209, '-720.00', '7.20', '0.00', '980', 'Ресторан вечеря', 5814, -72000, 5814, 'dev-demo-mono-receipt-202609-009', 'dev-demo-mono-202609-009', UNIX_TIMESTAMP('2026-09-29 20:10:00')),
+    (4210, '-430.00', '4.30', '0.00', '980', 'Таксі та транспорт', 4121, -43000, 4121, 'dev-demo-mono-receipt-202609-010', 'dev-demo-mono-202609-010', UNIX_TIMESTAMP('2026-09-30 08:50:00')),
+    (4211, '54000.00', '0.00', '0.00', '980', 'Зарплата жовтень', 6012, 5400000, 6012, 'dev-demo-mono-receipt-202610-001', 'dev-demo-mono-202610-001', UNIX_TIMESTAMP('2026-10-01 09:05:00')),
+    (4212, '3500.00', '0.00', '0.00', '980', 'Підробіток переказ', 4829, 350000, 4829, 'dev-demo-mono-receipt-202610-002', 'dev-demo-mono-202610-002', UNIX_TIMESTAMP('2026-10-01 18:30:00')),
+    (4213, '-1516.35', '15.16', '0.00', '980', 'АТБ продукти', 5411, -151635, 5411, 'dev-demo-mono-receipt-202610-003', 'dev-demo-mono-202610-003', UNIX_TIMESTAMP('2026-10-02 18:20:00')),
+    (4214, '-780.00', '7.80', '0.00', '980', 'Аптека', 5912, -78000, 5912, 'dev-demo-mono-receipt-202610-004', 'dev-demo-mono-202610-004', UNIX_TIMESTAMP('2026-10-03 10:15:00')),
+    (4215, '-690.00', '0.00', '0.00', '980', 'Домашній інтернет', 4814, -69000, 4814, 'dev-demo-mono-receipt-202610-005', 'dev-demo-mono-202610-005', UNIX_TIMESTAMP('2026-10-03 12:00:00')),
+    (4216, '-424.70', '4.25', '0.00', '980', 'NOVUS продукти', 5411, -42470, 5411, 'dev-demo-mono-receipt-202610-006', 'dev-demo-mono-202610-006', UNIX_TIMESTAMP('2026-10-04 17:35:00')),
+    (4217, '-620.00', '6.20', '0.00', '980', 'Кафе вихідний', 5812, -62000, 5812, 'dev-demo-mono-receipt-202610-007', 'dev-demo-mono-202610-007', UNIX_TIMESTAMP('2026-10-05 12:40:00')),
+    (4218, '-350.00', '3.50', '0.00', '980', 'Аврора товари для дому', 5399, -35000, 5399, 'dev-demo-mono-receipt-202610-008', 'dev-demo-mono-202610-008', UNIX_TIMESTAMP('2026-10-05 16:05:00')),
+    (4219, '-118.00', '1.18', '0.00', '980', 'Метро транспорт', 4111, -11800, 4111, 'dev-demo-mono-receipt-202610-009', 'dev-demo-mono-202610-009', UNIX_TIMESTAMP('2026-10-05 18:10:00')),
+    (4220, '-249.00', '2.49', '0.00', '980', 'Підписка сервіс', 4899, -24900, 4899, 'dev-demo-mono-receipt-202610-010', 'dev-demo-mono-202610-010', UNIX_TIMESTAMP('2026-10-05 20:45:00'));
+
+INSERT INTO `privat_transaction` (
+    `id`,
+    `amount`,
+    `balance`,
+    `cashback`,
+    `category`,
+    `category_details`,
+    `date`,
+    `details`,
+    `fee`,
+    `lat`,
+    `lng`,
+    `t_id`,
+    `type`
+) VALUES
+    (2012, '-245.00', '4518.60', '2.45', '10', 'Продукти', UNIX_TIMESTAMP('2026-09-22 09:15:00') * 1000, 'Лоток продукти', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202609-001', 'DEBIT'),
+    (2013, '-180.00', '4273.60', '0.00', '9', 'Поповнення мобільного', UNIX_TIMESTAMP('2026-09-25 10:00:00') * 1000, 'Київстар поповнення', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202609-002', 'DEBIT'),
+    (2014, '-520.00', '4093.60', '5.20', '5', 'Ресторани та бари', UNIX_TIMESTAMP('2026-09-27 14:20:00') * 1000, 'Ресторан', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202609-003', 'DEBIT'),
+    (2015, '-1270.00', '3573.60', '0.00', '11', 'Інше', UNIX_TIMESTAMP('2026-09-30 19:00:00') * 1000, 'Одяг', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202609-004', 'DEBIT'),
+    (2016, '9000.00', '12303.60', '0.00', '8', 'Перекази', UNIX_TIMESTAMP('2026-10-01 09:30:00') * 1000, 'Додатковий дохід', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202610-001', 'CREDIT'),
+    (2017, '-360.00', '11943.60', '3.60', '10', 'Продукти', UNIX_TIMESTAMP('2026-10-02 08:35:00') * 1000, 'Сільпо сніданки', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202610-002', 'DEBIT'),
+    (2018, '-1200.00', '10743.60', '0.00', '8', 'Перекази', UNIX_TIMESTAMP('2026-10-03 15:10:00') * 1000, 'Переказ у накопичення', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202610-003', 'DEBIT'),
+    (2019, '-275.40', '10468.20', '2.75', '11', 'Інше', UNIX_TIMESTAMP('2026-10-04 20:25:00') * 1000, 'Доставка', '0.00', '0.0000', '0.0000', 'dev-demo-privat-202610-004', 'DEBIT');
+
+INSERT INTO merchant (name, status)
+VALUES
+    ('Лоток', 'active'),
+    ('Аптека', 'active'),
+    ('Київстар', 'active')
+ON DUPLICATE KEY UPDATE status = VALUES(status);
+
+INSERT INTO product (category_id, name, measurement_type, status)
+SELECT pc.id, seed.name, seed.measurement_type, 'active'
+FROM (
+    SELECT 'Напої' category_name, 'Вода Моршинська' name, 'volume' measurement_type UNION ALL
+    SELECT 'Напої', 'Кава', 'weight' UNION ALL
+    SELECT 'Напої', 'Чай', 'weight' UNION ALL
+    SELECT 'Бакалія', 'Олія', 'volume' UNION ALL
+    SELECT 'Бакалія', 'Цукор', 'weight' UNION ALL
+    SELECT 'Бакалія', 'Сіль', 'weight' UNION ALL
+    SELECT 'М''ясо', 'Куряче філе', 'weight'
+) seed
+INNER JOIN product_category pc ON pc.name = seed.category_name
+ON DUPLICATE KEY UPDATE
+    category_id = VALUES(category_id),
+    measurement_type = VALUES(measurement_type),
+    status = VALUES(status);
+
+DELETE pi
+FROM purchase_item pi
+INNER JOIN purchase p ON p.id = pi.purchase_id
+INNER JOIN users u ON u.id = p.user_id
+WHERE u.username = 'demo.user'
+  AND p.client_mutation_id LIKE 'dev-demo-purchase-%';
+
+INSERT INTO purchase (
+    user_id,
+    client_mutation_id,
+    merchant_id,
+    purchased_at,
+    payment_type,
+    total,
+    note
+)
+SELECT u.id, seed.client_mutation_id, m.id, seed.purchased_at, seed.payment_type, seed.total, seed.note
+FROM (
+    SELECT 'dev-demo-purchase-2026-07-09-atb' client_mutation_id, 'АТБ' merchant_name, '2026-07-09 18:25:00' purchased_at, 'bank' payment_type, 892.30 total, 'DEV July weekly groceries' note UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Сільпо', '2026-07-16 19:10:00', 'bank', 1214.20, 'DEV July larger grocery basket' UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-29-lotok', 'Лоток', '2026-07-29 08:50:00', 'cash', 274.70, 'DEV July small local shop' UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'АТБ', '2026-08-02 17:45:00', 'bank', 1048.60, 'DEV August groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Novus', '2026-08-14 18:05:00', 'bank', 1560.40, 'DEV August supermarket basket' UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-21-avrora', 'Аврора', '2026-08-21 15:30:00', 'bank', 462.00, 'DEV household goods' UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'АТБ', '2026-08-30 11:20:00', 'bank', 734.50, 'DEV August top-up groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Сільпо', '2026-09-03 18:40:00', 'bank', 1398.85, 'DEV September start groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'АТБ', '2026-09-12 12:15:00', 'bank', 1186.20, 'DEV September weekly groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Novus', '2026-09-18 19:30:00', 'bank', 1739.70, 'DEV September family groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'АТБ', '2026-09-22 18:10:00', 'bank', 1387.40, 'DEV planned grocery basket' UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-27-avrora', 'Аврора', '2026-09-27 16:40:00', 'bank', 580.00, 'DEV household goods' UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-30-lotok', 'Лоток', '2026-09-30 08:20:00', 'cash', 318.00, 'DEV local bread and dairy' UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'АТБ', '2026-10-02 18:20:00', 'bank', 1516.35, 'DEV October planned groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Сільпо', '2026-10-03 09:45:00', 'bank', 864.20, 'DEV weekend groceries' UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Novus', '2026-10-04 17:35:00', 'bank', 424.70, 'DEV price check basket' UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'АТБ', '2026-10-05 10:25:00', 'cash', 548.90, 'DEV current day essentials' UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-avrora', 'Аврора', '2026-10-05 16:05:00', 'bank', 350.00, 'DEV October household goods'
+) seed
+INNER JOIN users u ON u.username = 'demo.user'
+INNER JOIN merchant m ON m.name = seed.merchant_name
+ON DUPLICATE KEY UPDATE
+    merchant_id = VALUES(merchant_id),
+    purchased_at = VALUES(purchased_at),
+    payment_type = VALUES(payment_type),
+    total = VALUES(total),
+    note = VALUES(note);
+
+INSERT INTO purchase_item (
+    purchase_id,
+    product_id,
+    quantity,
+    unit,
+    total
+)
+SELECT p.id, pr.id, seed.quantity, seed.unit, seed.total
+FROM (
+    SELECT 'dev-demo-purchase-2026-07-09-atb' client_mutation_id, 'Молоко' product_name, 900.000 quantity, 'ml' unit, 43.80 total UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Хліб', 400.000, 'g', 38.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Яйця курячі', 10.000, 'pcs', 65.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Куряче філе', 1.400, 'kg', 312.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Банани', 1.200, 'kg', 69.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Вода Моршинська', 6.000, 'l', 87.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Гречка', 1.000, 'kg', 76.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-09-atb', 'Ковбаса', 500.000, 'g', 198.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Молоко', 900.000, 'ml', 45.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Сир', 300.000, 'g', 126.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Масло', 200.000, 'g', 82.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Помідори', 1.000, 'kg', 89.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Огірки', 1.000, 'kg', 64.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Яблука', 1.500, 'kg', 72.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Кава', 250.000, 'g', 224.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Олія', 850.000, 'ml', 78.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Рис', 1.000, 'kg', 78.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Шоколад', 200.000, 'g', 74.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Печиво', 500.000, 'g', 77.10 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-16-silpo', 'Сік', 2.000, 'l', 200.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-29-lotok', 'Хліб', 400.000, 'g', 39.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-29-lotok', 'Кефір', 900.000, 'g', 49.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-29-lotok', 'Банани', 800.000, 'g', 47.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-29-lotok', 'Яйця курячі', 10.000, 'pcs', 68.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-07-29-lotok', 'Чай', 100.000, 'g', 70.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Молоко', 900.000, 'ml', 44.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Хліб', 400.000, 'g', 39.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Яйця курячі', 10.000, 'pcs', 68.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Куряче філе', 1.600, 'kg', 376.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Картопля', 3.000, 'kg', 84.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Макарони', 1.000, 'kg', 73.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Вода Моршинська', 6.000, 'l', 91.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-02-atb', 'Ковбаса', 700.000, 'g', 270.70 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Молоко', 900.000, 'ml', 46.10 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Сир', 350.000, 'g', 152.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Масло', 200.000, 'g', 86.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Яйця курячі', 10.000, 'pcs', 70.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Банани', 1.500, 'kg', 91.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Помідори', 1.200, 'kg', 112.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Огірки', 1.000, 'kg', 68.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Кава', 250.000, 'g', 239.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Сік', 3.000, 'l', 216.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Шоколад', 300.000, 'g', 128.70 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Олія', 850.000, 'ml', 82.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-14-novus', 'Куряче філе', 1.100, 'kg', 265.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-21-avrora', 'Таблетки для посудомийної машини', 30.000, 'pcs', 249.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-21-avrora', 'Засіб для прання', 2.000, 'l', 143.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-21-avrora', 'Мило', 4.000, 'pcs', 70.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Хліб', 400.000, 'g', 40.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Молоко', 900.000, 'ml', 45.70 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Яйця курячі', 10.000, 'pcs', 69.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Банани', 1.000, 'kg', 62.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Гречка', 1.000, 'kg', 79.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Сир', 300.000, 'g', 134.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Вода Моршинська', 6.000, 'l', 94.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-08-30-atb', 'Печиво', 500.000, 'g', 209.10 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Молоко', 900.000, 'ml', 46.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Хліб', 400.000, 'g', 40.79 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Яйця курячі', 10.000, 'pcs', 71.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Куряче філе', 1.500, 'kg', 369.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Ковбаса', 600.000, 'g', 247.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Сир', 300.000, 'g', 139.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Банани', 1.400, 'kg', 88.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Яблука', 1.500, 'kg', 76.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Помідори', 1.000, 'kg', 92.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Олія', 850.000, 'ml', 84.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Цукор', 1.000, 'kg', 47.30 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-03-silpo', 'Кава', 250.000, 'g', 195.76 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Молоко', 900.000, 'ml', 45.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Хліб', 400.000, 'g', 40.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Яйця курячі', 10.000, 'pcs', 72.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Куряче філе', 1.300, 'kg', 325.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Банани', 1.200, 'kg', 75.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Вода Моршинська', 6.000, 'l', 96.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Рис', 1.000, 'kg', 81.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Ковбаса', 500.000, 'g', 212.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Шоколад', 300.000, 'g', 125.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-12-atb', 'Огірки', 1.000, 'kg', 111.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Молоко', 900.000, 'ml', 47.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Сир', 400.000, 'g', 188.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Яйця курячі', 10.000, 'pcs', 73.30 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Куряче філе', 1.700, 'kg', 431.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Банани', 1.400, 'kg', 89.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Помідори', 1.000, 'kg', 96.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Масло', 200.000, 'g', 89.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Макарони', 1.000, 'kg', 78.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Олія', 850.000, 'ml', 86.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Кава', 250.000, 'g', 254.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Печиво', 700.000, 'g', 142.10 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-18-novus', 'Вода Моршинська', 6.000, 'l', 161.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Молоко', 900.000, 'ml', 46.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Хліб', 400.000, 'g', 40.79 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Яйця курячі', 10.000, 'pcs', 73.30 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Ковбаса', 300.000, 'g', 129.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Вода Моршинська', 1.500, 'l', 27.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Сир', 300.000, 'g', 141.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Банани', 1.000, 'kg', 64.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Куряче філе', 1.500, 'kg', 382.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Картопля', 3.000, 'kg', 90.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Гречка', 1.000, 'kg', 81.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Помідори', 1.000, 'kg', 94.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-22-atb', 'Печиво', 500.000, 'g', 215.21 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-27-avrora', 'Засіб для прання', 2.000, 'l', 149.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-27-avrora', 'Зубна паста', 2.000, 'pcs', 126.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-27-avrora', 'Шампунь', 500.000, 'ml', 188.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-27-avrora', 'Мило', 4.000, 'pcs', 117.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-30-lotok', 'Хліб', 400.000, 'g', 41.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-30-lotok', 'Молоко', 900.000, 'ml', 48.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-30-lotok', 'Кефір', 900.000, 'g', 54.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-30-lotok', 'Яйця курячі', 10.000, 'pcs', 74.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-09-30-lotok', 'Банани', 1.000, 'kg', 100.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Молоко', 900.000, 'ml', 47.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Хліб', 400.000, 'g', 41.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Яйця курячі', 10.000, 'pcs', 74.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Ковбаса', 300.000, 'g', 132.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Вода Моршинська', 1.500, 'l', 28.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Сир', 300.000, 'g', 144.30 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Банани', 1.000, 'kg', 65.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Куряче філе', 1.600, 'kg', 417.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Картопля', 3.000, 'kg', 93.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Гречка', 1.000, 'kg', 83.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Олія', 850.000, 'ml', 88.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-02-atb', 'Печиво', 500.000, 'g', 300.25 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Молоко', 900.000, 'ml', 48.10 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Сир', 300.000, 'g', 147.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Масло', 200.000, 'g', 91.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Яйця курячі', 10.000, 'pcs', 75.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Яблука', 1.500, 'kg', 82.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Помідори', 1.000, 'kg', 98.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Огірки', 1.000, 'kg', 74.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Сік', 2.000, 'l', 154.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-03-silpo', 'Шоколад', 300.000, 'g', 93.10 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Молоко', 900.000, 'ml', 49.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Хліб', 400.000, 'g', 42.20 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Банани', 1.000, 'kg', 67.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Вода Моршинська', 1.500, 'l', 29.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Яйця курячі', 10.000, 'pcs', 76.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-04-novus', 'Кава', 250.000, 'g', 161.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Хліб', 400.000, 'g', 41.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Молоко', 900.000, 'ml', 47.60 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Яйця курячі', 10.000, 'pcs', 74.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Банани', 1.000, 'kg', 65.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Вода Моршинська', 1.500, 'l', 28.90 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Макарони', 1.000, 'kg', 82.80 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Цукор', 1.000, 'kg', 48.40 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Сіль', 1.000, 'kg', 28.50 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-atb', 'Чай', 100.000, 'g', 130.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-avrora', 'Зубна паста', 1.000, 'pcs', 68.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-avrora', 'Мило', 4.000, 'pcs', 74.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-avrora', 'Засіб для чищення', 750.000, 'ml', 89.00 UNION ALL
+    SELECT 'dev-demo-purchase-2026-10-05-avrora', 'Гель для душу', 500.000, 'ml', 119.00
+) seed
+INNER JOIN users u ON u.username = 'demo.user'
+INNER JOIN purchase p ON p.user_id = u.id AND p.client_mutation_id = seed.client_mutation_id
+INNER JOIN product pr ON pr.name = seed.product_name;
+
+DELETE pp
+FROM planning_period pp
+INNER JOIN users u ON u.id = pp.user_id
+WHERE u.username IN ('demo.user', 'demo.admin')
+  AND pp.start_date <= '2026-10-31'
+  AND pp.end_date >= '2026-08-01';
+
+INSERT INTO planning_period (user_id, start_date, end_date, budget_amount, created_at, updated_at)
+SELECT u.id, seed.start_date, seed.end_date, seed.budget_amount, seed.created_at, seed.created_at
+FROM (
+    SELECT '2026-08-01' start_date, '2026-08-31' end_date, 32500.00 budget_amount, '2026-08-01 08:00:00' created_at UNION ALL
+    SELECT '2026-09-01', '2026-09-30', 34000.00, '2026-09-01 08:00:00' UNION ALL
+    SELECT '2026-10-01', '2026-10-31', 36000.00, '2026-10-01 08:00:00'
+) seed
+INNER JOIN users u ON u.username = 'demo.user';
+
+INSERT INTO planning_item (
+    period_id,
+    category_id,
+    title,
+    description,
+    planned_amount,
+    actual_amount,
+    status,
+    planned_at,
+    completed_at,
+    created_at,
+    updated_at
+)
+SELECT pp.id, c.id, seed.title, seed.description, seed.planned_amount, seed.actual_amount, seed.status, seed.planned_at, seed.completed_at, seed.created_at, seed.created_at
+FROM (
+    SELECT '2026-08-01' period_start, 'Продукти' title, 'groceries' category_code, 'Плановий продуктовий кошик' description, 7800.00 planned_amount, 7542.10 actual_amount, 'completed' status, '2026-08-02' planned_at, '2026-08-30 11:30:00' completed_at, '2026-08-01 08:05:00' created_at UNION ALL
+    SELECT '2026-08-01', 'Комунальні', 'mobile_communication', 'Комунальні, інтернет і мобільний звязок', 6100.00, 6150.00, 'completed', '2026-08-15', '2026-08-15 10:30:00', '2026-08-01 08:06:00' UNION ALL
+    SELECT '2026-08-01', 'Аптека', 'medicine', 'Аптека та клініка', 2500.00, 2450.30, 'completed', '2026-08-20', '2026-08-21 12:00:00', '2026-08-01 08:07:00' UNION ALL
+    SELECT '2026-08-01', 'Відпочинок', 'entertainment', 'Квитки та зустрічі', 4500.00, 4200.00, 'completed', '2026-08-26', '2026-08-26 20:00:00', '2026-08-01 08:08:00' UNION ALL
+    SELECT '2026-08-01', 'Побутові покупки', 'other', 'Побутова хімія та дрібниці', 1200.00, 462.00, 'completed', '2026-08-21', '2026-08-21 15:40:00', '2026-08-01 08:09:00' UNION ALL
+    SELECT '2026-09-01', 'Продукти', 'groceries', 'Вересневий продуктовий кошик', 8200.00, 8150.35, 'completed', '2026-09-03', '2026-09-30 08:30:00', '2026-09-01 08:05:00' UNION ALL
+    SELECT '2026-09-01', 'Комунальні', 'mobile_communication', 'Комунальні платежі та звязок', 5900.00, 5940.00, 'completed', '2026-09-24', '2026-09-24 20:10:00', '2026-09-01 08:06:00' UNION ALL
+    SELECT '2026-09-01', 'Аптека', 'medicine', 'Ліки та профілактика', 1600.00, 1245.00, 'completed', '2026-09-23', '2026-09-23 11:50:00', '2026-09-01 08:07:00' UNION ALL
+    SELECT '2026-09-01', 'Одяг', 'other', 'Осінній одяг', 3000.00, 2810.00, 'completed', '2026-09-28', '2026-09-30 19:05:00', '2026-09-01 08:08:00' UNION ALL
+    SELECT '2026-09-01', 'Кафе та ресторани', 'restaurants', 'Кілька зустрічей протягом місяця', 1800.00, 1552.50, 'completed', '2026-09-29', '2026-09-29 20:15:00', '2026-09-01 08:09:00' UNION ALL
+    SELECT '2026-09-01', 'Побутові покупки', 'other', 'Аврора та локальні покупки', 1000.00, 580.00, 'completed', '2026-09-27', '2026-09-27 16:45:00', '2026-09-01 08:10:00' UNION ALL
+    SELECT '2026-10-01', 'Продукти', 'groceries', 'Поточний продуктовий план на жовтень', 8500.00, 3354.15, 'completed', '2026-10-02', '2026-10-05 10:30:00', '2026-10-01 08:05:00' UNION ALL
+    SELECT '2026-10-01', 'Комунальні', 'mobile_communication', 'Комунальні платежі за вересень', 6200.00, NULL, 'pending', '2026-10-10', NULL, '2026-10-01 08:06:00' UNION ALL
+    SELECT '2026-10-01', 'Інтернет', 'mobile_communication', 'Домашній інтернет', 690.00, 690.00, 'completed', '2026-10-03', '2026-10-03 12:05:00', '2026-10-01 08:07:00' UNION ALL
+    SELECT '2026-10-01', 'Мобільний звязок', 'mobile_communication', 'Київстар для сімї', 820.00, NULL, 'pending', '2026-10-20', NULL, '2026-10-01 08:08:00' UNION ALL
+    SELECT '2026-10-01', 'Аптека', 'medicine', 'Аптека і сезонні ліки', 1600.00, 780.00, 'completed', '2026-10-03', '2026-10-03 10:20:00', '2026-10-01 08:09:00' UNION ALL
+    SELECT '2026-10-01', 'Одяг', 'other', 'Осінні речі', 2800.00, NULL, 'pending', '2026-10-12', NULL, '2026-10-01 08:10:00' UNION ALL
+    SELECT '2026-10-01', 'Відпочинок', 'entertainment', 'Вихідні та квитки', 2500.00, NULL, 'pending', '2026-10-18', NULL, '2026-10-01 08:11:00' UNION ALL
+    SELECT '2026-10-01', 'Побутові покупки', 'other', 'Побутова хімія і дрібниці для дому', 1200.00, 350.00, 'completed', '2026-10-05', '2026-10-05 16:10:00', '2026-10-01 08:12:00'
+) seed
+INNER JOIN users u ON u.username = 'demo.user'
+INNER JOIN planning_period pp ON pp.user_id = u.id AND pp.start_date = seed.period_start
+LEFT JOIN categories c ON c.code = seed.category_code;
+
+INSERT INTO planning_shopping_item (
+    local_id,
+    planning_item_id,
+    product_id,
+    name,
+    amount,
+    unit,
+    checked,
+    position,
+    created_at,
+    updated_at
+)
+SELECT seed.local_id, pi.id, pr.id, seed.name, seed.amount, seed.unit, seed.checked, seed.position, seed.created_at, seed.created_at
+FROM (
+    SELECT 'dev-shop-202609-products-01' local_id, '2026-09-01' period_start, 'Продукти' item_title, 'Хліб' name, 400.000 amount, 'g' unit, 1 checked, 1 position, '2026-09-01 08:20:00' created_at UNION ALL
+    SELECT 'dev-shop-202609-products-02', '2026-09-01', 'Продукти', 'Молоко', 900.000, 'ml', 1, 2, '2026-09-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202609-products-03', '2026-09-01', 'Продукти', 'Яйця курячі', 10.000, 'pcs', 1, 3, '2026-09-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202609-products-04', '2026-09-01', 'Продукти', 'Ковбаса', 300.000, 'g', 1, 4, '2026-09-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202609-products-05', '2026-09-01', 'Продукти', 'Вода Моршинська', 1.500, 'l', 1, 5, '2026-09-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202609-products-06', '2026-09-01', 'Продукти', 'Сир', 300.000, 'g', 1, 6, '2026-09-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202609-products-07', '2026-09-01', 'Продукти', 'Банани', 1.000, 'kg', 1, 7, '2026-09-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-01', '2026-10-01', 'Продукти', 'Хліб', 400.000, 'g', 1, 1, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-02', '2026-10-01', 'Продукти', 'Молоко', 900.000, 'ml', 1, 2, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-03', '2026-10-01', 'Продукти', 'Яйця курячі', 10.000, 'pcs', 1, 3, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-04', '2026-10-01', 'Продукти', 'Ковбаса', 300.000, 'g', 1, 4, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-05', '2026-10-01', 'Продукти', 'Вода Моршинська', 1.500, 'l', 1, 5, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-06', '2026-10-01', 'Продукти', 'Сир', 300.000, 'g', 1, 6, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-07', '2026-10-01', 'Продукти', 'Банани', 1.000, 'kg', 1, 7, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-08', '2026-10-01', 'Продукти', 'Куряче філе', 1.500, 'kg', 0, 8, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-09', '2026-10-01', 'Продукти', 'Гречка', 1.000, 'kg', 0, 9, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-products-10', '2026-10-01', 'Продукти', 'Олія', 850.000, 'ml', 0, 10, '2026-10-01 08:20:00' UNION ALL
+    SELECT 'dev-shop-202610-house-01', '2026-10-01', 'Побутові покупки', 'Зубна паста', 1.000, 'pcs', 1, 1, '2026-10-01 08:25:00' UNION ALL
+    SELECT 'dev-shop-202610-house-02', '2026-10-01', 'Побутові покупки', 'Мило', 4.000, 'pcs', 1, 2, '2026-10-01 08:25:00' UNION ALL
+    SELECT 'dev-shop-202610-house-03', '2026-10-01', 'Побутові покупки', 'Засіб для чищення', 750.000, 'ml', 1, 3, '2026-10-01 08:25:00' UNION ALL
+    SELECT 'dev-shop-202610-house-04', '2026-10-01', 'Побутові покупки', 'Таблетки для посудомийної машини', 30.000, 'pcs', 0, 4, '2026-10-01 08:25:00'
+) seed
+INNER JOIN users u ON u.username = 'demo.user'
+INNER JOIN planning_period pp ON pp.user_id = u.id AND pp.start_date = seed.period_start
+INNER JOIN planning_item pi ON pi.period_id = pp.id AND pi.title = seed.item_title
+LEFT JOIN product pr ON pr.name = seed.name;
