@@ -115,6 +115,7 @@ class PlanningRepository {
                 INSERT INTO planning_item (
                     period_id,
                     category_id,
+                    merchant_id,
                     title,
                     description,
                     planned_amount,
@@ -127,10 +128,11 @@ class PlanningRepository {
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             `, [
                 item.periodId,
                 item.categoryId,
+                item.merchantId,
                 item.title,
                 item.description,
                 item.plannedAmount,
@@ -162,6 +164,7 @@ class PlanningRepository {
                 pi.id,
                 pi.period_id AS periodId,
                 pi.category_id AS categoryId,
+                pi.merchant_id AS merchantId,
                 pi.title,
                 pi.description,
                 pi.planned_amount AS plannedAmount,
@@ -190,6 +193,7 @@ class PlanningRepository {
                 pi.id,
                 pi.period_id AS periodId,
                 pi.category_id AS categoryId,
+                pi.merchant_id AS merchantId,
                 pi.title,
                 pi.description,
                 pi.planned_amount AS plannedAmount,
@@ -224,6 +228,7 @@ class PlanningRepository {
             SET
                 pi.period_id = ?,
                 pi.category_id = ?,
+                pi.merchant_id = ?,
                 pi.title = ?,
                 pi.description = ?,
                 pi.planned_amount = ?,
@@ -239,6 +244,7 @@ class PlanningRepository {
         `, [
             item.periodId,
             item.categoryId,
+            item.merchantId,
             item.title,
             item.description,
             item.plannedAmount,

@@ -17,6 +17,12 @@ const toNumber = value => {
 	return Number.isFinite(num) ? num : 0
 }
 
+const toOptionalId = value => {
+	if (value === null || value === undefined || value === '') return null
+	const num = Number(value)
+	return Number.isInteger(num) && num > 0 ? num : null
+}
+
 const startOfDay = date => {
 	const d = new Date(date)
 	d.setHours(0, 0, 0, 0)
@@ -161,6 +167,7 @@ const normalizeItem = (item, periodId) => {
 		id: String(item?.id || createId('item')),
 		periodId: String(item?.periodId || item?.period_id || periodId),
 		categoryId: item?.categoryId ?? item?.category_id ?? null,
+		merchantId: toOptionalId(item?.merchantId ?? item?.merchant_id),
 		title: item?.title || description || 'Planning expense',
 		sum: Math.max(0, toNumber(item?.sum ?? item?.plannedAmount ?? item?.planned_amount)),
 		actualAmount: item?.actualAmount ?? item?.actual_amount ?? null,

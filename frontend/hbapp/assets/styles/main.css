@@ -4034,6 +4034,15 @@ img.pb-icon {
 	margin-top: 1rem;
 }
 
+.planing-merchant-field {
+	margin-top: 1rem;
+	position: relative;
+}
+
+.planing-merchant-input {
+	margin-top: 0;
+}
+
 textarea.planing-textarea {
 	min-height: 92px;
 	resize: vertical;
@@ -4364,6 +4373,14 @@ textarea.planing-textarea {
 	white-space: nowrap;
 }
 
+.planing-item-merchant {
+	color: #778ba5;
+	font-size: 10.5pt;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .planing-checklist-progress {
 	align-items: center;
 	color: #778ba5;
@@ -4689,7 +4706,15 @@ textarea.planing-textarea {
 	display: none;
 }
 
+.planing-merchant-suggestions:empty {
+	display: none;
+}
+
 .planing-shopping-suggestions {
+	top: calc(100% + .25rem);
+}
+
+.planing-merchant-suggestions {
 	top: calc(100% + .25rem);
 }
 

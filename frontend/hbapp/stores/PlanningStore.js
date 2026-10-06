@@ -52,6 +52,7 @@ const toPlanningDateKey = value => {
 
 const normalizeComparableItem = item => ({
 	categoryId: (item.categoryId ?? item.category_id) ? String(item.categoryId ?? item.category_id) : null,
+	merchantId: (item.merchantId ?? item.merchant_id) ? String(item.merchantId ?? item.merchant_id) : null,
 	title: item.title || item.desc || item.description || 'Planning expense',
 	description: item.desc ?? item.description ?? '',
 	plannedAmount: toAmount(item.sum ?? item.plannedAmount ?? item.planned_amount) || 0,
@@ -82,6 +83,7 @@ const isPlanningItemChanged = (current, snapshot) => {
 	const snapshotData = normalizeComparableItem(snapshot)
 
 	return currentData.categoryId !== snapshotData.categoryId
+		|| currentData.merchantId !== snapshotData.merchantId
 		|| currentData.title !== snapshotData.title
 		|| currentData.description !== snapshotData.description
 		|| currentData.plannedAmount !== snapshotData.plannedAmount
@@ -928,6 +930,11 @@ class PlanningStore {
 
 		if (operation.status === 'conflict') {
 			this.setState({syncStatus: 'conflict', syncError: operation.lastError || new Error('Planning sync conflict')})
+			return this.getState()
+		}
+
+		if (operation.status === 'error' && operation.retryable === false) {
+			this.setState({syncStatus: 'error', syncError: operation.lastError || new Error('Planning sync validation failed')})
 			return this.getState()
 		}
 

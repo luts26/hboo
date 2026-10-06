@@ -1,4 +1,5 @@
 import planningRepository from '../repositories/PlanningRepository.js';
+import productCatalogRepository from '../repositories/ProductCatalogRepository.js';
 import transactionRepository from '../repositories/TransactionRepository.js';
 import pool from '../database/mysql.js';
 
@@ -633,6 +634,11 @@ class PlanningService {
         const categoryId = data.category_id !== undefined
             ? this.optionalId(data.category_id, 'category_id')
             : currentItem?.categoryId ?? null;
+        const hasMerchantId = data.merchant_id !== undefined || data.merchantId !== undefined;
+        const rawMerchantId = data.merchant_id !== undefined ? data.merchant_id : data.merchantId;
+        const merchantId = hasMerchantId
+            ? this.optionalId(rawMerchantId, 'merchant_id')
+            : currentItem?.merchantId ?? null;
 
         if (categoryId !== null) {
             const categoryExists = await planningRepository.categoryExists(categoryId);
@@ -642,12 +648,21 @@ class PlanningService {
             }
         }
 
+        if (merchantId !== null) {
+            const merchant = await productCatalogRepository.findMerchantById(merchantId);
+
+            if (!merchant || merchant.status !== 'active') {
+                throw this.validationError('merchant_id is invalid');
+            }
+        }
+
         const item = {
             userId,
             periodId: data.period_id !== undefined
                 ? this.requireId(data.period_id, 'period_id')
                 : Number(currentItem?.periodId),
             categoryId,
+            merchantId,
             title: data.title !== undefined
                 ? this.requireString(data.title, 'title')
                 : this.requireString(currentItem?.title, 'title'),
@@ -897,6 +912,7 @@ class PlanningService {
             id: Number(item.id),
             periodId: Number(item.periodId),
             categoryId: item.categoryId === null ? null : Number(item.categoryId),
+            merchantId: item.merchantId === null || item.merchantId === undefined ? null : Number(item.merchantId),
             title: item.title,
             description: item.description,
             plannedAmount: this.toMoney(item.plannedAmount),

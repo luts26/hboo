@@ -3,6 +3,8 @@ import planningStore from '../stores/PlanningStore.js'
 import {endOfDay, startOfDay} from '../services/PlanningCalculator.js'
 import {calculatePlanVsFact} from '../services/PlanVsFactService.js'
 import CategoryApiService from '../services/CategoryApiService.js'
+import ProductCatalogApiService from '../services/ProductCatalogApiService.js'
+import {normalizeSearchText} from '../services/ProductCatalogLocalRepository.js'
 import {loadProductsForSuggestions, searchProductsFromCache} from '../services/ProductSearchService.js'
 import {
 	applySelectedShoppingProduct,
@@ -46,9 +48,12 @@ export default class PlaningPage extends AbstractClass {
 	}
 	categories = []
 	categoryApiService = new CategoryApiService()
+	productCatalogApiService = new ProductCatalogApiService()
 	categoryLoadPromise = null
 	productLoadPromise = null
+	merchantLoadPromise = null
 	products = []
+	merchants = []
 	unsubscribe = null
 	dataStatusOpen = false
 	hasShownOfflineToast = false
@@ -65,6 +70,7 @@ export default class PlaningPage extends AbstractClass {
 		this.$hbapp.innerHTML = this.getLoadingTemplate()
 		this.loadCategories()
 		this.loadProducts()
+		this.loadMerchants()
 		this.unsubscribe = planningStore.subscribe(state => {
 			this.handleSyncFeedback(this.state, state)
 			this.state = {
@@ -110,6 +116,32 @@ export default class PlaningPage extends AbstractClass {
 	async ensureShoppingProductsLoaded() {
 		if (this.products.length) return this.products
 		return this.loadProducts()
+	}
+
+	async loadMerchants() {
+		if (this.merchantLoadPromise) return this.merchantLoadPromise
+		this.merchantLoadPromise = this.productCatalogApiService.localRepository.getMerchants()
+			.then(async merchants => {
+				if (merchants.length) return merchants
+				const catalog = await this.productCatalogApiService.loadCatalog({refresh: true})
+				return catalog.merchants || []
+			})
+			.then(merchants => {
+				this.merchants = Array.isArray(merchants) ? merchants : []
+				this.render()
+				return this.merchants
+			})
+			.catch(() => [])
+			.finally(() => {
+				this.merchantLoadPromise = null
+			})
+
+		return this.merchantLoadPromise
+	}
+
+	async ensureMerchantsLoaded() {
+		if (this.merchants.length) return this.merchants
+		return this.loadMerchants()
 	}
 
 	render() {
@@ -401,6 +433,38 @@ export default class PlaningPage extends AbstractClass {
 		return this.categories.find(categoryItem => String(categoryItem.id) === String(item.categoryId)) || null
 	}
 
+	getMerchantNameById(merchantId) {
+		const merchant = this.merchants.find(item => String(item.id) === String(merchantId))
+		return merchant?.name || ''
+	}
+
+	getMerchantSuggestions(query, limit = 6) {
+		const needle = normalizeSearchText(query)
+		if (!needle) return []
+		return this.merchants
+			.filter(merchant => normalizeSearchText(merchant.name).includes(needle))
+			.slice(0, limit)
+	}
+
+	getMerchantSuggestionsTemplate(suggestions = []) {
+		if (!suggestions.length) return ''
+		return suggestions.map(merchant => `
+			<button class="purchase-suggestion" type="button" data-action="planning-merchant-select" data-merchant-id="${this.escapeHtml(merchant.id)}">${this.escapeHtml(merchant.name)}</button>
+		`).join('')
+	}
+
+	getMerchantFieldTemplate(item = null) {
+		const merchantId = item?.merchantId || ''
+		const merchantName = merchantId ? (this.getMerchantNameById(merchantId) || `Merchant #${merchantId}`) : ''
+
+		return `
+			<div class="planing-merchant-field purchase-product-cell">
+				<input class="planing-textarea planing-merchant-input" type="text" name="merchantName" placeholder="Store (optional)" value="${this.escapeHtml(merchantName)}" autocomplete="off" data-selected-merchant-id="${this.escapeHtml(merchantId)}" data-selected-merchant-name="${this.escapeHtml(merchantName)}">
+				<input type="hidden" name="merchantId" value="${this.escapeHtml(merchantId)}">
+				<div class="purchase-suggestions planing-merchant-suggestions" data-merchant-suggestions></div>
+			</div>`
+	}
+
 	getCategoryIconClass(item) {
 		return this.getCategory(item)?.icon || 'other-icon'
 	}
@@ -500,6 +564,7 @@ export default class PlaningPage extends AbstractClass {
 					<div class="planing-item-main">
 						<div class="planing-item-price">${this.formatAmount(amount)} грн</div>
 						<div class="planing-item-category">${this.escapeHtml(this.getCategoryName(item))}</div>
+						${item.merchantId ? `<div class="planing-item-merchant">${this.escapeHtml(this.getMerchantNameById(item.merchantId) || `Merchant #${item.merchantId}`)}</div>` : ''}
 						${this.getPlanFactTemplate(item)}
 						${this.getChecklistProgressTemplate(item)}
 						<span>${this.formatPlanningDate(item.date)}</span>
@@ -688,6 +753,7 @@ export default class PlaningPage extends AbstractClass {
 							${this.getCategoryOptions(categoryId)}
 						</select>
 					</div>
+					${this.getMerchantFieldTemplate(item)}
 					<input class="planing-textarea" type="date" name="plannedDate" value="${plannedDate}">
 					<textarea name="note" class="planing-textarea" placeholder="Note">${note}</textarea>
 					${this.getChecklistFormTemplate(item)}
@@ -925,6 +991,7 @@ export default class PlaningPage extends AbstractClass {
 					<div class="planing-detail-grid">
 						<div class="planing-detail-field planing-detail-field-main"><span>Planned amount</span><strong>${this.formatAmount(amount)} грн</strong></div>
 						<div class="planing-detail-field"><span>Category</span><strong class="planing-detail-category">${this.getCategoryIconTemplate(item)}<span>${this.escapeHtml(this.getCategoryName(item))}</span></strong></div>
+						${item.merchantId ? `<div class="planing-detail-field"><span>Store</span><strong>${this.escapeHtml(this.getMerchantNameById(item.merchantId) || `Merchant #${item.merchantId}`)}</strong></div>` : ''}
 						<div class="planing-detail-field"><span>Planned date</span><strong>${this.formatPlanningDate(item.date)}</strong></div>
 						<div class="planing-detail-field"><span>Status</span><strong>${this.getStatusLabel(item.status)}</strong></div>
 						${actualAmount}
@@ -1012,6 +1079,7 @@ export default class PlaningPage extends AbstractClass {
 		if (html) {
 			const container = overlayHost.render('planning-modal', html)
 			this.bindShoppingItemEditors(container)
+			this.bindMerchantAutocomplete(container)
 		} else {
 			overlayHost.clear('planning-modal')
 		}
@@ -1048,12 +1116,106 @@ export default class PlaningPage extends AbstractClass {
 		this.bindShoppingItemEditors(container)
 	}
 
+	bindMerchantAutocomplete(container) {
+		if (!container) return
+		container.querySelectorAll('.planing-merchant-input').forEach(input => {
+			input.addEventListener('input', event => {
+				event.stopPropagation()
+				this.clearMerchantSelectionFromInput(event.target)
+				this.updateMerchantSuggestions(event.target).catch(() => {})
+			})
+		})
+		container.querySelectorAll('[data-merchant-suggestions]').forEach(suggestions => {
+			suggestions.addEventListener('click', event => {
+				const actionTarget = event.target.closest('[data-action="planning-merchant-select"]')
+				if (!actionTarget) return
+				event.preventDefault()
+				event.stopPropagation()
+				this.selectMerchant(actionTarget).catch(() => {})
+			})
+		})
+	}
+
 	getShoppingEditorFromInput(input) {
 		return input?.closest('[data-shopping-editor]')
 	}
 
 	getShoppingEditorFromAction(actionTarget) {
 		return actionTarget?.closest('[data-shopping-editor]')
+	}
+
+	getMerchantFieldFromInput(input) {
+		return input?.closest('.planing-merchant-field')
+	}
+
+	getMerchantFieldFromAction(actionTarget) {
+		return actionTarget?.closest('.planing-merchant-field')
+	}
+
+	syncMerchantIdentityFromInput(input) {
+		const field = this.getMerchantFieldFromInput(input)
+		const hidden = field?.querySelector('[name="merchantId"]')
+		const merchantId = hidden?.value || ''
+		const selectedId = input?.dataset.selectedMerchantId || ''
+		const selectedName = input?.dataset.selectedMerchantName || ''
+		const catalogName = merchantId ? this.getMerchantNameById(merchantId) : ''
+		const canonicalName = catalogName || selectedName
+		const hasValidSelection = Boolean(
+			hidden
+			&& merchantId
+			&& selectedId
+			&& String(merchantId) === String(selectedId)
+			&& canonicalName
+			&& normalizeSearchText(input?.value || '') === normalizeSearchText(canonicalName)
+		)
+
+		if (!hasValidSelection) {
+			this.clearMerchantSelectionFromInput(input)
+			return null
+		}
+
+		return merchantId
+	}
+
+	clearMerchantSelectionFromInput(input) {
+		const field = this.getMerchantFieldFromInput(input)
+		const hidden = field?.querySelector('[name="merchantId"]')
+		if (hidden) hidden.value = ''
+		if (input) {
+			input.dataset.selectedMerchantId = ''
+			input.dataset.selectedMerchantName = ''
+		}
+	}
+
+	async updateMerchantSuggestions(input) {
+		const field = this.getMerchantFieldFromInput(input)
+		if (!field) return
+		const container = field.querySelector('[data-merchant-suggestions]')
+		await this.ensureMerchantsLoaded()
+		const suggestions = this.getMerchantSuggestions(input.value)
+		if (container) container.innerHTML = this.getMerchantSuggestionsTemplate(suggestions)
+	}
+
+	async selectMerchant(actionTarget) {
+		const field = this.getMerchantFieldFromAction(actionTarget)
+		await this.ensureMerchantsLoaded()
+		const merchant = this.merchants.find(item => String(item.id) === String(actionTarget.dataset.merchantId))
+		if (!field || !merchant) return
+		const input = field.querySelector('[name="merchantName"]')
+		const hidden = field.querySelector('[name="merchantId"]')
+		const suggestions = field.querySelector('[data-merchant-suggestions]')
+		if (input) {
+			input.value = merchant.name
+			input.dataset.selectedMerchantId = merchant.id
+			input.dataset.selectedMerchantName = merchant.name
+		}
+		if (hidden) hidden.value = merchant.id
+		if (suggestions) suggestions.innerHTML = ''
+	}
+
+	getMerchantIdFromForm(form) {
+		const input = form?.querySelector('[name="merchantName"]')
+		return input ? this.syncMerchantIdentityFromInput(input) : null
 	}
 
 	openModal(modal, itemId = null) {
@@ -1111,6 +1273,7 @@ export default class PlaningPage extends AbstractClass {
 		await planningStore.createPlanningItem({
 			sum,
 			categoryId: formData.get('categoryId') || null,
+			merchantId: this.getMerchantIdFromForm(form),
 			typeStr: formData.get('categoryId') || 'other',
 			title: formData.get('note') || 'Planning expense',
 			desc: formData.get('note') || '',
@@ -1185,6 +1348,7 @@ export default class PlaningPage extends AbstractClass {
 		await planningStore.updatePlanningItem(form.dataset.itemid, {
 			sum,
 			categoryId: formData.get('categoryId') || null,
+			merchantId: this.getMerchantIdFromForm(form),
 			typeStr: formData.get('categoryId') || 'other',
 			title: currentItem?.title || formData.get('note') || 'Planning expense',
 			desc: formData.get('note') || '',
@@ -1361,6 +1525,7 @@ export default class PlaningPage extends AbstractClass {
 			if (actionTarget?.dataset.action === 'planning-shopping-open') return this.setModalView('shoppingList')
 			if (actionTarget?.dataset.action === 'planning-shopping-back') return this.setModalView('details')
 			if (actionTarget?.dataset.action === 'planning-shopping-select-product') return this.selectShoppingProduct(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-merchant-select') return this.selectMerchant(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-shopping-add') return this.addShoppingItem(event)
 			if (actionTarget?.dataset.action === 'planning-checklist-toggle') return this.toggleChecklistItem(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-smart-confirm') return this.confirmSmartSuggestion(actionTarget)
@@ -1398,6 +1563,10 @@ export default class PlaningPage extends AbstractClass {
 			if (event.target.closest('.planing-shopping-input')) {
 				syncShoppingProductIdentityFromNameInput(event.target)
 				return this.updateShoppingSuggestions(event.target).catch(() => {})
+			}
+			if (event.target.closest('.planing-merchant-input')) {
+				this.clearMerchantSelectionFromInput(event.target)
+				return this.updateMerchantSuggestions(event.target).catch(() => {})
 			}
 		}
 	}

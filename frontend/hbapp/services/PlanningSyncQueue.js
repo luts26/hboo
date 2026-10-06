@@ -13,6 +13,18 @@ const getBackoffDelay = attempts => {
 	return Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * (2 ** (retry - 1)))
 }
 
+const LOCAL_CHANGE_REASONS = new Set([
+	'period-update',
+	'period-create',
+	'item-create',
+	'item-update',
+	'item-status',
+	'item-delete',
+	'shopping-list-update',
+	'shopping-item-create',
+	'shopping-item-toggle'
+])
+
 export default class PlanningSyncQueue {
 
 	constructor(indexedDbClient = new IndexedDbClient()) {
@@ -49,6 +61,9 @@ export default class PlanningSyncQueue {
 			await this.indexedDbClient.openDatabase()
 			const existing = await this.indexedDbClient.get('syncQueue', operationId)
 			if (existing?.status === 'conflict') return existing
+			if (existing?.status === 'error' && existing.retryable === false && !LOCAL_CHANGE_REASONS.has(reason)) {
+				return existing
+			}
 
 			const now = Date.now()
 			const operation = {
@@ -61,6 +76,7 @@ export default class PlanningSyncQueue {
 				status: 'pending',
 				reason,
 				attempts: existing?.status === 'error' ? Number(existing.attempts) || 0 : 0,
+				retryable: true,
 				lastError: null,
 				createdAt: existing?.createdAt || now,
 				updatedAt: now,
@@ -104,10 +120,12 @@ export default class PlanningSyncQueue {
 	async markError(operation, error) {
 		const attempts = (Number(operation.attempts) || 0) + 1
 		const status = this.getFailureStatus(error)
+		const retryable = this.isRetryableError(error, status)
 		const now = Date.now()
 		const next = {
 			...operation,
 			status,
+			retryable,
 			attempts,
 			lastError: {
 				message: error?.message || 'Planning sync failed',
@@ -115,7 +133,7 @@ export default class PlanningSyncQueue {
 				at: now
 			},
 			updatedAt: now,
-			nextAttemptAt: status === 'error' ? now + getBackoffDelay(attempts) : null
+			nextAttemptAt: status === 'error' && retryable ? now + getBackoffDelay(attempts) : null
 		}
 
 		await this.indexedDbClient.put('syncQueue', next)
@@ -132,6 +150,16 @@ export default class PlanningSyncQueue {
 		if (status === 401 || status === 403) return 'paused'
 		if (status === 409) return 'conflict'
 		return 'error'
+	}
+
+	isRetryableError(error, failureStatus = this.getFailureStatus(error)) {
+		if (failureStatus !== 'error') return false
+		const status = Number(error?.status || error?.statusCode)
+		if (!status) return true
+		if (status === 408 || status === 429) return true
+		if (status >= 500) return true
+		if (status >= 400 && status < 500) return false
+		return true
 	}
 }
 

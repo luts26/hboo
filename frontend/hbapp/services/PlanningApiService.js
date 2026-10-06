@@ -156,6 +156,7 @@ export default class PlanningApiService {
 		return {
 			period_id: Number(periodId),
 			category_id: item.categoryId ? Number(item.categoryId) : null,
+			merchant_id: item.merchantId ? Number(item.merchantId) : null,
 			title: item.title || item.desc || 'Planning expense',
 			description: item.desc || null,
 			planned_amount: Number(item.sum) || 0,
