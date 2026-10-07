@@ -138,6 +138,26 @@ test('Purchase editor wires receipt workflow without polluting purchase JSON pay
 	assert.match(syncServiceSource, /Receipt sync is waiting for purchase sync/)
 })
 
+test('Purchase editor exposes explicit bank payment linking without sync queue writes', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const apiServiceSource = read('hbapp/services/ProductCatalogApiService.js')
+	const paymentTemplate = source.match(/getPaymentMatchTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const linkMethod = source.match(/async linkPayment\(provider, providerTransactionId\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const unlinkMethod = source.match(/async unlinkPayment\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(paymentTemplate, /Payment/)
+	assert.match(source, /data-purchase-action="link-payment"/)
+	assert.match(source, /data-purchase-action="unlink-payment"/)
+	assert.match(source, /data-purchase-action="show-more-payment-candidates"/)
+	assert.match(source, /Payment matching requires connection/)
+	assert.match(apiServiceSource, /includeFallback=true/)
+	assert.match(apiServiceSource, /getPurchaseTransactionCandidates/)
+	assert.match(apiServiceSource, /linkPurchaseTransaction/)
+	assert.match(apiServiceSource, /unlinkPurchaseTransaction/)
+	assert.doesNotMatch(linkMethod, /enqueueMutation|processQueue/)
+	assert.doesNotMatch(unlinkMethod, /enqueueMutation|processQueue/)
+})
+
 test('Receipt flow handoff preserves a single canonical Purchase form draft', () => {
 	const source = read('hbapp/pages/PurchasePage.js')
 	const handleAction = source.match(/handleAction\(action, target\) \{[\s\S]*?\n\t\}/)?.[0] || ''

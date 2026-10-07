@@ -240,6 +240,128 @@ class TransactionRepository {
         return rows;
     }
 
+    async getPurchaseTransactionCandidates(dateFrom, dateTo, purchaseId) {
+        const fromTimestamp = Math.floor(dateFrom / 1000);
+        const toTimestamp = Math.floor(dateTo / 1000);
+
+        const [rows] = await pool.execute(`
+            SELECT *
+            FROM (
+                SELECT
+                    'mono' AS provider,
+                    mt.t_id AS providerTransactionId,
+                    mt.time * 1000 AS timestamp,
+                    CAST(mt.amount AS DECIMAL(15, 2)) AS amount,
+                    mt.description AS description,
+                    CAST(mt.mcc AS CHAR) AS category
+                FROM mono_transaction mt
+                WHERE mt.time >= ?
+                    AND mt.time <= ?
+                    AND mt.t_id IS NOT NULL
+                    AND CAST(mt.amount AS DECIMAL(15, 2)) < 0
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM purchase_transaction_link existing_link
+                        WHERE existing_link.provider = 'mono'
+                            AND existing_link.provider_transaction_id = mt.t_id
+                            AND existing_link.purchase_id <> ?
+                    )
+
+                UNION ALL
+
+                SELECT
+                    'privat' AS provider,
+                    pt.t_id AS providerTransactionId,
+                    CAST(pt.date AS UNSIGNED) AS timestamp,
+                    CAST(pt.amount AS DECIMAL(15, 2)) AS amount,
+                    CONCAT_WS(': ', pt.details, pt.category_details) AS description,
+                    pt.category AS category
+                FROM privat_transaction pt
+                WHERE CAST(pt.date AS UNSIGNED) >= ?
+                    AND CAST(pt.date AS UNSIGNED) <= ?
+                    AND pt.t_id IS NOT NULL
+                    AND CAST(pt.amount AS DECIMAL(15, 2)) < 0
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM purchase_transaction_link existing_link
+                        WHERE existing_link.provider = 'privat'
+                            AND existing_link.provider_transaction_id = pt.t_id
+                            AND existing_link.purchase_id <> ?
+                    )
+            ) transactions
+            ORDER BY timestamp DESC
+        `, [fromTimestamp, toTimestamp, purchaseId, dateFrom, dateTo, purchaseId]);
+
+        return rows;
+    }
+
+    async getLinkedPurchaseTransaction(purchaseId, connection = pool) {
+        const [rows] = await connection.execute(`
+            SELECT *
+            FROM (
+                SELECT
+                    ptl.id AS linkId,
+                    ptl.purchase_id AS purchaseId,
+                    ptl.created_at AS linkedAt,
+                    'mono' AS provider,
+                    mt.t_id AS providerTransactionId,
+                    mt.time * 1000 AS timestamp,
+                    CAST(mt.amount AS DECIMAL(15, 2)) AS amount,
+                    mt.description AS description,
+                    CAST(mt.mcc AS CHAR) AS category
+                FROM purchase_transaction_link ptl
+                INNER JOIN mono_transaction mt
+                    ON mt.t_id = ptl.provider_transaction_id
+                WHERE ptl.purchase_id = ?
+                    AND ptl.provider = 'mono'
+
+                UNION ALL
+
+                SELECT
+                    ptl.id AS linkId,
+                    ptl.purchase_id AS purchaseId,
+                    ptl.created_at AS linkedAt,
+                    'privat' AS provider,
+                    pt.t_id AS providerTransactionId,
+                    CAST(pt.date AS UNSIGNED) AS timestamp,
+                    CAST(pt.amount AS DECIMAL(15, 2)) AS amount,
+                    CONCAT_WS(': ', pt.details, pt.category_details) AS description,
+                    pt.category AS category
+                FROM purchase_transaction_link ptl
+                INNER JOIN privat_transaction pt
+                    ON pt.t_id = ptl.provider_transaction_id
+                WHERE ptl.purchase_id = ?
+                    AND ptl.provider = 'privat'
+            ) transactions
+            LIMIT 1
+        `, [purchaseId, purchaseId]);
+
+        return rows[0] || null;
+    }
+
+    async getTransaction(provider, providerTransactionId, connection = pool) {
+        const table = this.getProviderTable(provider);
+        const providerValue = provider === 'mono' ? `'mono'` : `'privat'`;
+        const timestampExpression = provider === 'mono' ? 'time * 1000' : 'CAST(date AS UNSIGNED)';
+        const descriptionExpression = provider === 'mono' ? 'description' : 'CONCAT_WS(\': \', details, category_details)';
+        const categoryExpression = provider === 'mono' ? 'CAST(mcc AS CHAR)' : 'category';
+
+        const [rows] = await connection.execute(`
+            SELECT
+                ${providerValue} AS provider,
+                t_id AS providerTransactionId,
+                ${timestampExpression} AS timestamp,
+                CAST(amount AS DECIMAL(15, 2)) AS amount,
+                ${descriptionExpression} AS description,
+                ${categoryExpression} AS category
+            FROM ${table}
+            WHERE t_id = ?
+            LIMIT 1
+        `, [providerTransactionId]);
+
+        return rows[0] || null;
+    }
+
     async transactionExists(provider, providerTransactionId) {
         return this.transactionExistsWithConnection(pool, provider, providerTransactionId);
     }
@@ -274,6 +396,53 @@ class TransactionRepository {
         return result.insertId;
     }
 
+    async createPurchaseTransactionLinkWithConnection(connection, purchaseId, provider, providerTransactionId) {
+        const [result] = await connection.execute(`
+            INSERT INTO purchase_transaction_link (
+                purchase_id,
+                provider,
+                provider_transaction_id,
+                created_at
+            )
+            VALUES (?, ?, ?, NOW())
+        `, [purchaseId, provider, providerTransactionId]);
+
+        return result.insertId;
+    }
+
+    async findPurchaseTransactionLinkByPurchaseWithConnection(connection, purchaseId) {
+        const [rows] = await connection.execute(`
+            SELECT
+                id,
+                purchase_id AS purchaseId,
+                provider,
+                provider_transaction_id AS providerTransactionId,
+                created_at AS createdAt
+            FROM purchase_transaction_link
+            WHERE purchase_id = ?
+            LIMIT 1
+        `, [purchaseId]);
+
+        return rows[0] || null;
+    }
+
+    async findPurchaseTransactionLinkByTransactionWithConnection(connection, provider, providerTransactionId) {
+        const [rows] = await connection.execute(`
+            SELECT
+                id,
+                purchase_id AS purchaseId,
+                provider,
+                provider_transaction_id AS providerTransactionId,
+                created_at AS createdAt
+            FROM purchase_transaction_link
+            WHERE provider = ?
+                AND provider_transaction_id = ?
+            LIMIT 1
+        `, [provider, providerTransactionId]);
+
+        return rows[0] || null;
+    }
+
     async getTransactionAmount(provider, providerTransactionId) {
         return this.getTransactionAmountWithConnection(pool, provider, providerTransactionId);
     }
@@ -297,6 +466,15 @@ class TransactionRepository {
                 AND provider = ?
                 AND provider_transaction_id = ?
         `, [planningItemId, provider, providerTransactionId]);
+
+        return result.affectedRows > 0;
+    }
+
+    async deletePurchaseTransactionLink(purchaseId) {
+        const [result] = await pool.execute(`
+            DELETE FROM purchase_transaction_link
+            WHERE purchase_id = ?
+        `, [purchaseId]);
 
         return result.affectedRows > 0;
     }

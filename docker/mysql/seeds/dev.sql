@@ -1,7 +1,7 @@
 -- Development-only mocked data
 -- All data in this file is synthetic and intended only for local development/testing.
--- Login: demo.admin || demo.user
--- Password: change_me_dev_only
+-- Login: admin || demo.user
+-- Admin password: 12345
 -- NEVER use these credentials outside the dev database
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -45,11 +45,11 @@ INSERT INTO `users` (
     ),
     (
         2,
-        'demo.admin',
+        'admin',
         'Demo',
         'Admin',
-        'demo.admin@example.com',
-        '$2b$04$bmEbOVGS.OHr9PbslO3dTOteDT79Je0rT92GF9g3ueTVoxwlXYGnO',
+        'admin@example.com',
+        '$2b$04$OkygdNsf.C876CveQe0X5ORtPqxuKkGjxN0olRu1pzWZeQtricZrS',
         'ACTIVE',
         '2026-09-01 09:10:00',
         '2026-09-01 09:10:00'
@@ -583,7 +583,7 @@ INNER JOIN product pr ON pr.name = seed.product_name;
 DELETE pp
 FROM planning_period pp
 INNER JOIN users u ON u.id = pp.user_id
-WHERE u.username IN ('demo.user', 'demo.admin')
+WHERE u.username IN ('demo.user', 'admin')
   AND pp.start_date <= '2026-10-31'
   AND pp.end_date >= '2026-08-01';
 

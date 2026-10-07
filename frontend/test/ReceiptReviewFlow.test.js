@@ -146,9 +146,19 @@ test('receipt review confirmation creates purchase, links receipt locally and gu
 	assert.match(confirm, /mergeServerPurchases/)
 	assert.match(confirm, /linkStandaloneToPurchase/)
 	assert.match(confirm, /refreshSelectedRangeFromLocal/)
+	assert.match(confirm, /closeReceiptReview\(\{render: false, force: true\}\)/)
 	assert.match(payload, /client_mutation_id: form\.clientMutationId/)
 	assert.match(payload, /items/)
 	assert.doesNotMatch(confirm, /savePurchase\(/)
+})
+
+test('receipt review success close bypasses submit guard without enabling manual close while saving', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const closeMethod = source.match(/closeReceiptReview\(\{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(closeMethod, /force = false/)
+	assert.match(closeMethod, /receiptReview\.saving && !force/)
+	assert.match(source, /closeReceiptReview\(\{render: false, force: true\}\)/)
 })
 
 test('receipt review product search preserves raw OCR name separately from selected product', () => {

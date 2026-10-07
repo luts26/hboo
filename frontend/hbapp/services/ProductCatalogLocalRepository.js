@@ -104,6 +104,7 @@ const normalizePurchase = purchase => {
 		paymentType: purchase.paymentType || 'cash',
 		transactionProvider: purchase.transactionProvider || null,
 		transactionId: purchase.transactionId || null,
+		linkedTransaction: purchase.linkedTransaction || null,
 		total: Number(purchase.total) || 0,
 		note: purchase.note || null,
 		hasReceipt: Boolean(purchase.hasReceipt || purchase.receipt?.id),

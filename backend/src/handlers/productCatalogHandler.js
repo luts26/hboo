@@ -1,4 +1,5 @@
 import productCatalogService from '../services/ProductCatalogService.js';
+import purchaseTransactionService from '../services/PurchaseTransactionService.js';
 import { sendJson } from '../http/response.js';
 
 function getDefaultPurchaseRange(now = new Date()) {
@@ -75,6 +76,32 @@ async function productCatalogHandler(req, res, url) {
         if (req.method === 'GET' && url.pathname.match(/^\/api\/purchases\/\d+$/)) {
             const purchase = await productCatalogService.getPurchase(req.user.user_id, req.params.id);
             sendJsonOrNotFound(res, purchase, 'Purchase not found');
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/purchases\/\d+\/transactions\/candidates$/)) {
+            sendJson(res, 200, await purchaseTransactionService.getCandidates(req.user.user_id, req.params.id, {
+                includeFallback: url.searchParams.get('includeFallback') === 'true'
+            }));
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/purchases\/\d+\/transactions\/linked$/)) {
+            sendJson(res, 200, await purchaseTransactionService.getLinkedTransaction(req.user.user_id, req.params.id));
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname.match(/^\/api\/purchases\/\d+\/transactions$/)) {
+            sendJson(res, 201, await purchaseTransactionService.linkTransaction(
+                req.user.user_id,
+                req.params.id,
+                await readJson(req)
+            ));
+            return;
+        }
+
+        if (req.method === 'DELETE' && url.pathname.match(/^\/api\/purchases\/\d+\/transactions$/)) {
+            sendJson(res, 200, await purchaseTransactionService.unlinkTransaction(req.user.user_id, req.params.id));
             return;
         }
 

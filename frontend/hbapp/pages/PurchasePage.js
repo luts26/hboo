@@ -5,6 +5,7 @@ import overlayHost from '../services/OverlayHost.js'
 import ProductCatalogApiService from '../services/ProductCatalogApiService.js'
 import ReceiptLocalRepository from '../services/ReceiptLocalRepository.js'
 import ReceiptApiService from '../services/ReceiptApiService.js'
+import networkStatusService from '../services/NetworkStatusService.js'
 import {prepareReceiptImage} from '../services/ReceiptImageService.js'
 import {MEASUREMENT_LABELS, UNIT_LABELS, getAllowedUnits, normalizeSearchText} from '../services/ProductUnitService.js'
 import {matchesProductQuery} from '../services/ProductSearchService.js'
@@ -19,6 +20,16 @@ const todayInputValue = () => {
 const toPurchasedAt = dateValue => `${dateValue || todayInputValue()}T12:00:00`
 
 const formatMoney = value => `${(Number(value) || 0).toFixed(2)} грн`
+const PROVIDER_LABELS = {
+	mono: 'Monobank',
+	privat: 'PrivatBank'
+}
+const formatProvider = provider => PROVIDER_LABELS[provider] || provider || 'Bank'
+const formatTransactionDate = value => {
+	const timestamp = Number(value)
+	if (!timestamp) return ''
+	return new Date(timestamp).toLocaleDateString('uk-UA')
+}
 const formatOptionalMoney = value => {
 	const parsed = parseDecimalInput(value)
 	return parsed === null ? '—' : formatMoney(parsed)
@@ -184,6 +195,15 @@ export default class PurchasePage extends AbstractClass {
 			form: null
 		},
 		deleteConfirmation: null,
+		paymentMatch: {
+			loading: false,
+			loaded: false,
+			linked: null,
+			candidates: [],
+			error: '',
+			linkingKey: '',
+			unlinking: false
+		},
 		loading: true,
 		saving: false,
 		saveError: ''
@@ -334,6 +354,10 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'open-receipt-flow') this.openReceiptFlowFromPurchase()
 		if (action === 'choose-receipt') this.chooseReceipt()
 		if (action === 'remove-receipt') this.removeReceipt()
+		if (action === 'refresh-payment-candidates') this.loadPaymentMatch({force: true})
+		if (action === 'show-more-payment-candidates') this.loadPaymentMatch({force: true, includeFallback: true})
+		if (action === 'link-payment') this.linkPayment(target.dataset.provider, target.dataset.providerTransactionId)
+		if (action === 'unlink-payment') this.unlinkPayment()
 		if (action === 'close-receipt-flow') this.closeReceiptFlow()
 		if (action === 'continue-manually') this.continueReceiptFlowManually()
 		if (action === 'save-standalone-receipt') this.saveStandaloneReceipt()
@@ -611,12 +635,18 @@ export default class PurchasePage extends AbstractClass {
 		const purchase = await this.apiService.getPurchase(purchaseId)
 		this.loadPurchaseIntoForm(purchase)
 		this.state.selectedPurchase = purchase
+		this.state.paymentMatch = this.createPaymentMatchState({
+			linked: purchase.linkedTransaction || null,
+			loaded: Boolean(purchase.linkedTransaction)
+		})
 		this.state.editorOpen = true
 		this.render()
+		this.loadPaymentMatch().catch(() => {})
 	}
 
 	openNewPurchase() {
 		this.resetForm({render: false})
+		this.state.paymentMatch = this.createPaymentMatchState()
 		this.state.editorOpen = true
 		this.render()
 	}
@@ -628,9 +658,130 @@ export default class PurchasePage extends AbstractClass {
 		this.state.createProductForRowId = null
 		this.state.createProductForm = null
 		this.state.saveError = ''
+		this.state.paymentMatch = this.createPaymentMatchState()
 		overlayHost.clear('purchase-editor-modal')
 		overlayHost.clear('receipt-flow-modal')
 		if (render) this.render()
+	}
+
+	createPaymentMatchState(overrides = {}) {
+		return {
+			loading: false,
+			loaded: false,
+			linked: null,
+			candidates: [],
+			error: '',
+			linkingKey: '',
+			unlinking: false,
+			includeFallback: false,
+			...overrides
+		}
+	}
+
+	getPaymentServerPurchaseId() {
+		const purchase = this.state.selectedPurchase
+		return purchase?.serverId || (!String(purchase?.id || '').startsWith('local-') ? purchase?.id : null)
+	}
+
+	async loadPaymentMatch({force = false, includeFallback = this.state.paymentMatch.includeFallback || false} = {}) {
+		if (!this.state.editorOpen || !this.state.form.id) return
+		if (this.state.paymentMatch.loading) return
+		if (this.state.paymentMatch.loaded && !force) return
+
+		const serverPurchaseId = this.getPaymentServerPurchaseId()
+		if (!serverPurchaseId) {
+			this.state.paymentMatch = this.createPaymentMatchState({
+				loaded: true,
+				error: 'Payment matching requires connection after purchase sync.'
+			})
+			this.render()
+			return
+		}
+
+		if (networkStatusService.isOffline()) {
+			this.state.paymentMatch = this.createPaymentMatchState({
+				...this.state.paymentMatch,
+				loaded: true,
+				error: 'Payment matching requires connection.'
+			})
+			this.render()
+			return
+		}
+
+		this.state.paymentMatch = this.createPaymentMatchState({...this.state.paymentMatch, loading: true, error: ''})
+		this.render()
+		try {
+			const linkedResponse = await this.apiService.getLinkedPurchaseTransaction(serverPurchaseId)
+			const linked = linkedResponse?.transaction || null
+			const candidates = linked
+				? []
+				: await this.apiService.getPurchaseTransactionCandidates(serverPurchaseId, {includeFallback})
+			this.state.paymentMatch = this.createPaymentMatchState({
+				loaded: true,
+				linked,
+				candidates: Array.isArray(candidates) ? candidates : [],
+				includeFallback
+			})
+			await this.cacheSelectedPurchasePayment(linked)
+		} catch (error) {
+			this.state.paymentMatch = this.createPaymentMatchState({
+				...this.state.paymentMatch,
+				loaded: true,
+				error: 'Payment matching requires connection.'
+			})
+		}
+		this.render()
+	}
+
+	async cacheSelectedPurchasePayment(linked) {
+		if (!this.state.selectedPurchase) return
+		const next = {...this.state.selectedPurchase, linkedTransaction: linked || null}
+		this.state.selectedPurchase = next
+		await this.apiService.localRepository.savePurchase(next, {
+			syncStatus: next.syncStatus || 'synced',
+			userId: this.apiService.getUserId()
+		}).catch(() => null)
+	}
+
+	async linkPayment(provider, providerTransactionId) {
+		const serverPurchaseId = this.getPaymentServerPurchaseId()
+		if (!serverPurchaseId || !provider || !providerTransactionId || this.state.paymentMatch.linkingKey) return
+		const linkingKey = `${provider}:${providerTransactionId}`
+		this.state.paymentMatch = {...this.state.paymentMatch, linkingKey, error: ''}
+		this.render()
+		try {
+			const response = await this.apiService.linkPurchaseTransaction(serverPurchaseId, {provider, providerTransactionId})
+			const linked = response?.transaction || null
+			this.state.paymentMatch = this.createPaymentMatchState({loaded: true, linked})
+			await this.cacheSelectedPurchasePayment(linked)
+		} catch (error) {
+			this.state.paymentMatch = {
+				...this.state.paymentMatch,
+				linkingKey: '',
+				error: error?.status === 409 ? 'This payment is already linked.' : 'Could not link payment.'
+			}
+		}
+		this.render()
+	}
+
+	async unlinkPayment() {
+		const serverPurchaseId = this.getPaymentServerPurchaseId()
+		if (!serverPurchaseId || this.state.paymentMatch.unlinking) return
+		this.state.paymentMatch = {...this.state.paymentMatch, unlinking: true, error: ''}
+		this.render()
+		try {
+			await this.apiService.unlinkPurchaseTransaction(serverPurchaseId)
+			this.state.paymentMatch = this.createPaymentMatchState({loaded: true})
+			await this.cacheSelectedPurchasePayment(null)
+			await this.loadPaymentMatch({force: true})
+		} catch (error) {
+			this.state.paymentMatch = {
+				...this.state.paymentMatch,
+				unlinking: false,
+				error: 'Could not unlink payment.'
+			}
+			this.render()
+		}
 	}
 
 	openReceiptFirstFlow() {
@@ -928,8 +1079,8 @@ export default class PurchasePage extends AbstractClass {
 		return match?.id || ''
 	}
 
-	closeReceiptReview({render = true} = {}) {
-		if (this.state.receiptReview.saving) return
+	closeReceiptReview({render = true, force = false} = {}) {
+		if (this.state.receiptReview.saving && !force) return
 		this.state.receiptReview = {
 			open: false,
 			receiptLocalId: null,
@@ -1181,7 +1332,7 @@ export default class PurchasePage extends AbstractClass {
 				localPurchase || result.purchase
 			)
 			await this.refreshSelectedRangeFromLocal()
-			this.closeReceiptReview({render: false})
+			this.closeReceiptReview({render: false, force: true})
 			this.render()
 		} catch (error) {
 			this.state.receiptReview.saving = false
@@ -1375,6 +1526,7 @@ export default class PurchasePage extends AbstractClass {
 		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
 		this.state.createProductForRowId = null
 		this.state.createProductForm = null
+		this.state.paymentMatch = this.createPaymentMatchState()
 		this.state.saveError = ''
 		this.revokeReceiptUrls()
 		if (render) this.render()
@@ -1482,6 +1634,7 @@ export default class PurchasePage extends AbstractClass {
 			<button class="purchase-add-item" type="button" data-purchase-action="add-item">+ Add item</button>
 			${this.getCreateProductTemplate()}
 			${this.getCompactReceiptTemplate()}
+			${this.getPaymentMatchTemplate()}
 			<div class="purchase-total-row">
 				<span>Total</span>
 				<strong data-purchase-total>${formatMoney(this.getCalculatedTotal())}</strong>
@@ -1505,6 +1658,62 @@ export default class PurchasePage extends AbstractClass {
 				<small>View ›</small>
 			</button>` : `<button class="purchase-add-receipt" type="button" data-purchase-action="open-receipt-flow">Attach receipt</button>`}
 			${this.state.form.receiptError ? `<div class="purchase-save-error">${this.escapeHtml(this.state.form.receiptError)}</div>` : ''}
+		</div>`
+	}
+
+	getPaymentMatchTemplate() {
+		if (!this.state.form.id) return ''
+		const match = this.state.paymentMatch
+		const linked = match.linked
+		return `<div class="purchase-payment-section">
+			<div class="purchase-items-title">Payment</div>
+			${match.loading ? `<div class="purchase-payment-empty">Loading payment candidates...</div>` : ''}
+			${!match.loading && linked ? this.getLinkedPaymentTemplate(linked) : ''}
+			${!match.loading && !linked ? this.getPaymentCandidatesTemplate(match) : ''}
+			${match.error ? `<div class="purchase-save-error">${this.escapeHtml(match.error)}</div>` : ''}
+		</div>`
+	}
+
+	getLinkedPaymentTemplate(transaction) {
+		return `<div class="purchase-payment-card linked">
+			<div>
+				<strong>${this.escapeHtml(formatProvider(transaction.provider))}</strong>
+				<span>${this.escapeHtml(formatTransactionDate(transaction.timestamp))} · ${this.escapeHtml(transaction.description || 'Transaction')}</span>
+			</div>
+			<b>${this.escapeHtml(formatMoney(transaction.amount))}</b>
+			<button class="hboo-button" type="button" data-purchase-action="unlink-payment" ${this.state.paymentMatch.unlinking ? 'disabled' : ''}>${this.state.paymentMatch.unlinking ? 'Unlinking...' : 'Unlink'}</button>
+		</div>`
+	}
+
+	getPaymentCandidatesTemplate(match) {
+		if (!match.loaded) {
+			return `<button class="purchase-add-receipt" type="button" data-purchase-action="refresh-payment-candidates">Find bank payment</button>`
+		}
+		const candidates = Array.isArray(match.candidates) ? match.candidates : []
+		if (!candidates.length) {
+			return `<div class="purchase-payment-empty">
+				<span>No strong payment suggestion found.</span>
+				<button class="hboo-button" type="button" data-purchase-action="show-more-payment-candidates">Show more candidates</button>
+			</div>`
+		}
+		return `<div class="purchase-payment-candidates">
+			${candidates.map(candidate => this.getPaymentCandidateTemplate(candidate)).join('')}
+		</div>`
+	}
+
+	getPaymentCandidateTemplate(candidate) {
+		const transaction = candidate.transaction || candidate
+		const key = `${transaction.provider}:${transaction.providerTransactionId}`
+		const linking = this.state.paymentMatch.linkingKey === key
+		const reasons = Array.isArray(candidate.reasons) ? candidate.reasons : []
+		return `<div class="purchase-payment-card">
+			<div>
+				<strong>${this.escapeHtml(formatProvider(transaction.provider))}</strong>
+				<span>${this.escapeHtml(formatTransactionDate(transaction.timestamp))} · ${this.escapeHtml(transaction.description || 'Transaction')}</span>
+				${reasons.length ? `<em>${this.escapeHtml(reasons.join(', '))}</em>` : ''}
+			</div>
+			<b>${this.escapeHtml(formatMoney(transaction.amount))}</b>
+			<button class="hboo-button product-primary-action" type="button" data-purchase-action="link-payment" data-provider="${this.escapeHtml(transaction.provider)}" data-provider-transaction-id="${this.escapeHtml(transaction.providerTransactionId)}" ${linking ? 'disabled' : ''}>${linking ? 'Linking...' : 'Link payment'}</button>
 		</div>`
 	}
 

@@ -215,6 +215,26 @@ export default class ProductCatalogApiService {
 		})
 		return true
 	}
+
+	async getPurchaseTransactionCandidates(purchaseId, {includeFallback = false} = {}) {
+		const query = includeFallback ? '?includeFallback=true' : ''
+		return api.get(`/purchases/${encodeURIComponent(purchaseId)}/transactions/candidates${query}`)
+	}
+
+	async getLinkedPurchaseTransaction(purchaseId) {
+		return api.get(`/purchases/${encodeURIComponent(purchaseId)}/transactions/linked`)
+	}
+
+	async linkPurchaseTransaction(purchaseId, transaction) {
+		return api.post(`/purchases/${encodeURIComponent(purchaseId)}/transactions`, {
+			provider: transaction.provider,
+			providerTransactionId: transaction.providerTransactionId
+		})
+	}
+
+	async unlinkPurchaseTransaction(purchaseId) {
+		return api.delete(`/purchases/${encodeURIComponent(purchaseId)}/transactions`)
+	}
 }
 
 export {getDefaultPurchaseRange, isLocalId, toApiPurchase}

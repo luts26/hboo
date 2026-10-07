@@ -6025,6 +6025,73 @@ textarea.planing-textarea {
 	padding-top: 1rem;
 }
 
+.purchase-payment-section {
+	border-top: 1px solid rgba(119,139,165,.16);
+	display: grid;
+	gap: .75rem;
+	margin-top: 1rem;
+	padding-top: 1rem;
+}
+
+.purchase-payment-candidates {
+	display: grid;
+	gap: .65rem;
+}
+
+.purchase-payment-card {
+	align-items: center;
+	border-radius: 10px;
+	box-shadow: inset -2px -2px 4px rgb(255, 255, 255), inset 2px 2px 4px rgba(0,0,0,.08);
+	display: grid;
+	gap: .65rem;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	min-width: 0;
+	padding: .75rem .85rem;
+}
+
+.purchase-payment-card strong,
+.purchase-payment-card span,
+.purchase-payment-card em {
+	display: block;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.purchase-payment-card strong,
+.purchase-payment-card b {
+	color: #778ba5;
+}
+
+.purchase-payment-card span,
+.purchase-payment-card em,
+.purchase-payment-empty {
+	color: #9baabd;
+	font-size: 10pt;
+	font-weight: 800;
+}
+
+.purchase-payment-card em {
+	font-style: normal;
+	margin-top: .2rem;
+}
+
+.purchase-payment-card b {
+	white-space: nowrap;
+}
+
+.purchase-payment-card .hboo-button {
+	min-height: 38px;
+	white-space: nowrap;
+}
+
+.purchase-payment-empty {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: .65rem;
+	justify-content: space-between;
+}
+
 .purchase-receipt-input {
 	display: none;
 }
@@ -6509,6 +6576,7 @@ textarea.planing-textarea {
 .dark-theme .purchase-add-receipt,
 .dark-theme .purchase-receipt-actions button,
 .dark-theme .purchase-receipt-compact-card,
+.dark-theme .purchase-payment-card,
 .dark-theme .purchase-remove-item,
 .dark-theme .purchase-create-product-link,
 .dark-theme .purchase-suggestions,
@@ -6527,6 +6595,7 @@ textarea.planing-textarea {
 
 .dark-theme .product-row,
 .dark-theme .purchase-total-row,
+.dark-theme .purchase-payment-card,
 .dark-theme .receipt-flow-capture-card,
 .dark-theme .receipt-flow-icon,
 .dark-theme .receipt-flow-preview,
@@ -6554,6 +6623,15 @@ textarea.planing-textarea {
 
 	.purchase-receipt-actions {
 		grid-template-columns: 1fr;
+	}
+
+	.purchase-payment-card {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.purchase-payment-card b,
+	.purchase-payment-card .hboo-button {
+		justify-self: start;
 	}
 
 	.purchase-product-cell,

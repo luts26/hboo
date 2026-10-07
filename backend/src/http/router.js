@@ -112,6 +112,18 @@ const routes = {
     'DELETE /api/purchases/:id': {
         handler: productCatalogHandler
     },
+    'GET /api/purchases/:id/transactions/candidates': {
+        handler: productCatalogHandler
+    },
+    'GET /api/purchases/:id/transactions/linked': {
+        handler: productCatalogHandler
+    },
+    'POST /api/purchases/:id/transactions': {
+        handler: productCatalogHandler
+    },
+    'DELETE /api/purchases/:id/transactions': {
+        handler: productCatalogHandler
+    },
     'POST /api/purchases/:purchaseId/receipt': {
         handler: receiptHandler
     },
