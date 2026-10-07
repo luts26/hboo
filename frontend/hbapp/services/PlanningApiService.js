@@ -115,6 +115,10 @@ export default class PlanningApiService {
 		return api.get(`/planning/item/${encodeURIComponent(itemId)}/transactions/linked`)
 	}
 
+	async getItemFact(itemId) {
+		return api.get(`/planning/item/${encodeURIComponent(itemId)}/fact`)
+	}
+
 	async getTransactionSuggestions(itemId) {
 		return api.get(`/planning/item/${encodeURIComponent(itemId)}/transactions/suggestions`)
 	}

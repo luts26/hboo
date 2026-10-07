@@ -240,6 +240,137 @@ class TransactionRepository {
         return rows;
     }
 
+    async getPlanningItemFacts(userId, planningItemId, connection = pool) {
+        const [rows] = await connection.execute(`
+            SELECT *
+            FROM (
+                SELECT
+                    ptl.id AS planningTransactionLinkId,
+                    ptl.planning_item_id AS planningItemId,
+                    ptl.created_at AS planningLinkedAt,
+                    'mono' AS provider,
+                    mt.t_id AS providerTransactionId,
+                    mt.time * 1000 AS transactionTimestamp,
+                    CAST(mt.amount AS DECIMAL(15, 2)) AS transactionAmount,
+                    mt.description AS transactionDescription,
+                    CAST(mt.mcc AS CHAR) AS transactionCategory,
+                    p.id AS purchaseId,
+                    p.merchant_id AS merchantId,
+                    m.name AS merchantName,
+                    p.purchased_at AS purchasedAt,
+                    p.payment_type AS paymentType,
+                    p.total AS purchaseTotal,
+                    r.id AS receiptId,
+                    pi.id AS purchaseItemId,
+                    pi.product_id AS productId,
+                    pr.name AS productName,
+                    pr.category_id AS categoryId,
+                    pc.name AS categoryName,
+                    pr.measurement_type AS measurementType,
+                    pr.status AS productStatus,
+                    pi.quantity,
+                    pi.unit,
+                    pi.total AS itemTotal
+                FROM planning_transaction_link ptl
+                INNER JOIN planning_item pli
+                    ON pli.id = ptl.planning_item_id
+                INNER JOIN planning_period pp
+                    ON pp.id = pli.period_id
+                    AND pp.user_id = ?
+                INNER JOIN mono_transaction mt
+                    ON mt.t_id = ptl.provider_transaction_id
+                LEFT JOIN purchase_transaction_link putl
+                    ON putl.provider = ptl.provider
+                    AND putl.provider_transaction_id = ptl.provider_transaction_id
+                LEFT JOIN purchase p
+                    ON p.id = putl.purchase_id
+                    AND p.user_id = ?
+                LEFT JOIN merchant m
+                    ON m.id = p.merchant_id
+                LEFT JOIN receipt r
+                    ON r.purchase_id = p.id
+                    AND r.user_id = ?
+                LEFT JOIN purchase_item pi
+                    ON pi.purchase_id = p.id
+                LEFT JOIN product pr
+                    ON pr.id = pi.product_id
+                LEFT JOIN product_category pc
+                    ON pc.id = pr.category_id
+                WHERE ptl.planning_item_id = ?
+                    AND ptl.provider = 'mono'
+
+                UNION ALL
+
+                SELECT
+                    ptl.id AS planningTransactionLinkId,
+                    ptl.planning_item_id AS planningItemId,
+                    ptl.created_at AS planningLinkedAt,
+                    'privat' AS provider,
+                    pt.t_id AS providerTransactionId,
+                    CAST(pt.date AS UNSIGNED) AS transactionTimestamp,
+                    CAST(pt.amount AS DECIMAL(15, 2)) AS transactionAmount,
+                    CONCAT_WS(': ', pt.details, pt.category_details) AS transactionDescription,
+                    pt.category AS transactionCategory,
+                    p.id AS purchaseId,
+                    p.merchant_id AS merchantId,
+                    m.name AS merchantName,
+                    p.purchased_at AS purchasedAt,
+                    p.payment_type AS paymentType,
+                    p.total AS purchaseTotal,
+                    r.id AS receiptId,
+                    pi.id AS purchaseItemId,
+                    pi.product_id AS productId,
+                    pr.name AS productName,
+                    pr.category_id AS categoryId,
+                    pc.name AS categoryName,
+                    pr.measurement_type AS measurementType,
+                    pr.status AS productStatus,
+                    pi.quantity,
+                    pi.unit,
+                    pi.total AS itemTotal
+                FROM planning_transaction_link ptl
+                INNER JOIN planning_item pli
+                    ON pli.id = ptl.planning_item_id
+                INNER JOIN planning_period pp
+                    ON pp.id = pli.period_id
+                    AND pp.user_id = ?
+                INNER JOIN privat_transaction pt
+                    ON pt.t_id = ptl.provider_transaction_id
+                LEFT JOIN purchase_transaction_link putl
+                    ON putl.provider = ptl.provider
+                    AND putl.provider_transaction_id = ptl.provider_transaction_id
+                LEFT JOIN purchase p
+                    ON p.id = putl.purchase_id
+                    AND p.user_id = ?
+                LEFT JOIN merchant m
+                    ON m.id = p.merchant_id
+                LEFT JOIN receipt r
+                    ON r.purchase_id = p.id
+                    AND r.user_id = ?
+                LEFT JOIN purchase_item pi
+                    ON pi.purchase_id = p.id
+                LEFT JOIN product pr
+                    ON pr.id = pi.product_id
+                LEFT JOIN product_category pc
+                    ON pc.id = pr.category_id
+                WHERE ptl.planning_item_id = ?
+                    AND ptl.provider = 'privat'
+            ) facts
+            ORDER BY transactionTimestamp DESC, purchaseItemId ASC
+        `, [
+            userId,
+            userId,
+            userId,
+            planningItemId,
+            userId,
+            userId,
+            userId,
+            planningItemId
+        ]);
+
+        return rows;
+    }
+
     async getPurchaseTransactionCandidates(dateFrom, dateTo, purchaseId) {
         const fromTimestamp = Math.floor(dateFrom / 1000);
         const toTimestamp = Math.floor(dateTo / 1000);

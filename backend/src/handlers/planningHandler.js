@@ -93,6 +93,13 @@ async function planningHandler(req, res, url) {
             return;
         }
 
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/planning\/item\/\d+\/fact$/)) {
+            const data = await planningService.getItemFact(req.user.user_id, req.params.id);
+
+            sendJson(res, 200, data);
+            return;
+        }
+
         if (req.method === 'POST' && url.pathname.match(/^\/api\/planning\/item\/\d+\/transactions$/)) {
             const data = await readJson(req);
             const result = await planningService.linkTransaction(req.user.user_id, req.params.id, data);

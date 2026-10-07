@@ -4435,6 +4435,57 @@ textarea.planing-textarea {
 	color: #778ba5;
 }
 
+.planing-factual-state {
+	align-items: center;
+	border: 1px solid rgba(20,184,166,.2);
+	border-radius: 8px;
+	display: grid;
+	gap: .65rem;
+	grid-template-columns: minmax(0, 1fr) auto;
+	margin-top: .75rem;
+	padding: .75rem .85rem;
+	text-align: left;
+}
+
+.planing-factual-main {
+	min-width: 0;
+}
+
+.planing-factual-main span,
+.planing-factual-note,
+.planing-factual-side span {
+	color: #0f766e;
+	display: block;
+	font-size: 10pt;
+	font-weight: 800;
+}
+
+.planing-factual-main strong {
+	color: #334155;
+	display: block;
+	font-size: 11pt;
+	margin-top: .15rem;
+	overflow-wrap: anywhere;
+}
+
+.planing-factual-main small {
+	color: #778ba5;
+	display: block;
+	margin-top: .15rem;
+}
+
+.planing-factual-side {
+	align-items: flex-end;
+	display: flex;
+	flex-direction: column;
+	gap: .35rem;
+	text-align: right;
+}
+
+.planing-view-purchase-btn {
+	padding: .45rem .7rem;
+}
+
 .planing-smart-suggestion {
 	align-items: center;
 	border: 1px solid rgba(29,78,216,.16);
@@ -4926,6 +4977,7 @@ textarea.planing-textarea {
 }
 
 .dark-theme .planing-detail-field,
+.dark-theme .planing-factual-state,
 .dark-theme .planing-fact-summary-grid > div,
 .dark-theme .planing-fact-lines > div,
 .dark-theme .planing-fact-secondary > div {
@@ -5425,8 +5477,14 @@ textarea.planing-textarea {
 	}
 
 	.planing-linked-summary,
+	.planing-factual-state,
 	.planing-transaction-row {
 		grid-template-columns: 1fr;
+	}
+
+	.planing-factual-side {
+		align-items: flex-start;
+		text-align: left;
 	}
 
 	.planing-transaction-side {

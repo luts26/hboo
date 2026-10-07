@@ -67,6 +67,9 @@ const routes = {
     'GET /api/planning/item/:id/transactions/linked': {
         handler: planningHandler
     },
+    'GET /api/planning/item/:id/fact': {
+        handler: planningHandler
+    },
     'POST /api/planning/item/:id/transactions': {
         handler: planningHandler
     },

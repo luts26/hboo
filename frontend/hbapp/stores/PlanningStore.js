@@ -7,9 +7,10 @@ import {
 	readPlanningSyncMetadata
 } from '../services/PlanningSyncMetadata.js'
 import PlanningSyncQueue from '../services/PlanningSyncQueue.js'
+import ProductCatalogLocalRepository from '../services/ProductCatalogLocalRepository.js'
 import TransactionLocalRepository from '../services/TransactionLocalRepository.js'
 import networkStatusService from '../services/NetworkStatusService.js'
-import {API_AUTH_STATUS, getAuthState, subscribeAuthState} from '../services/AuthSession.js'
+import {API_AUTH_STATUS, getAuthState, getAuthenticatedUserId, subscribeAuthState} from '../services/AuthSession.js'
 import {calculateSummary, endOfDay, startOfDay} from '../services/PlanningCalculator.js'
 
 const SERVER_REVALIDATION_MIN_INTERVAL_MS = 15 * 1000
@@ -250,6 +251,7 @@ class PlanningStore {
 		syncQueue = new PlanningSyncQueue(),
 		balanceRepository = new BalanceLocalRepository(),
 		transactionRepository = new TransactionLocalRepository(),
+		purchaseRepository = new ProductCatalogLocalRepository(),
 		autoRegisterSyncTriggers = true
 	} = {}) {
 		this.repository = repository
@@ -257,6 +259,7 @@ class PlanningStore {
 		this.syncQueue = syncQueue
 		this.balanceRepository = balanceRepository
 		this.transactionRepository = transactionRepository
+		this.purchaseRepository = purchaseRepository
 		this.listeners = new Set()
 		this.unsubscribeNetworkStatus = null
 		this.unsubscribeAuthStatus = null
@@ -291,6 +294,7 @@ class PlanningStore {
 			lastSuccessfulServerCheckAt: syncMetadata.lastSuccessfulServerCheckAt,
 			lastUpdated: null,
 			transactionLinks: {},
+			itemFacts: {},
 			smartSuggestions: {}
 		}
 		if (autoRegisterSyncTriggers) this.registerSyncTriggers()
@@ -346,6 +350,7 @@ class PlanningStore {
 			planningItems: [...this.state.planningItems],
 			deletedItemIds: [...this.state.deletedItemIds],
 			transactionLinks: {...this.state.transactionLinks},
+			itemFacts: {...this.state.itemFacts},
 			smartSuggestions: {...this.state.smartSuggestions}
 		}
 	}
@@ -744,6 +749,28 @@ class PlanningStore {
 		}
 	}
 
+	getItemFactState(itemId) {
+		return this.state.itemFacts[String(itemId)] || {
+			loading: false,
+			error: null,
+			source: null,
+			fact: null
+		}
+	}
+
+	setItemFactState(itemId, patch = {}) {
+		const key = String(itemId)
+		this.setState({
+			itemFacts: {
+				...this.state.itemFacts,
+				[key]: {
+					...this.getItemFactState(key),
+					...patch
+				}
+			}
+		})
+	}
+
 	setTransactionLinkState(itemId, patch = {}) {
 		const key = String(itemId)
 		this.setState({
@@ -816,15 +843,144 @@ class PlanningStore {
 		return this.getState()
 	}
 
+	async loadPlanningItemFact(itemId, {force = false} = {}) {
+		if (isTemporaryId(itemId)) {
+			this.setItemFactState(itemId, {
+				loading: false,
+				error: null,
+				source: 'local',
+				fact: this.getEmptyItemFact(itemId)
+			})
+			return this.getState()
+		}
+
+		const current = this.getItemFactState(itemId)
+		if (current.loading || (current.fact && !force)) return this.getState()
+
+		this.setItemFactState(itemId, {loading: true, error: null})
+
+		if (!this.isOffline() && hasUsableApiAuth()) {
+			try {
+				const fact = await this.apiService.getItemFact(itemId)
+				this.setItemFactState(itemId, {
+					loading: false,
+					error: null,
+					source: 'api',
+					fact: this.normalizeItemFact(itemId, fact)
+				})
+				return this.getState()
+			} catch (error) {
+				const localFact = await this.buildCachedItemFact(itemId)
+				this.setItemFactState(itemId, {
+					loading: false,
+					error,
+					source: 'cache',
+					fact: localFact
+				})
+				return this.getState()
+			}
+		}
+
+		this.setItemFactState(itemId, {
+			loading: false,
+			error: null,
+			source: 'cache',
+			fact: await this.buildCachedItemFact(itemId)
+		})
+		return this.getState()
+	}
+
+	getEmptyItemFact(itemId) {
+		return {
+			planningItemId: Number(itemId) || itemId,
+			facts: [],
+			transaction: null,
+			purchase: null,
+			receipt: null,
+			items: []
+		}
+	}
+
+	normalizeItemFact(itemId, fact = {}) {
+		const facts = Array.isArray(fact.facts) ? fact.facts : []
+		const primary = facts[0] || null
+		return {
+			planningItemId: fact.planningItemId ?? Number(itemId) ?? itemId,
+			facts,
+			transaction: fact.transaction || primary?.transaction || null,
+			purchase: fact.purchase || primary?.purchase || null,
+			receipt: fact.receipt || primary?.receipt || null,
+			items: Array.isArray(fact.items) ? fact.items : (primary?.items || [])
+		}
+	}
+
+	async buildCachedItemFact(itemId) {
+		let linkedResult = null
+		if (!this.isOffline() && hasUsableApiAuth()) {
+			try {
+				linkedResult = await this.apiService.getLinkedTransactions(itemId)
+			} catch {
+				linkedResult = this.getTransactionLinkState(itemId)
+			}
+		} else {
+			linkedResult = this.getTransactionLinkState(itemId)
+		}
+
+		const linkedTransactions = Array.isArray(linkedResult?.transactions)
+			? linkedResult.transactions
+			: (Array.isArray(linkedResult?.linkedTransactions) ? linkedResult.linkedTransactions : [])
+		const userId = getAuthenticatedUserId()
+		const purchases = (await this.purchaseRepository.getPurchases().catch(() => []))
+			.filter(purchase => !userId || !purchase.userId || Number(purchase.userId) === Number(userId))
+
+		const facts = linkedTransactions.map(transaction => {
+			const purchase = purchases.find(candidate => {
+				const linked = candidate.linkedTransaction
+				return linked
+					&& String(linked.provider) === String(transaction.provider)
+					&& String(linked.providerTransactionId) === String(transaction.providerTransactionId)
+			}) || null
+
+			return {
+				transaction,
+				purchase: purchase ? this.getCachedFactPurchase(purchase) : null,
+				receipt: purchase?.receipt || (purchase?.hasReceipt ? {id: purchase.receipt?.id || null} : null),
+				items: purchase?.items || []
+			}
+		})
+
+		return this.normalizeItemFact(itemId, {
+			planningItemId: Number(itemId) || itemId,
+			facts
+		})
+	}
+
+	getCachedFactPurchase(purchase) {
+		return {
+			id: purchase.serverId || purchase.id,
+			localId: purchase.localId || purchase.id,
+			merchantId: purchase.merchantServerId || purchase.merchantId || null,
+			merchantName: purchase.merchantName || null,
+			purchasedAt: purchase.purchasedAt,
+			paymentType: purchase.paymentType,
+			total: Number(purchase.total) || 0,
+			hasReceipt: Boolean(purchase.hasReceipt || purchase.receipt?.id),
+			receipt: purchase.receipt || null,
+			itemCount: Array.isArray(purchase.items) ? purchase.items.length : 0
+		}
+	}
+
 	async linkPlanningTransaction(itemId, transaction) {
 		const result = await this.apiService.linkTransaction(itemId, transaction)
 		this.applyLinkedTransactionResult(itemId, result)
+		await this.loadPlanningItemFact(itemId, {force: true})
 		return this.getState()
 	}
 
 	async unlinkPlanningTransaction(itemId, transaction) {
 		const result = await this.apiService.unlinkTransaction(itemId, transaction)
 		this.applyLinkedTransactionResult(itemId, result)
+		await this.loadPlanningItemFact(itemId, {force: true})
 		return this.getState()
 	}
 

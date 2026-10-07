@@ -43,6 +43,7 @@ export default class PlaningPage extends AbstractClass {
 		modalView: 'details',
 		selectedItemId: null,
 		transactionLinks: {},
+		itemFacts: {},
 		smartSuggestions: {},
 		mode: 'plan'
 	}
@@ -90,6 +91,7 @@ export default class PlaningPage extends AbstractClass {
 				modalView: this.state.modalView,
 				selectedItemId: this.state.selectedItemId,
 				transactionLinks: state.transactionLinks || {},
+				itemFacts: state.itemFacts || {},
 				smartSuggestions: state.smartSuggestions || {},
 				mode: this.state.mode || 'plan'
 			}
@@ -252,6 +254,15 @@ export default class PlaningPage extends AbstractClass {
 			linkedTransactions: [],
 			linkedAmount: 0,
 			remainingAmount: null
+		}
+	}
+
+	getItemFactState(itemId) {
+		return this.state.itemFacts?.[String(itemId)] || {
+			loading: false,
+			error: null,
+			source: null,
+			fact: null
 		}
 	}
 
@@ -537,6 +548,48 @@ export default class PlaningPage extends AbstractClass {
 			</div>`
 	}
 
+	getFactualStateTemplate(item, {compact = false} = {}) {
+		const state = this.getItemFactState(item.id)
+		const fact = state.fact
+		if (!fact && state.loading) {
+			return compact ? '' : '<div class="planing-factual-state"><span>Loading payment facts...</span></div>'
+		}
+		if (!fact?.transaction) return ''
+
+		const transaction = fact.transaction
+		const purchase = fact.purchase
+		const receipt = fact.receipt || purchase?.receipt
+		const paymentAmount = transaction.expenseAmount ?? Math.abs(Number(transaction.amount) || 0)
+		const merchant = purchase?.merchantName || transaction.description || 'Payment'
+		const purchaseId = purchase?.localId || purchase?.id
+
+		if (!purchase) {
+			return `
+				<div class="planing-factual-state">
+					<div class="planing-factual-main">
+						<span>Paid</span>
+						<strong>${this.escapeHtml(transaction.description || 'Payment')} · ${this.formatAmount(paymentAmount)} грн</strong>
+						<small>${this.formatPlanningDate(transaction.timestamp)}</small>
+					</div>
+					${compact ? '' : '<div class="planing-factual-note">No purchase details</div>'}
+				</div>`
+		}
+
+		return `
+			<div class="planing-factual-state">
+				<div class="planing-factual-main">
+					<span>Actual purchase</span>
+					<strong>${this.formatAmount(purchase.total)} грн</strong>
+					<small>${this.escapeHtml(merchant)} · ${this.formatPlanningDate(new Date(purchase.purchasedAt).getTime())}</small>
+				</div>
+				<div class="planing-factual-side">
+					<span>${Number(purchase.itemCount ?? fact.items?.length ?? 0)} items</span>
+					${receipt ? '<span>Receipt available</span>' : ''}
+					${purchaseId && !compact ? `<button class="hboo-button planing-view-purchase-btn" type="button" data-action="planning-view-purchase" data-purchase-id="${this.escapeHtml(purchaseId)}">View purchase</button>` : ''}
+				</div>
+			</div>`
+	}
+
 	getChecklistProgressTemplate(item) {
 		const checklist = this.getChecklistItems(item)
 		if (!checklist.length) return ''
@@ -566,6 +619,7 @@ export default class PlaningPage extends AbstractClass {
 						<div class="planing-item-category">${this.escapeHtml(this.getCategoryName(item))}</div>
 						${item.merchantId ? `<div class="planing-item-merchant">${this.escapeHtml(this.getMerchantNameById(item.merchantId) || `Merchant #${item.merchantId}`)}</div>` : ''}
 						${this.getPlanFactTemplate(item)}
+						${this.getFactualStateTemplate(item, {compact: true})}
 						${this.getChecklistProgressTemplate(item)}
 						<span>${this.formatPlanningDate(item.date)}</span>
 					</div>
@@ -998,6 +1052,7 @@ export default class PlaningPage extends AbstractClass {
 					</div>
 					<div class="planing-detail-desc"><span>Note</span>${note}</div>
 					${this.getPlanFactTemplate(item)}
+					${this.getFactualStateTemplate(item)}
 					${item.status === 'pending' ? this.getSmartSuggestionTemplate(item) : ''}
 					${this.getChecklistSummaryTemplate(item)}
 					<div class="app-modal-actions planing-modal-actions planing-detail-actions">
@@ -1223,6 +1278,7 @@ export default class PlaningPage extends AbstractClass {
 		this.state.modalView = 'details'
 		this.state.selectedItemId = itemId
 		this.render()
+		if (modal === 'detail' && itemId) planningStore.loadPlanningItemFact(itemId).catch(() => {})
 	}
 
 	closeModal() {
@@ -1247,7 +1303,15 @@ export default class PlaningPage extends AbstractClass {
 		this.state.modalView = 'transactions'
 		this.state.selectedItemId = itemId
 		this.render()
+		await planningStore.loadPlanningItemFact(itemId).catch(() => {})
 		await planningStore.loadPlanningItemTransactions(itemId)
+	}
+
+	openPurchaseFromFact(actionTarget) {
+		const purchaseId = actionTarget?.dataset.purchaseId
+		if (!purchaseId) return
+		this.closeModal()
+		this.router.redirectRouter(`/purchases#purchase=${encodeURIComponent(purchaseId)}`)
 	}
 
 	getChecklistFormData(form) {
@@ -1529,6 +1593,7 @@ export default class PlaningPage extends AbstractClass {
 			if (actionTarget?.dataset.action === 'planning-shopping-add') return this.addShoppingItem(event)
 			if (actionTarget?.dataset.action === 'planning-checklist-toggle') return this.toggleChecklistItem(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-smart-confirm') return this.confirmSmartSuggestion(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-view-purchase') return this.openPurchaseFromFact(actionTarget)
 			// if (actionTarget?.dataset.action === 'planning-transaction-link') return this.linkPlanningTransaction(actionTarget)
 			// if (actionTarget?.dataset.action === 'planning-transaction-unlink') return this.unlinkPlanningTransaction(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-checklist-add') return this.addChecklistFormRow(event)

@@ -151,6 +151,7 @@ export default class PurchasePage extends AbstractClass {
 	receiptLocalRepository = new ReceiptLocalRepository()
 	receiptApiService = new ReceiptApiService()
 	activeReceiptUrls = new Set()
+	openedPurchaseHash = ''
 	state = {
 		categories: [],
 		products: [],
@@ -252,8 +253,22 @@ export default class PurchasePage extends AbstractClass {
 			this.state.rangeUnavailableOffline = Boolean(purchaseResult?.unavailableOffline)
 			this.state.loading = false
 			this.render()
+			this.openPurchaseFromHash().catch(() => {})
 			this.apiService.syncService.processQueue({reason: 'purchase-page-startup'}).catch(() => {})
 		})
+	}
+
+	getPurchaseHashId() {
+		const hash = String(window.location.hash || '').replace(/^#/, '')
+		const params = new URLSearchParams(hash)
+		return params.get('purchase')
+	}
+
+	async openPurchaseFromHash() {
+		const purchaseId = this.getPurchaseHashId()
+		if (!purchaseId || purchaseId === this.openedPurchaseHash) return
+		this.openedPurchaseHash = purchaseId
+		await this.openPurchase(purchaseId)
 	}
 
 	async refreshSelectedRangeFromLocal() {

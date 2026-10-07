@@ -298,6 +298,22 @@ class PlanningService {
         };
     }
 
+    async getItemFact(userId, itemId) {
+        const {item} = await this.getItemWithPeriod(userId, itemId);
+        const rows = await transactionRepository.getPlanningItemFacts(userId, item.id);
+        const facts = this.formatPlanningFacts(rows);
+        const primary = facts[0] || null;
+
+        return {
+            planningItemId: Number(item.id),
+            facts,
+            transaction: primary?.transaction || null,
+            purchase: primary?.purchase || null,
+            receipt: primary?.receipt || null,
+            items: primary?.items || []
+        };
+    }
+
     async linkTransaction(userId, itemId, data) {
         const {item} = await this.getItemWithPeriod(userId, itemId);
         const provider = this.requireProvider(data.provider);
@@ -462,6 +478,81 @@ class PlanningService {
             linked: Boolean(transaction.linked),
             linkId: transaction.linkId === undefined ? null : Number(transaction.linkId),
             linkedAt: transaction.linkedAt ? this.formatDateTime(transaction.linkedAt) : null
+        };
+    }
+
+    formatPlanningFacts(rows = []) {
+        const factsByTransaction = new Map();
+
+        rows.forEach(row => {
+            const transaction = this.formatFactTransaction(row);
+            const key = `${transaction.provider}:${transaction.providerTransactionId}`;
+
+            if (!factsByTransaction.has(key)) {
+                factsByTransaction.set(key, {
+                    transaction,
+                    purchase: row.purchaseId ? this.formatFactPurchase(row) : null,
+                    receipt: row.receiptId ? {id: Number(row.receiptId)} : null,
+                    items: []
+                });
+            }
+
+            const fact = factsByTransaction.get(key);
+            if (row.purchaseItemId) {
+                fact.items.push(this.formatFactPurchaseItem(row));
+            }
+        });
+
+        return Array.from(factsByTransaction.values()).map(fact => ({
+            ...fact,
+            purchase: fact.purchase ? {
+                ...fact.purchase,
+                itemCount: fact.items.length
+            } : null
+        }));
+    }
+
+    formatFactTransaction(row) {
+        return this.formatMatchedTransaction({
+            provider: row.provider,
+            providerTransactionId: row.providerTransactionId,
+            timestamp: row.transactionTimestamp,
+            amount: row.transactionAmount,
+            description: row.transactionDescription,
+            category: row.transactionCategory,
+            linked: true,
+            linkId: row.planningTransactionLinkId,
+            linkedAt: row.planningLinkedAt
+        });
+    }
+
+    formatFactPurchase(row) {
+        return {
+            id: Number(row.purchaseId),
+            merchantId: row.merchantId === null || row.merchantId === undefined ? null : Number(row.merchantId),
+            merchantName: row.merchantName || null,
+            purchasedAt: this.formatDateTime(row.purchasedAt),
+            paymentType: row.paymentType,
+            total: this.toMoney(row.purchaseTotal),
+            hasReceipt: Boolean(row.receiptId),
+            receipt: row.receiptId ? {id: Number(row.receiptId)} : null,
+            itemCount: 0
+        };
+    }
+
+    formatFactPurchaseItem(row) {
+        return {
+            id: Number(row.purchaseItemId),
+            purchaseId: Number(row.purchaseId),
+            productId: Number(row.productId),
+            productName: row.productName,
+            categoryId: Number(row.categoryId),
+            categoryName: row.categoryName,
+            measurementType: row.measurementType,
+            productStatus: row.productStatus,
+            quantity: Number(row.quantity),
+            unit: row.unit,
+            total: this.toMoney(row.itemTotal)
         };
     }
 
