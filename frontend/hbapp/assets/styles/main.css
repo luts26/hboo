@@ -6552,6 +6552,29 @@ textarea.planing-textarea {
 	margin: 0;
 }
 
+.receipt-review-match,
+.receipt-review-alias {
+	display: grid;
+	gap: .35rem;
+}
+
+.receipt-review-match-option {
+	background: rgba(64, 94, 255, .08);
+	border: 1px solid rgba(64, 94, 255, .24);
+	border-radius: 8px;
+	color: inherit;
+	cursor: pointer;
+	padding: .45rem .6rem;
+	text-align: left;
+}
+
+.receipt-review-match-option span,
+.receipt-review-alias small,
+.receipt-review-match small {
+	color: #73808c;
+	font-size: 8.5pt;
+}
+
 .receipt-review-product-help {
 	color: #73808c;
 }

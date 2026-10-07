@@ -343,3 +343,23 @@ test('normalizes kg/g and l/ml while preserving entered unit outside analytics',
     assert.deepEqual(normalizeQuantity(0.85, 'l'), {quantity: 850, unit: 'ml'});
     assert.deepEqual(normalizeQuantity(10, 'pcs'), {quantity: 10, unit: 'pcs'});
 });
+
+test('receipt raw name is purchase item evidence and does not alter factual amount unit price', async () => {
+    const service = makeService();
+    const purchase = await service.createPurchase(1, {
+        purchased_at: '2026-09-28T12:00:00',
+        payment_type: 'cash',
+        items: [{
+            product_id: 10,
+            quantity: 900,
+            unit: 'g',
+            total: 46.50,
+            raw_name: 'Хліб пш.Панський 400г'
+        }]
+    });
+
+    assert.equal(purchase.items[0].quantity, 900);
+    assert.equal(purchase.items[0].unit, 'g');
+    assert.equal(purchase.items[0].total, 46.50);
+    assert.equal(purchase.items[0].rawName, 'Хліб пш.Панський 400г');
+});

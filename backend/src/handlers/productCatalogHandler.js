@@ -40,8 +40,31 @@ async function productCatalogHandler(req, res, url) {
             return;
         }
 
+        if (req.method === 'POST' && url.pathname === '/api/products/match') {
+            sendJson(res, 200, await productCatalogService.matchProduct(await readJson(req)));
+            return;
+        }
+
         if (req.method === 'POST' && url.pathname === '/api/products') {
             sendJson(res, 201, await productCatalogService.createProduct(await readJson(req)));
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname.match(/^\/api\/products\/\d+\/aliases$/)) {
+            const aliases = await productCatalogService.getProductAliases(req.params.id);
+            sendJsonOrNotFound(res, aliases, 'Product not found');
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname.match(/^\/api\/products\/\d+\/aliases$/)) {
+            const result = await productCatalogService.createProductAlias(req.params.id, await readJson(req));
+            sendJsonOrNotFound(res, result, 'Product not found', result?.created ? 201 : 200);
+            return;
+        }
+
+        if (req.method === 'DELETE' && url.pathname.match(/^\/api\/products\/\d+\/aliases\/\d+$/)) {
+            const deleted = await productCatalogService.deleteProductAlias(req.params.id, req.params.aliasId);
+            sendJsonOrNotFound(res, deleted ? {deleted: true, alias: deleted} : null, 'Product alias not found');
             return;
         }
 
@@ -146,13 +169,13 @@ async function readJson(req) {
     }
 }
 
-function sendJsonOrNotFound(res, data, message) {
+function sendJsonOrNotFound(res, data, message, statusCode = 200) {
     if (!data) {
         sendJson(res, 404, {error: message});
         return;
     }
 
-    sendJson(res, 200, data);
+    sendJson(res, statusCode, data);
 }
 
 export default productCatalogHandler;

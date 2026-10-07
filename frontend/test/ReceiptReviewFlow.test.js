@@ -114,11 +114,13 @@ test('receipt review requires explicit product selection and reuses existing cre
 	assert.match(itemTemplate, /Search existing product/)
 	assert.match(itemTemplate, /Create new product/)
 	assert.match(itemTemplate, /OCR text is not a selected Product/)
+	assert.match(itemTemplate, /data-review-product-match/)
+	assert.match(source, /Remember this match/)
 	assert.match(validate, /Every review item must have an explicitly selected product/)
 	assert.match(createItem, /productId: item\.productId \|\| null/)
 	assert.match(createItem, /rawName: item\.rawName \|\| ''/)
 	assert.match(createItem, /productQuery: item\.productQuery \|\| ''/)
-	assert.doesNotMatch(source, /ProductMatcher|fuzzy|automatic Product/i)
+	assert.doesNotMatch(source, /automatic Product/i)
 })
 
 test('receipt review preselects only exact merchants and allows correction', () => {
@@ -175,6 +177,25 @@ test('receipt review product search preserves raw OCR name separately from selec
 	assert.match(selectProduct, /row\.productName = product\.name/)
 	assert.match(selectProduct, /row\.productQuery = product\.name/)
 	assert.doesNotMatch(selectProduct, /rawName\s*=/)
+})
+
+test('receipt review product matcher is advisory and alias learning is explicit', () => {
+	const source = read('hbapp/pages/PurchasePage.js')
+	const openReview = extractMethod(source, 'openReceiptReview')
+	const matchLoader = extractMethod(source, 'loadReceiptReviewProductMatches')
+	const aliasMethod = extractMethod(source, 'rememberReceiptReviewAlias')
+	const selectReviewProduct = extractMethod(source, 'selectReceiptReviewProduct')
+	const payload = extractMethod(source, 'buildReceiptReviewPayload')
+
+	assert.match(openReview, /loadReceiptReviewProductMatches/)
+	assert.match(matchLoader, /apiService\.matchProduct/)
+	assert.match(matchLoader, /catch/)
+	assert.doesNotMatch(matchLoader, /item\.productId\s*=/)
+	assert.match(aliasMethod, /apiService\.createProductAlias/)
+	assert.match(aliasMethod, /item\.rawName/)
+	assert.match(aliasMethod, /Could not save alias\. You can still create the purchase\./)
+	assert.doesNotMatch(selectReviewProduct, /item\.unit = getAllowedUnits/)
+	assert.match(payload, /raw_name: item\.rawName \|\| null/)
 })
 
 test('receipt review create product is secondary and avoids exact-name duplicates', () => {

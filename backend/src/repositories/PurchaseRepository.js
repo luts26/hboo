@@ -29,6 +29,7 @@ const itemFields = `
     pi.quantity,
     pi.unit,
     pi.total,
+    pi.raw_name AS rawName,
     pi.created_at AS createdAt,
     pi.updated_at AS updatedAt
 `;
@@ -206,16 +207,18 @@ class PurchaseRepository {
                         quantity,
                         unit,
                         total,
+                        raw_name,
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
                 `, [
                     purchaseId,
                     item.productId,
                     item.quantity,
                     item.unit,
-                    item.total
+                    item.total,
+                    item.rawName
                 ]);
             }
 
@@ -318,16 +321,18 @@ class PurchaseRepository {
                         quantity,
                         unit,
                         total,
+                        raw_name,
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
                 `, [
                     purchaseId,
                     item.productId,
                     item.quantity,
                     item.unit,
-                    item.total
+                    item.total,
+                    item.rawName
                 ]);
             }
 
@@ -408,16 +413,18 @@ class PurchaseRepository {
                         quantity,
                         unit,
                         total,
+                        raw_name,
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
                 `, [
                     purchaseId,
                     item.productId,
                     item.quantity,
                     item.unit,
-                    item.total
+                    item.total,
+                    item.rawName
                 ]);
             }
 

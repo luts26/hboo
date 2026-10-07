@@ -126,6 +126,12 @@ const createReceiptReviewItem = (item = {}) => ({
 	confidence: Number(item.confidence || 0),
 	parserWarnings: Array.isArray(item.warnings) ? item.warnings : [],
 	validation: item.validation || null,
+	productMatch: null,
+	productMatchCandidates: [],
+	productMatchError: '',
+	aliasSaving: false,
+	aliasSaved: false,
+	aliasError: '',
 	suggestions: []
 })
 
@@ -143,6 +149,15 @@ const toApiDateTimeValue = value => {
 }
 
 const normalizeComparableText = value => normalizeSearchText(value).replace(/\s+/g, ' ').trim()
+
+const isExactProductMatchSource = source => ['alias_merchant', 'alias_global', 'product_name'].includes(source)
+
+const getReviewUnitOptions = item => {
+	const allowedUnits = getAllowedUnits(item.measurementType)
+	const units = allowedUnits.length ? [...allowedUnits] : ['pcs', 'g', 'kg', 'ml', 'l']
+	if (item.unit && !units.includes(item.unit)) units.unshift(item.unit)
+	return units
+}
 
 export default class PurchasePage extends AbstractClass {
 
@@ -355,6 +370,8 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'remove-item') this.removeItem(target.dataset.rowId)
 		if (action === 'select-product') this.selectProduct(target.dataset.rowId, target.dataset.productId)
 		if (action === 'select-review-product') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
+		if (action === 'accept-review-product-match') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
+		if (action === 'remember-review-product-alias') this.rememberReceiptReviewAlias(target.dataset.rowId)
 		if (action === 'start-create-product') this.startCreateProduct(target.dataset.rowId)
 		if (action === 'cancel-create-product') this.cancelCreateProduct()
 		if (action === 'save-new-product') this.saveNewProduct()
@@ -493,14 +510,43 @@ export default class PurchasePage extends AbstractClass {
 		item.categoryId = product.categoryId
 		item.categoryName = product.categoryName
 		item.measurementType = product.measurementType
-		if (!item.unit || !getAllowedUnits(product.measurementType).includes(item.unit)) {
-			item.unit = getAllowedUnits(product.measurementType)[0] || item.unit || ''
-			this.updateReceiptReviewUnitOptionsDom(item)
-		}
+		this.updateReceiptReviewUnitOptionsDom(item)
 		item.suggestions = []
 		const input = document.querySelector(`[data-review-item-field][data-row-id="${rowId}"][name="productQuery"]`)
 		if (input) input.value = item.productQuery
 		this.updateReceiptReviewProductDom(item)
+	}
+
+	async rememberReceiptReviewAlias(rowId) {
+		const item = this.state.receiptReview.form?.items?.find(row => row.rowId === rowId)
+		if (!item?.rawName || !item.productId || item.aliasSaving) return
+		const product = this.state.products.find(row => String(row.id) === String(item.productId))
+		const productId = product?.serverId || item.productServerId || null
+		if (!productId) {
+			item.aliasError = 'Product must be synced before saving an alias.'
+			this.updateReceiptReviewProductDom(item)
+			return
+		}
+		const selectedMerchant = this.state.merchants.find(row => String(row.id) === String(this.state.receiptReview.form?.merchantId))
+		const merchantId = selectedMerchant?.serverId || this.state.receiptReview.form?.merchantId || null
+		item.aliasSaving = true
+		item.aliasError = ''
+		item.aliasSaved = false
+		this.updateReceiptReviewProductDom(item)
+		try {
+			await this.apiService.createProductAlias(productId, {
+				alias: item.rawName,
+				merchantId
+			})
+			item.aliasSaved = true
+		} catch (error) {
+			item.aliasError = error?.status === 409 || error?.statusCode === 409
+				? 'This receipt name already maps to another Product.'
+				: 'Could not save alias. You can still create the purchase.'
+		} finally {
+			item.aliasSaving = false
+			this.updateReceiptReviewProductDom(item)
+		}
 	}
 
 	addItem() {
@@ -598,7 +644,8 @@ export default class PurchasePage extends AbstractClass {
 				measurementType: item.measurementType,
 				quantity: item.quantity,
 				unit: item.unit,
-				total: item.total
+				total: item.total,
+				rawName: item.rawName || null
 			}))
 
 		return {
@@ -1060,6 +1107,9 @@ export default class PurchasePage extends AbstractClass {
 			this.state.receiptReview.draft = parsed.draft
 			this.state.receiptReview.form = this.createReceiptReviewForm(receipt, parsed.draft)
 			this.state.receiptReview.loading = false
+			this.render()
+			this.loadReceiptReviewProductMatches().catch(() => {})
+			return
 		} catch (error) {
 			this.state.receiptReview.loading = false
 			this.state.receiptReview.error = error?.message || 'Could not parse receipt.'
@@ -1092,6 +1142,60 @@ export default class PurchasePage extends AbstractClass {
 		if (!hints.length) return ''
 		const match = this.state.merchants.find(merchant => hints.includes(normalizeComparableText(merchant.name)))
 		return match?.id || ''
+	}
+
+	async loadReceiptReviewProductMatches() {
+		const form = this.state.receiptReview.form
+		if (!form?.items?.length) return
+		const selectedMerchant = this.state.merchants.find(item => String(item.id) === String(form.merchantId))
+		const merchantId = selectedMerchant?.serverId || form.merchantId || null
+		const results = await Promise.all(form.items.map(async item => {
+			if (!item.rawName || item.productId) return null
+			try {
+				return {item, result: await this.apiService.matchProduct({rawName: item.rawName, merchantId})}
+			} catch (error) {
+				return {item, error}
+			}
+		}))
+
+		results.forEach(entry => {
+			if (!entry) return
+			if (entry.error) {
+				entry.item.productMatchError = 'Product matching is unavailable.'
+				return
+			}
+			this.applyReceiptReviewProductMatch(entry.item, entry.result)
+		})
+		this.renderReceiptReviewModalPreservingScroll()
+	}
+
+	applyReceiptReviewProductMatch(item, result) {
+		const candidates = []
+		if (result?.match) candidates.push(result.match)
+		if (Array.isArray(result?.candidates)) candidates.push(...result.candidates)
+		const seen = new Set()
+		const mapped = candidates
+			.map(candidate => {
+				const product = this.findLocalProductForMatch(candidate)
+				if (!product) return null
+				const key = String(product.id)
+				if (seen.has(key)) return null
+				seen.add(key)
+				return {
+					...product,
+					matchSource: candidate.source || result.source || 'token_similarity'
+				}
+			})
+			.filter(Boolean)
+		item.productMatch = result?.match ? mapped[0] || null : null
+		item.productMatchCandidates = mapped.slice(0, 3)
+		item.productMatchError = ''
+	}
+
+	findLocalProductForMatch(candidate) {
+		return this.state.products.find(product => String(product.serverId || product.id) === String(candidate.productId))
+			|| this.state.products.find(product => normalizeComparableText(product.name) === normalizeComparableText(candidate.productName))
+			|| null
 	}
 
 	closeReceiptReview({render = true, force = false} = {}) {
@@ -1164,9 +1268,17 @@ export default class PurchasePage extends AbstractClass {
 	}
 
 	updateReceiptReviewProductDom(item) {
+		this.updateReceiptReviewMatchDom(item)
 		this.updateReceiptReviewSuggestionsDom(item)
 		this.updateReceiptReviewSelectedProductDom(item)
+		this.updateReceiptReviewAliasDom(item)
 		this.updateReceiptReviewItemStatusDom(item)
+	}
+
+	updateReceiptReviewMatchDom(item) {
+		const container = document.querySelector(`[data-review-product-match][data-row-id="${item.rowId}"]`)
+		if (!container) return
+		container.innerHTML = this.getReceiptReviewProductMatchTemplate(item)
 	}
 
 	updateReceiptReviewSuggestionsDom(item) {
@@ -1186,6 +1298,12 @@ export default class PurchasePage extends AbstractClass {
 		container.textContent = item.productId ? `Selected: ${item.productName}` : 'OCR text is not a selected Product.'
 	}
 
+	updateReceiptReviewAliasDom(item) {
+		const container = document.querySelector(`[data-review-alias][data-row-id="${item.rowId}"]`)
+		if (!container) return
+		container.innerHTML = this.getReceiptReviewAliasTemplate(item)
+	}
+
 	updateReceiptReviewItemStatusDom(item) {
 		const card = document.querySelector(`[data-review-item][data-row-id="${item.rowId}"]`)
 		const statusNode = document.querySelector(`[data-review-item-status][data-row-id="${item.rowId}"]`)
@@ -1199,8 +1317,7 @@ export default class PurchasePage extends AbstractClass {
 	updateReceiptReviewUnitOptionsDom(item) {
 		const select = document.querySelector(`[data-review-item-field][data-row-id="${item.rowId}"][name="unit"]`)
 		if (!select) return
-		const allowedUnits = getAllowedUnits(item.measurementType)
-		const unitOptions = allowedUnits.length ? allowedUnits : ['pcs', 'g', 'kg', 'ml', 'l']
+		const unitOptions = getReviewUnitOptions(item)
 		select.innerHTML = unitOptions.map(unit => `<option value="${unit}" ${unit === item.unit ? 'selected' : ''}>${UNIT_LABELS[unit] || unit}</option>`).join('')
 		select.value = item.unit
 	}
@@ -1289,7 +1406,8 @@ export default class PurchasePage extends AbstractClass {
 				product_id: item.productServerId || item.productId,
 				quantity,
 				unit: item.unit,
-				total
+				total,
+				raw_name: item.rawName || null
 			}))
 		return {
 			client_mutation_id: form.clientMutationId,
@@ -1872,8 +1990,7 @@ export default class PurchasePage extends AbstractClass {
 	}
 
 	getReceiptReviewItemTemplate(item) {
-		const allowedUnits = getAllowedUnits(item.measurementType)
-		const unitOptions = allowedUnits.length ? allowedUnits : ['pcs', 'g', 'kg', 'ml', 'l']
+		const unitOptions = getReviewUnitOptions(item)
 		const status = this.getReceiptReviewItemStatus(item)
 		const evidenceOpen = this.state.receiptReview.evidenceRowId === item.rowId
 		return `<div class="receipt-review-item ${status ? 'needs-check' : ''}" data-review-item data-row-id="${item.rowId}">
@@ -1883,12 +2000,14 @@ export default class PurchasePage extends AbstractClass {
 			</div>
 			<div class="purchase-product-cell receipt-review-product">
 				<label>Product<input name="productQuery" value="${this.escapeHtml(item.productQuery)}" placeholder="Search existing product..." data-review-item-field data-row-id="${item.rowId}" autocomplete="off"></label>
+				<div class="receipt-review-match" data-review-product-match data-row-id="${item.rowId}">${this.getReceiptReviewProductMatchTemplate(item)}</div>
 				<div class="purchase-suggestions" data-review-suggestions data-row-id="${item.rowId}">${item.suggestions.map(product => `
 					<button type="button" data-purchase-action="select-review-product" data-row-id="${item.rowId}" data-product-id="${product.id}">
 						${this.escapeHtml(product.name)} <span>${this.escapeHtml(product.categoryName || '')}</span>
 					</button>
 				`).join('')}</div>
 				<p class="${item.productId ? 'receipt-review-selected-product' : 'receipt-review-product-help'}" data-review-selected-product data-row-id="${item.rowId}">${item.productId ? `Selected: ${this.escapeHtml(item.productName)}` : 'OCR text is not a selected Product.'}</p>
+				<div class="receipt-review-alias" data-review-alias data-row-id="${item.rowId}">${this.getReceiptReviewAliasTemplate(item)}</div>
 				<button class="purchase-create-product-link receipt-review-create-product" type="button" data-purchase-action="start-create-product" data-row-id="${item.rowId}">+ Create new product</button>
 			</div>
 			<div class="receipt-review-item-grid">
@@ -1904,6 +2023,27 @@ export default class PurchasePage extends AbstractClass {
 			</div>
 			${evidenceOpen ? `<pre class="receipt-ocr-raw">${this.escapeHtml(item.rawText || item.rawName || '')}</pre>` : ''}
 		</div>`
+	}
+
+	getReceiptReviewProductMatchTemplate(item) {
+		if (item.productMatchError) return `<small>${this.escapeHtml(item.productMatchError)}</small>`
+		const candidates = Array.isArray(item.productMatchCandidates) ? item.productMatchCandidates : []
+		if (!candidates.length || item.productId) return ''
+		return candidates.map(product => {
+			const exact = isExactProductMatchSource(product.matchSource)
+			const label = exact ? 'Known receipt name' : 'Suggested'
+			return `<button class="receipt-review-match-option" type="button" data-purchase-action="accept-review-product-match" data-row-id="${item.rowId}" data-product-id="${product.id}">
+				${this.escapeHtml(label)}: ${this.escapeHtml(product.name)} <span>${this.escapeHtml(product.categoryName || '')}</span>
+			</button>`
+		}).join('')
+	}
+
+	getReceiptReviewAliasTemplate(item) {
+		if (!item.rawName || !item.productId) return ''
+		if (item.aliasSaved) return '<small>Receipt name saved for next time.</small>'
+		const disabled = item.aliasSaving ? 'disabled' : ''
+		return `<button class="hboo-button" type="button" data-purchase-action="remember-review-product-alias" data-row-id="${item.rowId}" ${disabled}>${item.aliasSaving ? 'Saving match...' : 'Remember this match'}</button>
+			${item.aliasError ? `<small>${this.escapeHtml(item.aliasError)}</small>` : ''}`
 	}
 
 	getStandaloneReceiptsTemplate() {

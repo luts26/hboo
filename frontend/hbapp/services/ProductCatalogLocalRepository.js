@@ -121,7 +121,8 @@ const normalizePurchase = purchase => {
 			productStatus: item.productStatus || item.status || 'active',
 			quantity: Number(item.quantity),
 			unit: item.unit,
-			total: Number(item.total) || 0
+			total: Number(item.total) || 0,
+			rawName: item.rawName || item.raw_name || null
 		})) : [],
 		syncStatus,
 		createdAt: purchase.createdAt || nowIso(),

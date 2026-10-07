@@ -88,7 +88,19 @@ const routes = {
     'GET /api/products': {
         handler: productCatalogHandler
     },
+    'POST /api/products/match': {
+        handler: productCatalogHandler
+    },
     'POST /api/products': {
+        handler: productCatalogHandler
+    },
+    'GET /api/products/:id/aliases': {
+        handler: productCatalogHandler
+    },
+    'POST /api/products/:id/aliases': {
+        handler: productCatalogHandler
+    },
+    'DELETE /api/products/:id/aliases/:aliasId': {
         handler: productCatalogHandler
     },
     'PUT /api/products/:id': {

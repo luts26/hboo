@@ -21,7 +21,8 @@ const toApiPurchase = purchase => ({
 		product_id: toServerId(item.productServerId ?? item.productId),
 		quantity: Number(item.quantity),
 		unit: item.unit,
-		total: Number(item.total)
+		total: Number(item.total),
+		raw_name: item.rawName || null
 	}))
 })
 
@@ -166,6 +167,24 @@ export default class ProductCatalogApiService {
 			reason: 'product-update'
 		})
 		return localProduct
+	}
+
+	async matchProduct({rawName, merchantId = null} = {}) {
+		return api.post('/products/match', {
+			rawName,
+			merchantId: toServerId(merchantId)
+		})
+	}
+
+	async createProductAlias(productId, {alias, merchantId = null} = {}) {
+		return api.post(`/products/${encodeURIComponent(productId)}/aliases`, {
+			alias,
+			merchantId: toServerId(merchantId)
+		})
+	}
+
+	async deleteProductAlias(productId, aliasId) {
+		return api.delete(`/products/${encodeURIComponent(productId)}/aliases/${encodeURIComponent(aliasId)}`)
 	}
 
 	async createMerchant(name) {

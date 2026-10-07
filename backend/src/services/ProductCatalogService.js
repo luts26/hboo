@@ -1,5 +1,7 @@
 import productCatalogRepository from '../repositories/ProductCatalogRepository.js';
 import purchaseRepository from '../repositories/PurchaseRepository.js';
+import productMatcher from './ProductMatcher.js';
+import {normalizeProductText} from './ProductTextNormalizer.js';
 import {
     getAllowedUnits,
     isUnitAllowed,
@@ -15,10 +17,12 @@ class ProductCatalogService {
 
     constructor({
         catalogRepository = productCatalogRepository,
-        purchasesRepository = purchaseRepository
+        purchasesRepository = purchaseRepository,
+        matcher = productMatcher
     } = {}) {
         this.catalogRepository = catalogRepository;
         this.purchasesRepository = purchasesRepository;
+        this.matcher = matcher;
     }
 
     async getCategories(options = {}) {
@@ -47,6 +51,96 @@ class ProductCatalogService {
         });
 
         return this.formatProduct(await this.catalogRepository.updateProduct(id, product));
+    }
+
+    async matchProduct(data) {
+        return this.matcher.match({
+            rawName: data.rawName ?? data.raw_name,
+            merchantId: data.merchantId ?? data.merchant_id ?? null
+        });
+    }
+
+    async getProductAliases(productId) {
+        const id = this.requireId(productId, 'product id');
+        const product = await this.catalogRepository.findProductById(id);
+        if (!product) return null;
+        return (await this.catalogRepository.findProductAliases(id)).map(alias => this.formatProductAlias(alias));
+    }
+
+    async createProductAlias(productId, data) {
+        const id = this.requireId(productId, 'product id');
+        const product = await this.catalogRepository.findProductById(id);
+        if (!product) return null;
+
+        const merchantId = data.merchant_id ?? data.merchantId ?? null;
+        let normalizedMerchantId = null;
+        if (merchantId !== null && merchantId !== '') {
+            normalizedMerchantId = this.requireId(merchantId, 'merchant_id');
+            const merchant = await this.catalogRepository.findMerchantById(normalizedMerchantId);
+            if (!merchant || merchant.status !== 'active') throw this.validationError('merchant_id must reference active merchant');
+        }
+
+        const aliasText = this.requireName(data.alias, 'alias');
+        const normalizedAlias = normalizeProductText(aliasText);
+        if (!normalizedAlias) throw this.validationError('normalized alias is empty');
+
+        const existing = await this.catalogRepository.findProductAliasByNormalized({
+            normalizedAlias,
+            merchantId: normalizedMerchantId
+        });
+        if (existing) {
+            if (Number(existing.productId) === id) {
+                return {
+                    alias: this.formatProductAlias(existing),
+                    idempotent: true,
+                    created: false
+                };
+            }
+
+            const error = new Error('alias already maps to another product in this scope');
+            error.statusCode = 409;
+            throw error;
+        }
+
+        try {
+            return {
+                alias: this.formatProductAlias(await this.catalogRepository.createProductAlias({
+                    productId: id,
+                    merchantId: normalizedMerchantId,
+                    alias: aliasText,
+                    normalizedAlias
+                })),
+                idempotent: false,
+                created: true
+            };
+        } catch (error) {
+            if (error?.code === 'ER_DUP_ENTRY') {
+                const duplicate = await this.catalogRepository.findProductAliasByNormalized({
+                    normalizedAlias,
+                    merchantId: normalizedMerchantId
+                });
+                if (duplicate && Number(duplicate.productId) === id) {
+                    return {
+                        alias: this.formatProductAlias(duplicate),
+                        idempotent: true,
+                        created: false
+                    };
+                }
+                const conflict = new Error('alias already maps to another product in this scope');
+                conflict.statusCode = 409;
+                throw conflict;
+            }
+            throw error;
+        }
+    }
+
+    async deleteProductAlias(productId, aliasId) {
+        const id = this.requireId(productId, 'product id');
+        const alias = await this.catalogRepository.deleteProductAlias({
+            productId: id,
+            aliasId: this.requireId(aliasId, 'alias id')
+        });
+        return alias ? this.formatProductAlias(alias) : null;
     }
 
     async getMerchants(options = {}) {
@@ -189,7 +283,8 @@ class ProductCatalogService {
             productId,
             quantity,
             unit,
-            total
+            total,
+            rawName: this.optionalText(data.raw_name ?? data.rawName)
         };
     }
 
@@ -261,8 +356,23 @@ class ProductCatalogService {
             quantity: Number(item.quantity),
             unit: item.unit,
             total: Number(item.total),
+            rawName: item.rawName || null,
             createdAt: item.createdAt,
             updatedAt: item.updatedAt
+        };
+    }
+
+    formatProductAlias(alias) {
+        return {
+            id: Number(alias.id),
+            productId: Number(alias.productId),
+            productName: alias.productName || null,
+            merchantId: alias.merchantId === null || alias.merchantId === undefined ? null : Number(alias.merchantId),
+            merchantName: alias.merchantName || null,
+            alias: alias.alias,
+            normalizedAlias: alias.normalizedAlias,
+            createdAt: alias.createdAt,
+            updatedAt: alias.updatedAt
         };
     }
 

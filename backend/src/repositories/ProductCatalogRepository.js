@@ -20,6 +20,21 @@ const productFields = `
     p.updated_at AS updatedAt
 `;
 
+const productAliasFields = `
+    pa.id,
+    pa.product_id AS productId,
+    p.name AS productName,
+    p.category_id AS categoryId,
+    pc.name AS categoryName,
+    p.measurement_type AS measurementType,
+    pa.merchant_id AS merchantId,
+    m.name AS merchantName,
+    pa.alias,
+    pa.normalized_alias AS normalizedAlias,
+    pa.created_at AS createdAt,
+    pa.updated_at AS updatedAt
+`;
+
 const merchantFields = `
     id,
     name,
@@ -167,6 +182,84 @@ class ProductCatalogRepository {
         `, [merchant.name]);
 
         return this.findMerchantById(result.insertId);
+    }
+
+    async findProductAliasByNormalized({normalizedAlias, merchantId = null}, connection = pool) {
+        const [rows] = await connection.execute(`
+            SELECT ${productAliasFields}
+            FROM product_alias pa
+            INNER JOIN product p ON p.id = pa.product_id
+            INNER JOIN product_category pc ON pc.id = p.category_id
+            LEFT JOIN merchant m ON m.id = pa.merchant_id
+            WHERE pa.normalized_alias = ?
+              AND ${merchantId === null ? 'pa.merchant_id IS NULL' : 'pa.merchant_id = ?'}
+              AND p.status = 'active'
+            LIMIT 1
+        `, merchantId === null ? [normalizedAlias] : [normalizedAlias, merchantId]);
+
+        return rows[0] || null;
+    }
+
+    async findProductAliasById(aliasId, connection = pool) {
+        const [rows] = await connection.execute(`
+            SELECT ${productAliasFields}
+            FROM product_alias pa
+            INNER JOIN product p ON p.id = pa.product_id
+            INNER JOIN product_category pc ON pc.id = p.category_id
+            LEFT JOIN merchant m ON m.id = pa.merchant_id
+            WHERE pa.id = ?
+            LIMIT 1
+        `, [aliasId]);
+
+        return rows[0] || null;
+    }
+
+    async findProductAliases(productId) {
+        const [rows] = await pool.execute(`
+            SELECT ${productAliasFields}
+            FROM product_alias pa
+            INNER JOIN product p ON p.id = pa.product_id
+            INNER JOIN product_category pc ON pc.id = p.category_id
+            LEFT JOIN merchant m ON m.id = pa.merchant_id
+            WHERE pa.product_id = ?
+            ORDER BY m.name IS NULL ASC, m.name ASC, pa.alias ASC
+        `, [productId]);
+
+        return rows;
+    }
+
+    async createProductAlias(alias) {
+        const [result] = await pool.execute(`
+            INSERT INTO product_alias (
+                product_id,
+                merchant_id,
+                alias,
+                normalized_alias,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, NOW(), NOW())
+        `, [
+            alias.productId,
+            alias.merchantId,
+            alias.alias,
+            alias.normalizedAlias
+        ]);
+
+        return this.findProductAliasById(result.insertId);
+    }
+
+    async deleteProductAlias({productId, aliasId}) {
+        const existing = await this.findProductAliasById(aliasId);
+        if (!existing || Number(existing.productId) !== Number(productId)) return null;
+
+        await pool.execute(`
+            DELETE FROM product_alias
+            WHERE id = ?
+              AND product_id = ?
+        `, [aliasId, productId]);
+
+        return existing;
     }
 }
 
