@@ -4486,6 +4486,83 @@ textarea.planing-textarea {
 	padding: .45rem .7rem;
 }
 
+.planing-product-comparison {
+	border: 1px solid rgba(15,118,110,.14);
+	border-radius: 8px;
+	display: grid;
+	gap: .45rem;
+	margin-top: .75rem;
+	padding: .75rem .85rem;
+	text-align: left;
+}
+
+.planing-product-comparison-title {
+	color: #0f766e;
+	font-size: 10pt;
+	font-weight: 900;
+}
+
+.planing-product-comparison-row {
+	align-items: center;
+	display: grid;
+	gap: .55rem;
+	grid-template-columns: 1.15rem minmax(0, 1fr) auto;
+	min-width: 0;
+}
+
+.planing-product-comparison-icon {
+	color: #778ba5;
+	font-weight: 900;
+	text-align: center;
+}
+
+.planing-product-comparison-main {
+	min-width: 0;
+}
+
+.planing-product-comparison-main strong {
+	color: #334155;
+	display: block;
+	font-size: 10.5pt;
+	overflow-wrap: anywhere;
+}
+
+.planing-product-comparison-main small,
+.planing-product-comparison-note {
+	color: #778ba5;
+	display: block;
+	font-size: 9.5pt;
+	margin-top: .05rem;
+	overflow-wrap: anywhere;
+}
+
+.planing-product-comparison-status {
+	color: #64748b;
+	font-size: 9.5pt;
+	font-weight: 800;
+	text-align: right;
+	white-space: nowrap;
+}
+
+.planing-product-comparison-matched .planing-product-comparison-icon,
+.planing-product-comparison-purchased .planing-product-comparison-icon {
+	color: #0f766e;
+}
+
+.planing-product-comparison-under .planing-product-comparison-icon,
+.planing-product-comparison-over .planing-product-comparison-icon {
+	color: #b45309;
+}
+
+.planing-product-comparison-not_purchased .planing-product-comparison-icon,
+.planing-product-comparison-not_comparable .planing-product-comparison-icon {
+	color: #94a3b8;
+}
+
+.planing-product-comparison-unplanned .planing-product-comparison-icon {
+	color: #2563eb;
+}
+
 .planing-smart-suggestion {
 	align-items: center;
 	border: 1px solid rgba(29,78,216,.16);
@@ -4978,6 +5055,7 @@ textarea.planing-textarea {
 
 .dark-theme .planing-detail-field,
 .dark-theme .planing-factual-state,
+.dark-theme .planing-product-comparison,
 .dark-theme .planing-fact-summary-grid > div,
 .dark-theme .planing-fact-lines > div,
 .dark-theme .planing-fact-secondary > div {
@@ -5485,6 +5563,17 @@ textarea.planing-textarea {
 	.planing-factual-side {
 		align-items: flex-start;
 		text-align: left;
+	}
+
+	.planing-product-comparison-row {
+		align-items: flex-start;
+		grid-template-columns: 1.15rem minmax(0, 1fr);
+	}
+
+	.planing-product-comparison-status {
+		grid-column: 2;
+		text-align: left;
+		white-space: normal;
 	}
 
 	.planing-transaction-side {

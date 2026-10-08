@@ -12,6 +12,7 @@ import TransactionLocalRepository from '../services/TransactionLocalRepository.j
 import networkStatusService from '../services/NetworkStatusService.js'
 import {API_AUTH_STATUS, getAuthState, getAuthenticatedUserId, subscribeAuthState} from '../services/AuthSession.js'
 import {calculateSummary, endOfDay, startOfDay} from '../services/PlanningCalculator.js'
+import {buildPlanningProductComparison} from '../services/PlanningProductComparisonService.js'
 
 const SERVER_REVALIDATION_MIN_INTERVAL_MS = 15 * 1000
 
@@ -910,7 +911,8 @@ class PlanningStore {
 			transaction: fact.transaction || primary?.transaction || null,
 			purchase: fact.purchase || primary?.purchase || null,
 			receipt: fact.receipt || primary?.receipt || null,
-			items: Array.isArray(fact.items) ? fact.items : (primary?.items || [])
+			items: Array.isArray(fact.items) ? fact.items : (primary?.items || []),
+			productComparison: fact.productComparison || primary?.productComparison || null
 		}
 	}
 
@@ -932,6 +934,7 @@ class PlanningStore {
 		const userId = getAuthenticatedUserId()
 		const purchases = (await this.purchaseRepository.getPurchases().catch(() => []))
 			.filter(purchase => !userId || !purchase.userId || Number(purchase.userId) === Number(userId))
+		const planningItem = (this.state.items || []).find(item => String(item.id) === String(itemId)) || null
 
 		const facts = linkedTransactions.map(transaction => {
 			const purchase = purchases.find(candidate => {
@@ -945,7 +948,10 @@ class PlanningStore {
 				transaction,
 				purchase: purchase ? this.getCachedFactPurchase(purchase) : null,
 				receipt: purchase?.receipt || (purchase?.hasReceipt ? {id: purchase.receipt?.id || null} : null),
-				items: purchase?.items || []
+				items: purchase?.items || [],
+				productComparison: purchase
+					? buildPlanningProductComparison(planningItem?.shoppingItems || planningItem?.checklist || [], purchase.items || [])
+					: null
 			}
 		})
 

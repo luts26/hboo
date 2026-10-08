@@ -72,6 +72,7 @@ test('keeps partial Planning to Transaction chain when Purchase is missing', () 
     assert.equal(fact.purchase, null);
     assert.equal(fact.receipt, null);
     assert.deepEqual(fact.items, []);
+    assert.equal(fact.productComparison, null);
 });
 
 test('empty rows represent an unlinked or unlinked-purchase state without stale Purchase data', () => {

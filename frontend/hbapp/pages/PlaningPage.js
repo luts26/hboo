@@ -587,7 +587,90 @@ export default class PlaningPage extends AbstractClass {
 					${receipt ? '<span>Receipt available</span>' : ''}
 					${purchaseId && !compact ? `<button class="hboo-button planing-view-purchase-btn" type="button" data-action="planning-view-purchase" data-purchase-id="${this.escapeHtml(purchaseId)}">View purchase</button>` : ''}
 				</div>
+			</div>
+			${compact ? '' : this.getProductComparisonTemplate(fact.productComparison)}`
+	}
+
+	getProductComparisonStatusLabel(status) {
+		const labels = {
+			matched: 'Purchased as planned',
+			under: 'Purchased less',
+			over: 'Purchased more',
+			purchased: 'Purchased',
+			not_purchased: 'Not purchased',
+			not_comparable: 'Not comparable',
+			unplanned: 'Purchased, not planned'
+		}
+
+		return labels[status] || 'Unknown'
+	}
+
+	getProductComparisonIcon(status) {
+		const icons = {
+			matched: '✓',
+			under: '◐',
+			over: '●',
+			purchased: '✓',
+			not_purchased: '○',
+			not_comparable: '?',
+			unplanned: '+'
+		}
+
+		return icons[status] || '•'
+	}
+
+	formatProductQuantity(quantity) {
+		if (!quantity || quantity.amount === null || quantity.amount === undefined || !quantity.unit) return 'quantity not specified'
+		return `${Number(quantity.amount).toLocaleString('uk-UA', {
+			maximumFractionDigits: 2,
+			minimumFractionDigits: 0
+		})} ${this.escapeHtml(quantity.unit)}`
+	}
+
+	getProductComparisonLine(row) {
+		const planned = row.planned
+			? `Planned ${this.formatProductQuantity(row.planned)}`
+			: 'Not planned'
+		const purchased = row.purchased
+			? `Purchased ${this.formatProductQuantity(row.purchased)}`
+			: (row.status === 'not_purchased' ? 'Not purchased' : 'Purchase identity unresolved')
+
+		return `${planned} · ${purchased}`
+	}
+
+	getProductComparisonRowTemplate(row) {
+		return `
+			<div class="planing-product-comparison-row planing-product-comparison-${this.escapeHtml(row.status)}">
+				<span class="planing-product-comparison-icon" aria-hidden="true">${this.escapeHtml(this.getProductComparisonIcon(row.status))}</span>
+				<div class="planing-product-comparison-main">
+					<strong>${this.escapeHtml(row.productName || 'Product')}</strong>
+					<small>${this.escapeHtml(this.getProductComparisonLine(row))}</small>
+				</div>
+				<span class="planing-product-comparison-status">${this.escapeHtml(this.getProductComparisonStatusLabel(row.status))}</span>
 			</div>`
+	}
+
+	getProductComparisonTemplate(comparison) {
+		if (!comparison) return ''
+		const plannedRows = Array.isArray(comparison.planned) ? comparison.planned : []
+		const unplannedRows = Array.isArray(comparison.unplannedPurchased) ? comparison.unplannedPurchased : []
+		if (!plannedRows.length && !unplannedRows.length) return ''
+
+		const rows = [
+			...plannedRows.map(row => this.getProductComparisonRowTemplate(row)),
+			...unplannedRows.map(row => this.getProductComparisonRowTemplate(row))
+		].join('')
+		const unresolved = Number(comparison.summary?.unresolvedPurchaseItems || 0)
+		const unresolvedNote = unresolved > 0
+			? `<div class="planing-product-comparison-note">${unresolved} purchase item${unresolved === 1 ? '' : 's'} unresolved by Product</div>`
+			: ''
+
+		return `
+			<section class="planing-product-comparison">
+				<div class="planing-product-comparison-title">Shopping Plan vs Fact</div>
+				${rows}
+				${unresolvedNote}
+			</section>`
 	}
 
 	getChecklistProgressTemplate(item) {

@@ -2,6 +2,7 @@ import planningRepository from '../repositories/PlanningRepository.js';
 import productCatalogRepository from '../repositories/ProductCatalogRepository.js';
 import transactionRepository from '../repositories/TransactionRepository.js';
 import pool from '../database/mysql.js';
+import {buildPlanningProductComparison} from './PlanningProductComparisonService.js';
 
 const STATUSES = ['pending', 'completed', 'cancelled'];
 const SHOPPING_UNITS = ['g', 'kg', 'ml', 'l', 'pcs'];
@@ -301,7 +302,7 @@ class PlanningService {
     async getItemFact(userId, itemId) {
         const {item} = await this.getItemWithPeriod(userId, itemId);
         const rows = await transactionRepository.getPlanningItemFacts(userId, item.id);
-        const facts = this.formatPlanningFacts(rows);
+        const facts = this.formatPlanningFacts(rows).map(fact => this.attachProductComparison(fact, item));
         const primary = facts[0] || null;
 
         return {
@@ -310,7 +311,8 @@ class PlanningService {
             transaction: primary?.transaction || null,
             purchase: primary?.purchase || null,
             receipt: primary?.receipt || null,
-            items: primary?.items || []
+            items: primary?.items || [],
+            productComparison: primary?.productComparison || null
         };
     }
 
@@ -508,8 +510,21 @@ class PlanningService {
             purchase: fact.purchase ? {
                 ...fact.purchase,
                 itemCount: fact.items.length
-            } : null
+            } : null,
+            productComparison: null
         }));
+    }
+
+    attachProductComparison(fact, item) {
+        if (!fact?.purchase) return {
+            ...fact,
+            productComparison: null
+        };
+
+        return {
+            ...fact,
+            productComparison: buildPlanningProductComparison(item.shoppingItems || [], fact.items || [])
+        };
     }
 
     formatFactTransaction(row) {
