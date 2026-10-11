@@ -342,6 +342,14 @@ const hbapp = {
 		})
 
 		this.hbapp.addEventListener('click', e => {
+			if (e.target.closest('[data-summary-path]')) {
+				const path = e.target.closest('[data-summary-path]').dataset.summaryPath
+				this.closeHeaderMenu()
+				router.redirectRouter(path)
+				this.setMobileView('content')
+				this.updateSidebarActiveRoute(path)
+				return
+			}
 			if (e.target.closest('[data-summary-nav]')) {
 				const navPath = e.target.closest('[data-summary-nav]').dataset.summaryNav
 				this.navigateAppRoute(navPath)

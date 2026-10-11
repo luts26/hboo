@@ -3,6 +3,7 @@ import TransactionLocalRepository from '../services/TransactionLocalRepository.j
 import CategoryApiService from '../services/CategoryApiService.js'
 import BalanceApiService from '../services/BalanceApiService.js'
 import BalanceHistoryLocalRepository from '../services/BalanceHistoryLocalRepository.js'
+import IncomeExpenseLineChart from '../components/IncomeExpenseLineChart.js'
 import transactionStore from '../stores/TransactionStore.js'
 import router from '../router/router.js'
 import {
@@ -367,16 +368,6 @@ export default class HomePage extends AbstractClass {
 		this.hideMonthTooltip()
 	}
 
-	getNiceChartMax(maxAmount) {
-		const amount = Number(maxAmount) || 0
-		if (amount <= 0) return 1
-		const exponent = Math.floor(Math.log10(amount))
-		const base = 10 ** exponent
-		const normalized = amount / base
-		const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
-		return nice * base
-	}
-
 	formatAxisAmount(value) {
 		const amount = Number(value) || 0
 		return amount.toLocaleString('uk-UA', {
@@ -386,86 +377,19 @@ export default class HomePage extends AbstractClass {
 		})
 	}
 
-	getLineSegments(points, key) {
-		return points.reduce((segments, point) => {
-			if (point.coverage === 'missing') return segments
-			const command = `${segments.current.length ? 'L' : 'M'} ${point.x.toFixed(2)} ${point[key].toFixed(2)}`
-			segments.current.push(command)
-			if (!points[point.index + 1] || points[point.index + 1].coverage === 'missing') {
-				segments.paths.push(segments.current.join(' '))
-				segments.current = []
-			}
-			return segments
-		}, {current: [], paths: []}).paths
-	}
-
 	getIncomeLineChartTemplate(rows, maxAmount) {
-		const width = 640
-		const height = 250
-		const padding = {top: 14, right: 18, bottom: 38, left: 50}
-		const plotWidth = width - padding.left - padding.right
-		const plotHeight = height - padding.top - padding.bottom
-		const scaleMax = this.getNiceChartMax(maxAmount)
-		const pointCount = Math.max(rows.length - 1, 1)
-		const yFor = value => padding.top + plotHeight - ((Number(value) || 0) / scaleMax) * plotHeight
-		const points = rows.map((item, index) => {
-			const x = padding.left + (plotWidth * index / pointCount)
-			const missing = item.coverage === 'missing'
-			return {
-				...item,
-				index,
-				x,
-				incomeY: missing ? null : yFor(item.income),
-				expenseY: missing ? null : yFor(item.expenses),
-				targetY: missing ? padding.top + plotHeight : yFor(Math.max(item.income, item.expenses))
-			}
+		return IncomeExpenseLineChart.render({
+			rows,
+			mode: 'both',
+			activeKey: this.activeMonth,
+			keyField: 'month',
+			titleField: 'longLabel',
+			targetDataAttr: 'data-home-month',
+			targetClass: 'home-income-month',
+			ariaLabel: 'Income and expenses by month',
+			formatAmount: value => this.formatAmount(value),
+			getSignedAmount: value => this.getSignedAmount(value)
 		})
-		const ticks = [scaleMax, scaleMax * .75, scaleMax * .5, scaleMax * .25, 0]
-		const incomePaths = this.getLineSegments(points, 'incomeY')
-		const expensePaths = this.getLineSegments(points, 'expenseY')
-		const axisLabels = points.map(point => {
-			const axisLabel = rows.length > 6 ? String(point.label).split(' ')[0] : point.label
-			return `<text class="home-line-axis-label" x="${point.x.toFixed(2)}" y="${height - 14}" text-anchor="middle">${this.escapeHtml(axisLabel)}</text>`
-		}).join('')
-		const yTicks = ticks.map(value => {
-			const y = yFor(value)
-			return `<g>
-				<line class="home-line-grid" x1="${padding.left}" x2="${width - padding.right}" y1="${y.toFixed(2)}" y2="${y.toFixed(2)}"></line>
-				<text class="home-line-y-label" x="${padding.left - 8}" y="${(y + 4).toFixed(2)}" text-anchor="end">${this.escapeHtml(this.formatAxisAmount(value))}</text>
-			</g>`
-		}).join('')
-		const markers = points.map(point => {
-			if (point.coverage === 'missing') {
-				return `<circle class="home-line-marker home-line-marker-missing" cx="${point.x.toFixed(2)}" cy="${(padding.top + plotHeight).toFixed(2)}" r="4"></circle>`
-			}
-			const coverageClass = point.coverage === 'partial' ? ' home-line-marker-partial' : ''
-			return `<circle class="home-line-marker home-line-marker-income${coverageClass}" cx="${point.x.toFixed(2)}" cy="${point.incomeY.toFixed(2)}" r="4"></circle>
-				<circle class="home-line-marker home-line-marker-expense${coverageClass}" cx="${point.x.toFixed(2)}" cy="${point.expenseY.toFixed(2)}" r="4"></circle>`
-		}).join('')
-		const targets = points.map(point => {
-			const isActive = point.month === this.activeMonth
-			const statusLabel = this.getCoverageLabel(point.coverage)
-			const left = (point.x / width) * 100
-			const top = (point.targetY / height) * 100
-			const valueLabel = point.coverage === 'missing'
-				? statusLabel
-				: `Income ${this.formatAmount(point.income)}. Expenses ${this.formatAmount(point.expenses)}. Net ${this.getSignedAmount(point.net)}. ${statusLabel}`
-			return `<button class="home-income-month home-income-month-${this.escapeHtml(point.coverage)} ${isActive ? 'active' : ''}" type="button" data-home-month="${this.escapeHtml(point.month)}" aria-label="${this.escapeHtml(`${point.longLabel}. ${valueLabel}`)}" style="left:${left.toFixed(2)}%; top:${top.toFixed(2)}%;">
-				<span class="home-income-target-dot" aria-hidden="true"></span>
-			</button>`
-		}).join('')
-
-		return `<div class="home-income-line-shell">
-			<svg class="home-income-line-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Income and expenses by month">
-				${yTicks}
-				<line class="home-line-axis" x1="${padding.left}" x2="${width - padding.right}" y1="${padding.top + plotHeight}" y2="${padding.top + plotHeight}"></line>
-				${axisLabels}
-				${incomePaths.map(path => `<path class="home-line-series home-line-series-income" d="${path}"></path>`).join('')}
-				${expensePaths.map(path => `<path class="home-line-series home-line-series-expense" d="${path}"></path>`).join('')}
-				${markers}
-			</svg>
-			<div class="home-income-targets">${targets}</div>
-		</div>`
 	}
 
 	getCoverageLabel(coverage) {

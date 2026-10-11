@@ -436,6 +436,8 @@ class PlanningStore {
 				todaySpent: 0,
 				availableToday: null,
 				actualSpent: getCurrentActualSpent(state),
+				periodDateFrom: state.currentPeriod?.dateFrom,
+				periodDateTo: state.currentPeriod?.dateTo,
 				status: state.loading ? 'loading' : 'empty'
 			}
 		}
@@ -479,6 +481,8 @@ class PlanningStore {
 			todaySpent: summary.todaySpending,
 			availableToday: summary.availableToday,
 			actualSpent,
+			periodDateFrom: state.currentPeriod.dateFrom,
+			periodDateTo: state.currentPeriod.dateTo,
 			status: state.error ? 'error' : 'ready'
 		}
 	}

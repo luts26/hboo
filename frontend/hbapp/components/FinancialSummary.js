@@ -1,4 +1,5 @@
-import {normalizeBalance, normalizeTransactions, startOfDay, endOfDay} from '../services/PlanningCalculator.js'
+import {normalizeBalance, startOfDay, endOfDay} from '../services/PlanningCalculator.js'
+import {getCurrentMonthRange, getFinancialTotals} from '../services/FinancialAnalyticsService.js'
 
 const formatAmount = value => {
 	if (value === null || value === undefined) return '-'
@@ -32,18 +33,22 @@ const getMonthPeriod = () => {
 
 const getTransactionMonthSummary = transactions => {
 	const period = getMonthPeriod()
-	const summary = normalizeTransactions(transactions).reduce((result, item) => {
-		if (item.date < period.from || item.date > period.to) return result
-		if (item.amount > 0) result.income += item.amount
-		if (item.amount < 0) result.expenses += Math.abs(item.amount)
-		return result
-	}, {income: 0, expenses: 0})
+	const summary = getFinancialTotals(transactions, {
+		dateFrom: period.from,
+		dateTo: period.to
+	})
 
 	return {
-		...summary,
-		net: summary.income - summary.expenses,
+		income: summary.income,
+		expenses: summary.expenses,
+		net: summary.net,
 		periodLabel: period.label
 	}
+}
+
+const getStatisticsCurrentMonthPath = () => {
+	const range = getCurrentMonthRange()
+	return `/statistics?preset=current-month&date_from=${Number(range.dateFrom)}&date_to=${Number(range.dateTo)}`
 }
 
 export default class FinancialSummary {
@@ -69,6 +74,7 @@ export default class FinancialSummary {
 		const periodBudget = data.isBudgetConfigured ? money(data.periodBudget) : 'Не задано'
 		const dependentMoney = value => data.isBudgetConfigured ? money(value) : '-'
 		const dependentMoneyHtml = value => data.isBudgetConfigured ? moneyHtml(value) : '-'
+		const statisticsPath = getStatisticsCurrentMonthPath()
 		const balance = normalizeBalance(data.balanceState?.data)
 		const transactions = getTransactionMonthSummary(data.transactionState?.data)
 		const statusStats = data.planningStatusStats || {}
@@ -111,19 +117,19 @@ export default class FinancialSummary {
 						</div>
 					</div>
 				</div>
-				<button class="financial-summary-card financial-summary-planning financial-summary-link" type="button" data-summary-nav="planing" title="Open planning">
-					<div class="financial-summary-title financial-summary-title-link">
+				<div class="financial-summary-card financial-summary-planning">
+					<button class="financial-summary-title financial-summary-title-link financial-summary-title-button" type="button" data-summary-nav="planing" title="Open planning">
 						<span>Planning</span>
 						<span aria-hidden="true">&#8250;</span>
-					</div>
+					</button>
 					<div class="summary-card-content">
 						${planningStatRow('pending', 'pending', 'financial-summary-stat-pending')}
 						${planningStatRow('completed', 'completed', 'financial-summary-stat-approve')}
 						${planningStatRow('cancelled', 'cancelled', 'financial-summary-stat-disable')}
-						<div class="financial-summary-row financial-summary-actual-spent">
+						<button class="financial-summary-row financial-summary-actual-spent financial-summary-row-link" type="button" data-summary-path="${statisticsPath}" title="Open statistics for this period">
 							<span>Actual Spent</span>
 							<strong>${money(data.actualSpent)}</strong>
-						</div>
+						</button>
 						<div class="financial-summary-secondary financial-summary-budget-group">
 							<div class="financial-summary-row">
 								<span>Budget</span>
@@ -135,7 +141,7 @@ export default class FinancialSummary {
 							</div>
 						</div>
 					</div>
-				</button>
+				</div>
 				<button class="financial-summary-card financial-summary-link financial-summary-compact" type="button" data-summary-nav="balance" title="Open balance">
 					<div class="financial-summary-title financial-summary-title-link">
 						<span>Balance</span>

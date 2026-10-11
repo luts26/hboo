@@ -7,12 +7,20 @@ import {
 	COVERAGE_PARTIAL,
 	UNCATEGORIZED_CATEGORY_ID,
 	addCoverageToMonthlyIncomeExpenses,
+	buildStatistics,
+	createTrendBuckets,
+	getCategorySpendingV2,
+	getChange,
 	getCategorySpending,
 	getCoverageForRange,
 	getCoveragePresentation,
 	getCurrentMonthRange,
+	getFinancialTotals,
 	getMonthlyIncomeExpenses,
+	getPlanningSummary,
+	getPreviousEquivalentRange,
 	getRecentMonthRange,
+	getSpendingTrend,
 	normalizeDateRange
 } from '../hbapp/services/FinancialAnalyticsService.js'
 
@@ -313,4 +321,286 @@ test('missing month does not become a misleading confirmed zero month', () => {
 	assert.equal(monthly[0].income, 0)
 	assert.equal(monthly[0].expenses, 0)
 	assert.equal(monthly[0].coverage, COVERAGE_MISSING)
+})
+
+test('statistics totals use income expenses and precise money arithmetic', () => {
+	const data = {
+		mono: [
+			{providerTransactionId: 'income-1', timestamp: ts(2026, 9, 1), amount: 1000.10},
+			{providerTransactionId: 'expense-1', timestamp: ts(2026, 9, 2), amount: -0.10},
+			{providerTransactionId: 'expense-2', timestamp: ts(2026, 9, 3), amount: -0.20}
+		],
+		privat: []
+	}
+
+	const result = getFinancialTotals(data, range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)), [])
+
+	assert.equal(result.income, 1000.1)
+	assert.equal(result.expenses, 0.3)
+	assert.equal(result.net, 999.8)
+})
+
+test('internal transfers are excluded from income and expense totals', () => {
+	const categories = [{id: 1, code: 'transfers', name: 'Перекази', icon: 'transfer-money-icon'}]
+	const data = {
+		mono: [
+			{providerTransactionId: 'transfer-out', timestamp: ts(2026, 9, 2), amount: -500, categoryId: 1},
+			{providerTransactionId: 'transfer-in', timestamp: ts(2026, 9, 3), amount: 500, categoryId: 1},
+			{providerTransactionId: 'shop', timestamp: ts(2026, 9, 4), amount: -120, categoryId: 3}
+		],
+		privat: []
+	}
+
+	const result = getFinancialTotals(data, range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)), categories)
+
+	assert.equal(result.income, 0)
+	assert.equal(result.expenses, 120)
+	assert.equal(result.transferCount, 2)
+})
+
+test('duplicate transactions are counted once by provider transaction id', () => {
+	const data = {
+		mono: [
+			{providerTransactionId: 'dup-1', timestamp: ts(2026, 9, 2), amount: -100},
+			{providerTransactionId: 'dup-1', timestamp: ts(2026, 9, 2), amount: -100}
+		],
+		privat: [
+			{providerTransactionId: 'dup-1', timestamp: ts(2026, 9, 2), amount: -50}
+		]
+	}
+
+	const result = getFinancialTotals(data, range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)), [])
+
+	assert.equal(result.expenses, 150)
+})
+
+test('linked purchases are not counted as extra expenses in statistics totals', () => {
+	const data = {
+		mono: [
+			{providerTransactionId: 'bank-payment', timestamp: ts(2026, 9, 2), amount: -240, linkedPurchaseId: 10}
+		],
+		privat: []
+	}
+
+	const result = buildStatistics({
+		transactions: data,
+		categories: [],
+		planningState: {
+			currentPeriod: {dateFrom: ts(2026, 9, 1, 0), dateTo: ts(2026, 9, 31, 23), periodBudget: 1000},
+			items: []
+		},
+		range: range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)),
+		comparisonRange: range(ts(2026, 8, 1, 0), ts(2026, 8, 30, 23))
+	})
+
+	assert.equal(result.totals.expenses, 240)
+})
+
+test('planned expenses are kept separate from actual bank spending', () => {
+	const data = {mono: [{providerTransactionId: 'tx-1', timestamp: ts(2026, 9, 2), amount: -100}], privat: []}
+	const result = buildStatistics({
+		transactions: data,
+		categories: [],
+		planningState: {
+			currentPeriod: {dateFrom: ts(2026, 9, 1, 0), dateTo: ts(2026, 9, 31, 23), periodBudget: 1000},
+			items: [{id: 'p1', date: ts(2026, 9, 4), sum: 500, status: 'pending'}]
+		},
+		range: range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)),
+		comparisonRange: range(ts(2026, 8, 1, 0), ts(2026, 8, 30, 23))
+	})
+
+	assert.equal(result.totals.expenses, 100)
+	assert.equal(result.planning.planned, 500)
+	assert.equal(result.planning.actual, 0)
+})
+
+test('category totals match overall expenses and include one-sided comparison categories', () => {
+	const categories = [
+		{id: 2, code: 'restaurants', name: 'Restaurants', icon: 'restoran-icon'},
+		{id: 3, code: 'groceries', name: 'Groceries', icon: 'food-icon'}
+	]
+	const data = {
+		mono: [
+			{providerTransactionId: 'current-food', timestamp: ts(2026, 9, 4), amount: -120, categoryId: 3},
+			{providerTransactionId: 'previous-rest', timestamp: ts(2026, 8, 4), amount: -80, categoryId: 2}
+		],
+		privat: []
+	}
+	const result = buildStatistics({
+		transactions: data,
+		categories,
+		range: range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)),
+		comparisonRange: range(ts(2026, 8, 1, 0), ts(2026, 8, 30, 23))
+	})
+
+	assert.equal(result.categories.total, result.totals.expenses)
+	assert.deepEqual(result.categories.items.map(item => String(item.categoryId)).sort(), ['2', '3'])
+	assert.equal(result.categories.items.find(item => String(item.categoryId) === '2').current, 0)
+	assert.equal(result.categories.items.find(item => String(item.categoryId) === '3').previous, 0)
+})
+
+test('partial current month comparison uses same elapsed previous month period', () => {
+	const now = new Date(2026, 9, 10, 15, 30, 0, 0)
+	const current = getCurrentMonthRange(now)
+	const previous = getPreviousEquivalentRange(current, now)
+
+	assert.equal(previous.mode, 'same_elapsed')
+	assert.equal(previous.dateFrom, new Date(2026, 8, 1, 0, 0, 0, 0).getTime())
+	assert.equal(previous.dateTo, new Date(2026, 8, 10, 15, 30, 0, 0).getTime())
+})
+
+test('zero previous value does not produce misleading percentage', () => {
+	const change = getChange(120, 0)
+
+	assert.equal(change.absolute, 120)
+	assert.equal(change.percentage, null)
+	assert.equal(change.direction, 'up')
+})
+
+test('previous equivalent range handles leap-year month boundaries', () => {
+	const current = range(
+		new Date(2024, 2, 1, 0, 0, 0, 0).getTime(),
+		new Date(2024, 2, 31, 23, 59, 59, 999).getTime()
+	)
+	const previous = getPreviousEquivalentRange(current, new Date(2024, 3, 1, 12))
+
+	assert.equal(previous.dateFrom, new Date(2024, 1, 1, 0, 0, 0, 0).getTime())
+	assert.equal(previous.dateTo, new Date(2024, 1, 29, 23, 59, 59, 999).getTime())
+})
+
+test('planning summary counts only confirmed actuals and keeps pending planned items open', () => {
+	const summary = getPlanningSummary({
+		range: range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)),
+		planningState: {
+			currentPeriod: {dateFrom: ts(2026, 9, 1, 0), dateTo: ts(2026, 9, 31, 23)},
+			items: [
+				{id: 'done', date: ts(2026, 9, 2), sum: 100, actualAmount: 90, status: 'completed'},
+				{id: 'linked-actual', date: ts(2026, 9, 3), sum: 50, actualAmount: 45, status: 'pending', transactionId: 'tx-1'},
+				{id: 'linked-without-actual', date: ts(2026, 9, 4), sum: 60, status: 'pending', transactionId: 'tx-2'},
+				{id: 'pending', date: ts(2026, 9, 5), sum: 70, status: 'pending'},
+				{id: 'cancelled', date: ts(2026, 9, 6), sum: 80, status: 'cancelled'}
+			]
+		}
+	})
+
+	assert.equal(summary.planned, 280)
+	assert.equal(summary.actual, 135)
+	assert.equal(summary.difference, 145)
+	assert.equal(summary.completedCount, 1)
+	assert.equal(summary.pendingCount, 3)
+	assert.equal(summary.cancelledCount, 1)
+})
+
+test('offline calculations work from supplied cached transactions only', () => {
+	const cached = {mono: [{providerTransactionId: 'cache-1', timestamp: ts(2026, 9, 2), amount: -45}], privat: []}
+	const result = getCategorySpendingV2(cached, range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23)), [])
+
+	assert.equal(result.total, 45)
+	assert.equal(result.items.length, 1)
+})
+
+test('statistics recalculate after local transaction updates', () => {
+	const selectedRange = range(ts(2026, 9, 1, 0), ts(2026, 9, 31, 23))
+	const first = getFinancialTotals({mono: [{providerTransactionId: 'tx-1', timestamp: ts(2026, 9, 2), amount: -40}], privat: []}, selectedRange, [])
+	const second = getFinancialTotals({mono: [{providerTransactionId: 'tx-1', timestamp: ts(2026, 9, 2), amount: -40}, {providerTransactionId: 'tx-2', timestamp: ts(2026, 9, 3), amount: -60}], privat: []}, selectedRange, [])
+
+	assert.equal(first.expenses, 40)
+	assert.equal(second.expenses, 100)
+})
+
+test('longer ranges use weekly or monthly trend aggregation instead of daily totals', () => {
+	const weekly = getSpendingTrend({}, range(ts(2026, 0, 1, 0), ts(2026, 3, 30, 23)), [])
+	const monthly = getSpendingTrend({}, range(ts(2025, 0, 1, 0), ts(2026, 0, 31, 23)), [])
+
+	assert.equal(weekly.granularity, 'week')
+	assert.equal(monthly.granularity, 'month')
+})
+
+test('October 2026 daily statistics buckets advance once per local day', () => {
+	const buckets = createTrendBuckets(range(
+		new Date(2026, 9, 1, 0, 0, 0, 0).getTime(),
+		new Date(2026, 9, 31, 23, 59, 59, 999).getTime()
+	), 'day')
+
+	assert.equal(buckets.length, 31)
+	assert.equal(buckets[0].key, '2026-10-01')
+	assert.equal(buckets[30].key, '2026-10-31')
+	assert.deepEqual(new Set(buckets.map(item => item.dateFrom)).size, buckets.length)
+	buckets.slice(1).forEach((bucket, index) => {
+		assert.ok(bucket.dateFrom > buckets[index].dateFrom)
+	})
+})
+
+test('weekly statistics buckets advance without repeated timestamps', () => {
+	const buckets = createTrendBuckets(range(
+		new Date(2026, 9, 1, 0, 0, 0, 0).getTime(),
+		new Date(2026, 9, 31, 23, 59, 59, 999).getTime()
+	), 'week')
+
+	assert.equal(buckets.length, 5)
+	assert.match(buckets[0].label, /Week of/)
+	assert.deepEqual(new Set(buckets.map(item => item.dateFrom)).size, buckets.length)
+	buckets.slice(1).forEach((bucket, index) => {
+		assert.ok(bucket.dateFrom > buckets[index].dateFrom)
+	})
+})
+
+test('monthly statistics buckets handle month boundaries', () => {
+	const buckets = createTrendBuckets(range(
+		new Date(2026, 0, 31, 12, 0, 0, 0).getTime(),
+		new Date(2026, 2, 31, 23, 59, 59, 999).getTime()
+	), 'month')
+
+	assert.deepEqual(buckets.map(item => item.key), ['2026-01', '2026-02', '2026-03'])
+	assert.equal(buckets[0].dateFrom, new Date(2026, 0, 31, 12, 0, 0, 0).getTime())
+	assert.equal(buckets[2].dateTo, new Date(2026, 2, 31, 23, 59, 59, 999).getTime())
+})
+
+test('statistics trend rejects invalid date ranges before bucket generation', () => {
+	assert.throws(
+		() => createTrendBuckets({dateFrom: Number.NaN, dateTo: ts(2026, 9, 31)}, 'day'),
+		/finite timestamp/
+	)
+	assert.throws(
+		() => createTrendBuckets(range(ts(2026, 9, 31), ts(2026, 9, 1)), 'day'),
+		/dateTo must be greater than or equal to dateFrom/
+	)
+	assert.throws(
+		() => createTrendBuckets(range(0, ts(2026, 9, 1)), 'day'),
+		/positive timestamp/
+	)
+})
+
+test('statistics trend accepts Unix seconds and normalizes them to milliseconds', () => {
+	const fromSeconds = Math.floor(new Date(2026, 9, 1, 0, 0, 0, 0).getTime() / 1000)
+	const toSeconds = Math.floor(new Date(2026, 9, 31, 23, 59, 59, 999).getTime() / 1000)
+
+	const buckets = createTrendBuckets(range(fromSeconds, toSeconds), 'day')
+
+	assert.equal(buckets.length, 31)
+	assert.equal(buckets[0].key, '2026-10-01')
+	assert.equal(buckets[30].key, '2026-10-31')
+})
+
+test('statistics trend advances across DST transitions without repeated buckets', () => {
+	const buckets = createTrendBuckets(range(
+		new Date(2026, 9, 24, 0, 0, 0, 0).getTime(),
+		new Date(2026, 9, 27, 23, 59, 59, 999).getTime()
+	), 'day')
+
+	assert.deepEqual(buckets.map(item => item.key), ['2026-10-24', '2026-10-25', '2026-10-26', '2026-10-27'])
+	assert.deepEqual(new Set(buckets.map(item => item.dateFrom)).size, buckets.length)
+	buckets.slice(1).forEach((bucket, index) => {
+		assert.ok(bucket.dateFrom > buckets[index].dateFrom)
+	})
+})
+
+test('statistics trend safety bound prevents excessive synchronous bucket loops', () => {
+	assert.throws(
+		() => createTrendBuckets(range(
+			new Date(2020, 0, 1, 0, 0, 0, 0).getTime(),
+			new Date(2026, 9, 31, 23, 59, 59, 999).getTime()
+		), 'day'),
+		/exceeds the safety limit/
+	)
 })

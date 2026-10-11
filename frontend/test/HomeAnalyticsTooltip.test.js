@@ -26,10 +26,10 @@ test('persistent month details panel is no longer rendered', () => {
 })
 
 test('month remains an interactive focusable target', () => {
-	const source = homeSource()
+	const source = fs.readFileSync(path.join(frontendRoot, 'hbapp/components/IncomeExpenseLineChart.js'), 'utf8')
 
 	assert.match(source, /<button class="home-income-month/)
-	assert.match(source, /data-home-month=/)
+	assert.match(source, /targetDataAttr/)
 	assert.match(source, /aria-label=/)
 })
 

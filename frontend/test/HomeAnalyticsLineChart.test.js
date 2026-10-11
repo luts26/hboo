@@ -10,11 +10,13 @@ const read = filePath => fs.readFileSync(path.join(frontendRoot, filePath), 'utf
 
 test('Income vs Expenses renders as a responsive SVG line chart', () => {
 	const source = read('hbapp/pages/HomePage.js')
+	const chart = read('hbapp/components/IncomeExpenseLineChart.js')
 
-	assert.match(source, /<svg class="home-income-line-svg" viewBox="0 0 \$\{width\} \$\{height\}" preserveAspectRatio="none"/)
-	assert.match(source, /home-line-series-income/)
-	assert.match(source, /home-line-series-expense/)
-	assert.match(source, /home-income-targets/)
+	assert.match(source, /IncomeExpenseLineChart\.render/)
+	assert.match(chart, /<svg class="home-income-line-svg" viewBox="0 0 \$\{width\} \$\{height\}" preserveAspectRatio="none"/)
+	assert.match(chart, /home-line-series-income/)
+	assert.match(chart, /home-line-series-expense/)
+	assert.match(chart, /home-income-targets/)
 })
 
 test('legacy monthly income and expense bars are no longer rendered', () => {
@@ -26,19 +28,20 @@ test('legacy monthly income and expense bars are no longer rendered', () => {
 })
 
 test('missing months are excluded from factual line segments and kept interactive', () => {
-	const source = read('hbapp/pages/HomePage.js')
+	const source = read('hbapp/components/IncomeExpenseLineChart.js')
 
-	assert.match(source, /if \(point\.coverage === 'missing'\) return segments/)
+	assert.match(source, /point\.coverage === 'missing'/)
 	assert.match(source, /home-line-marker-missing/)
-	assert.match(source, /data-home-month=/)
+	assert.match(source, /targetDataAttr/)
 	assert.match(source, /Local history unavailable/)
 })
 
 test('partial months remain visually identifiable without recalculating values', () => {
-	const source = read('hbapp/pages/HomePage.js')
+	const source = read('hbapp/components/IncomeExpenseLineChart.js')
 
 	assert.match(source, /point\.coverage === 'partial' \? ' home-line-marker-partial'/)
-	assert.match(source, /getMonthDetailViewModel\(item\)/)
+	const homeSource = read('hbapp/pages/HomePage.js')
+	assert.match(homeSource, /getMonthDetailViewModel\(item\)/)
 })
 
 test('Home analytics still reads cached local ranges and does not trigger bank refresh', () => {
