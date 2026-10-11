@@ -8,7 +8,7 @@ class ProductMatcher {
         this.catalogRepository = catalogRepository;
     }
 
-    async match({rawName, merchantId = null} = {}) {
+    async match({rawName, merchantId = null, shoppingItems = []} = {}) {
         const normalized = normalizeProductText(rawName);
         if (!normalized) return this.emptyResult('none');
 
@@ -32,10 +32,11 @@ class ProductMatcher {
         if (exactProduct) return this.exactResult(exactProduct, 'product_name');
 
         const candidates = this.findTokenCandidates(normalized, products);
+        const contextualCandidates = this.findShoppingListCandidates(normalized, shoppingItems, products, candidates);
         return {
             match: null,
-            source: candidates.length ? 'token_similarity' : 'none',
-            candidates
+            source: candidates.length ? 'token_similarity' : (contextualCandidates.length ? 'shopping_list' : 'none'),
+            candidates: this.mergeCandidates(candidates, contextualCandidates)
         };
     }
 
@@ -75,6 +76,50 @@ class ProductMatcher {
             ...this.formatCandidate(product, 'token_similarity'),
             score: ratio
         };
+    }
+
+    findShoppingListCandidates(normalizedRawName, shoppingItems = [], products = [], existingCandidates = []) {
+        const plannedProductIds = new Set((Array.isArray(shoppingItems) ? shoppingItems : [])
+            .map(item => this.optionalId(item.productId ?? item.product_id))
+            .filter(Boolean)
+            .map(String));
+        if (!plannedProductIds.size) return [];
+
+        const productsById = new Map(products.map(product => [String(product.id), product]));
+        const rawTokens = new Set(tokenizeProductText(normalizedRawName));
+        const exactPlannedProducts = (Array.isArray(shoppingItems) ? shoppingItems : [])
+            .filter(item => this.optionalId(item.productId ?? item.product_id))
+            .filter(item => {
+                const productName = normalizeProductText(item.productName || item.product_name || item.name);
+                if (!productName) return false;
+                if (productName === normalizedRawName) return true;
+                const productTokens = tokenizeProductText(productName);
+                return productTokens.length === 1
+                    && productTokens[0].length >= 3
+                    && rawTokens.has(productTokens[0]);
+            })
+            .map(item => productsById.get(String(this.optionalId(item.productId ?? item.product_id))))
+            .filter(Boolean);
+
+        const catalogPlannedProducts = existingCandidates
+            .filter(candidate => plannedProductIds.has(String(candidate.productId)))
+            .map(candidate => productsById.get(String(candidate.productId)))
+            .filter(Boolean);
+
+        return [...exactPlannedProducts, ...catalogPlannedProducts]
+            .map(product => this.formatCandidate(product, 'shopping_list'));
+    }
+
+    mergeCandidates(...candidateGroups) {
+        const seen = new Set();
+        const merged = [];
+        candidateGroups.flat().forEach(candidate => {
+            const key = String(candidate?.productId || '');
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            merged.push(candidate);
+        });
+        return merged.slice(0, 3);
     }
 
     exactResult(product, source) {

@@ -63,6 +63,17 @@ test('missing planned amount is purchased, incompatible units are not comparable
 	assert.equal(incompatible.planned[0].status, 'not_comparable')
 })
 
+test('quick-added Shopping List items without quantity still participate in Plan vs Fact by Product', () => {
+	const comparison = buildPlanningProductComparison(
+		[shopping({amount: null, unit: null, checked: false})],
+		[purchase()]
+	)
+
+	assert.equal(comparison.planned[0].productId, 12)
+	assert.equal(comparison.planned[0].status, 'purchased')
+	assert.deepEqual(comparison.planned[0].planned, {amount: null, unit: null})
+})
+
 test('same text with different product_id does not match and unplanned Product is reported', () => {
 	const comparison = buildPlanningProductComparison(
 		[shopping({productId: 12, name: 'Молоко'})],

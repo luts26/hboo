@@ -1,3 +1,5 @@
+import {normalizeSearchText} from './ProductUnitService.js'
+
 const defaultEscapeHtml = value => String(value ?? '')
 	.replaceAll('&', '&amp;')
 	.replaceAll('<', '&lt;')
@@ -18,7 +20,6 @@ const applySelectedShoppingProduct = (form, product) => {
 	const nameInput = form.querySelector('[name="name"]')
 	const productIdInput = form.querySelector('[name="productId"]')
 	const suggestions = form.querySelector('[data-shopping-suggestions]')
-	const amountInput = form.querySelector('[name="amount"]')
 
 	if (nameInput) {
 		nameInput.value = product.name
@@ -27,7 +28,7 @@ const applySelectedShoppingProduct = (form, product) => {
 	}
 	if (productIdInput) productIdInput.value = product.id
 	if (suggestions) suggestions.innerHTML = ''
-	if (amountInput && typeof amountInput.focus === 'function') amountInput.focus()
+	if (nameInput && typeof nameInput.focus === 'function') nameInput.focus()
 
 	return true
 }
@@ -96,10 +97,69 @@ const buildShoppingItemFromFormData = (formData, {createId, position = 0, now = 
 	}
 }
 
+const normalizeShoppingLine = value => String(value || '')
+	.trim()
+	.replace(/^\s*(?:[-*•]|[\d]+[.)])\s+/, '')
+	.replace(/^\[\s?[xX ]\]\s+/, '')
+	.trim()
+
+const parseShoppingListText = (text = '') => {
+	const seen = new Set()
+	return String(text || '').split(/\r?\n/)
+		.map(normalizeShoppingLine)
+		.filter(Boolean)
+		.filter(line => {
+			const key = normalizeSearchText(line)
+			if (seen.has(key)) return false
+			seen.add(key)
+			return true
+		})
+}
+
+const findExactShoppingProduct = (products = [], name = '') => {
+	const normalizedName = normalizeSearchText(name)
+	if (!normalizedName) return null
+	return (Array.isArray(products) ? products : [])
+		.find(product => normalizeSearchText(product.name) === normalizedName && product.status !== 'disabled') || null
+}
+
+const buildShoppingItemsFromText = (text = '', products = [], {createId, startPosition = 0, now = Date.now} = {}) => {
+	return parseShoppingListText(text).map((name, index) => {
+		const product = findExactShoppingProduct(products, name)
+		const localId = createId()
+		return {
+			id: localId,
+			localId,
+			productId: product?.id || null,
+			name: product?.name || name,
+			title: product?.name || name,
+			amount: null,
+			unit: null,
+			checked: false,
+			position: startPosition + index,
+			createdAt: now(),
+			updatedAt: now()
+		}
+	})
+}
+
+const formatShoppingListForCopy = (items = []) => (Array.isArray(items) ? items : [])
+	.map(item => {
+		const name = String(item?.name || item?.title || '').trim()
+		if (!name) return ''
+		const hasAmount = item.amount !== null && item.amount !== undefined && item.amount !== ''
+		return hasAmount ? `${name} ${item.amount}${item.unit ? ` ${item.unit}` : ''}` : name
+	})
+	.filter(Boolean)
+	.join('\n')
+
 export {
 	applySelectedShoppingProduct,
+	buildShoppingItemsFromText,
 	buildShoppingItemFromFormData,
+	formatShoppingListForCopy,
 	getShoppingItemEditorData,
+	parseShoppingListText,
 	renderShoppingProductSuggestions,
 	syncShoppingProductIdentityFromNameInput
 }

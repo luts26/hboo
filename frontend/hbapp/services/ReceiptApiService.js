@@ -83,9 +83,12 @@ export default class ReceiptApiService {
 		throw createHttpError(response)
 	}
 
-	async parseReceipt(receiptServerId) {
+	async parseReceipt(receiptServerId, {planningItemId = null} = {}) {
 		const headers = authHeaders()
-		const response = await fetch(`${apiUrl}/receipts/${encodeURIComponent(receiptServerId)}/parse`, {
+		const params = new URLSearchParams()
+		if (planningItemId) params.set('planning_item_id', planningItemId)
+		const query = params.toString() ? `?${params.toString()}` : ''
+		const response = await fetch(`${apiUrl}/receipts/${encodeURIComponent(receiptServerId)}/parse${query}`, {
 			headers,
 			cache: 'no-store'
 		})

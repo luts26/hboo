@@ -169,10 +169,11 @@ export default class ProductCatalogApiService {
 		return localProduct
 	}
 
-	async matchProduct({rawName, merchantId = null} = {}) {
+	async matchProduct({rawName, merchantId = null, shoppingItems = []} = {}) {
 		return api.post('/products/match', {
 			rawName,
-			merchantId: toServerId(merchantId)
+			merchantId: toServerId(merchantId),
+			shoppingItems
 		})
 	}
 

@@ -48,6 +48,20 @@ const normalizeDecimalString = value => {
 	return parsed === null ? '' : String(parsed)
 }
 
+const toMoneyCents = value => {
+	const parsed = parseDecimalInput(value)
+	return parsed === null ? null : Math.round((parsed + Number.EPSILON) * 100)
+}
+
+const centsToMoney = cents => Number.isFinite(Number(cents)) ? Number((Number(cents) / 100).toFixed(2)) : 0
+
+const formatMoneyCents = cents => `${centsToMoney(cents).toFixed(2)} грн`
+
+const normalizeMoneyString = value => {
+	const cents = toMoneyCents(value)
+	return cents === null ? '' : centsToMoney(cents).toFixed(2)
+}
+
 const createItem = () => ({
 	rowId: `row-${Date.now()}-${Math.random().toString(16).slice(2)}`,
 	productId: null,
@@ -122,7 +136,7 @@ const createReceiptReviewItem = (item = {}) => ({
 	receiptUnit: item.unit || null,
 	receiptUnitPrice: item.unitPrice === null || item.unitPrice === undefined ? null : Number(item.unitPrice),
 	receiptLineTotal: item.total === null || item.total === undefined ? null : Number(item.total),
-	total: item.total === null || item.total === undefined ? '' : normalizeDecimalString(item.total),
+	total: item.total === null || item.total === undefined ? '' : normalizeMoneyString(item.total),
 	confidence: Number(item.confidence || 0),
 	parserWarnings: Array.isArray(item.warnings) ? item.warnings : [],
 	validation: item.validation || null,
@@ -132,6 +146,7 @@ const createReceiptReviewItem = (item = {}) => ({
 	aliasSaving: false,
 	aliasSaved: false,
 	aliasError: '',
+	reviewConfirmed: Boolean(item.reviewConfirmed),
 	suggestions: []
 })
 
@@ -151,6 +166,24 @@ const toApiDateTimeValue = value => {
 const normalizeComparableText = value => normalizeSearchText(value).replace(/\s+/g, ' ').trim()
 
 const isExactProductMatchSource = source => ['alias_merchant', 'alias_global', 'product_name'].includes(source)
+const MATCH_SOURCE_LABELS = {
+	alias_merchant: 'Merchant alias',
+	alias_global: 'Global alias',
+	product_name: 'Catalog',
+	shopping_list: 'Shopping List',
+	token_similarity: 'Catalog suggestion',
+	none: 'Unresolved'
+}
+const WARNING_LABELS = {
+	MERCHANT_CONTEXT_MISMATCH: 'Receipt merchant differs from Planning merchant.',
+	RECEIPT_TOTAL_MISSING_FOR_TRANSACTION: 'Receipt total was not detected; compare with the linked transaction.',
+	RECEIPT_TOTAL_MATCHES_TRANSACTION: 'Receipt total matches linked transaction.',
+	RECEIPT_TOTAL_TRANSACTION_MISMATCH: 'Receipt total differs from linked transaction.',
+	ITEMS_TOTAL_MISMATCH: 'Receipt item totals differ from detected total.',
+	ITEMS_NOT_FOUND: 'No receipt items were detected.',
+	TOTAL_NOT_FOUND: 'Receipt total was not detected.',
+	TOTAL_UNCERTAIN: 'Receipt total is uncertain.'
+}
 
 const getReviewUnitOptions = item => {
 	const allowedUnits = getAllowedUnits(item.measurementType)
@@ -371,7 +404,9 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'select-product') this.selectProduct(target.dataset.rowId, target.dataset.productId)
 		if (action === 'select-review-product') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
 		if (action === 'accept-review-product-match') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
+		if (action === 'use-review-merchant-suggestion') this.useReceiptReviewMerchantSuggestion()
 		if (action === 'remember-review-product-alias') this.rememberReceiptReviewAlias(target.dataset.rowId)
+		if (action === 'confirm-review-item') this.confirmReceiptReviewItem(target.dataset.rowId)
 		if (action === 'start-create-product') this.startCreateProduct(target.dataset.rowId)
 		if (action === 'cancel-create-product') this.cancelCreateProduct()
 		if (action === 'save-new-product') this.saveNewProduct()
@@ -503,6 +538,16 @@ export default class PurchasePage extends AbstractClass {
 		const item = this.state.receiptReview.form?.items?.find(row => row.rowId === rowId)
 		const product = this.state.products.find(row => String(row.id) === String(productId))
 		if (!item || !product) return
+		this.setReceiptReviewProduct(item, product)
+		this.updateReceiptReviewUnitOptionsDom(item)
+		const input = document.querySelector(`[data-review-item-field][data-row-id="${rowId}"][name="productQuery"]`)
+		if (input) input.value = item.productQuery
+		this.updateReceiptReviewProductDom(item)
+		this.updateReceiptReviewValidationDom()
+	}
+
+	setReceiptReviewProduct(item, product) {
+		const allowedUnits = getAllowedUnits(product.measurementType)
 		item.productId = product.id
 		item.productServerId = product.serverId || item.productServerId || null
 		item.productName = product.name
@@ -510,11 +555,10 @@ export default class PurchasePage extends AbstractClass {
 		item.categoryId = product.categoryId
 		item.categoryName = product.categoryName
 		item.measurementType = product.measurementType
-		this.updateReceiptReviewUnitOptionsDom(item)
+		if (!item.unit || (allowedUnits.length && !allowedUnits.includes(item.unit))) {
+			item.unit = allowedUnits[0] || ''
+		}
 		item.suggestions = []
-		const input = document.querySelector(`[data-review-item-field][data-row-id="${rowId}"][name="productQuery"]`)
-		if (input) input.value = item.productQuery
-		this.updateReceiptReviewProductDom(item)
 	}
 
 	async rememberReceiptReviewAlias(rowId) {
@@ -1097,7 +1141,9 @@ export default class PurchasePage extends AbstractClass {
 		overlayHost.clear('receipt-flow-modal')
 		this.render()
 		try {
-			const parsed = await this.receiptApiService.parseReceipt(receipt.serverReceiptId)
+			const parsed = await this.receiptApiService.parseReceipt(receipt.serverReceiptId, {
+				planningItemId: this.getReceiptReviewPlanningItemId()
+			})
 			if (!parsed?.draft) {
 				this.state.receiptReview.error = 'Receipt not found.'
 				this.state.receiptReview.loading = false
@@ -1122,16 +1168,26 @@ export default class PurchasePage extends AbstractClass {
 		const items = Array.isArray(draft?.items) && draft.items.length
 			? draft.items.map(item => createReceiptReviewItem(item))
 			: [createReceiptReviewItem()]
+		items.forEach((item, index) => {
+			this.applyReceiptReviewProductMatch(item, draft?.items?.[index] || {})
+		})
 		return {
 			clientMutationId: createReviewMutationId(receipt),
 			merchantId: merchantId || '',
 			purchasedAt: toDateTimeLocalValue(draft?.purchasedAt?.value),
 			paymentType: 'bank',
-			receiptTotal: draft?.total?.value === null || draft?.total?.value === undefined ? '' : normalizeDecimalString(draft.total.value),
+			receiptTotal: draft?.total?.value === null || draft?.total?.value === undefined ? '' : normalizeMoneyString(draft.total.value),
 			receiptTotalSource: draft?.total?.value === null || draft?.total?.value === undefined ? 'unknown' : 'parser',
+			context: draft?.context || null,
+			merchantSuggestion: merchantId ? null : this.findPlanningMerchantSuggestion(draft?.context),
 			items,
 			warnings: Array.isArray(draft?.warnings) ? draft.warnings : []
 		}
+	}
+
+	getReceiptReviewPlanningItemId() {
+		const params = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''))
+		return params.get('planningItem') || params.get('planning_item_id') || ''
 	}
 
 	findExactMerchantId(merchantHint) {
@@ -1144,15 +1200,34 @@ export default class PurchasePage extends AbstractClass {
 		return match?.id || ''
 	}
 
+	findPlanningMerchantSuggestion(context) {
+		const planningMerchantId = context?.planningItem?.merchantId
+		const planningMerchantName = context?.planningItem?.merchantName
+		const match = this.state.merchants.find(merchant => String(merchant.serverId || merchant.id) === String(planningMerchantId))
+			|| this.state.merchants.find(merchant => normalizeComparableText(merchant.name) === normalizeComparableText(planningMerchantName))
+		return match ? {id: match.id, name: match.name} : null
+	}
+
+	useReceiptReviewMerchantSuggestion() {
+		const form = this.state.receiptReview.form
+		if (!form?.merchantSuggestion || form.merchantId) return
+		form.merchantId = form.merchantSuggestion.id
+		const select = document.querySelector('[data-review-field][name="merchantId"]')
+		if (select) select.value = form.merchantId
+		this.renderReceiptReviewModalPreservingScroll()
+		this.loadReceiptReviewProductMatches().catch(() => {})
+	}
+
 	async loadReceiptReviewProductMatches() {
 		const form = this.state.receiptReview.form
 		if (!form?.items?.length) return
 		const selectedMerchant = this.state.merchants.find(item => String(item.id) === String(form.merchantId))
 		const merchantId = selectedMerchant?.serverId || form.merchantId || null
+		const shoppingItems = form.context?.planningItem?.shoppingItems || []
 		const results = await Promise.all(form.items.map(async item => {
 			if (!item.rawName || item.productId) return null
 			try {
-				return {item, result: await this.apiService.matchProduct({rawName: item.rawName, merchantId})}
+				return {item, result: await this.apiService.matchProduct({rawName: item.rawName, merchantId, shoppingItems})}
 			} catch (error) {
 				return {item, error}
 			}
@@ -1190,6 +1265,9 @@ export default class PurchasePage extends AbstractClass {
 		item.productMatch = result?.match ? mapped[0] || null : null
 		item.productMatchCandidates = mapped.slice(0, 3)
 		item.productMatchError = ''
+		if (!item.productId && item.productMatch && isExactProductMatchSource(item.productMatch.matchSource)) {
+			this.setReceiptReviewProduct(item, item.productMatch)
+		}
 	}
 
 	findLocalProductForMatch(candidate) {
@@ -1224,6 +1302,7 @@ export default class PurchasePage extends AbstractClass {
 			this.state.receiptReview.form.receiptTotalSource = input.value.trim() ? 'user' : 'unknown'
 			this.updateReceiptReviewTotalsDom()
 		}
+		if (input.name === 'merchantId') this.loadReceiptReviewProductMatches().catch(() => {})
 	}
 
 	updateReceiptReviewItemField(input) {
@@ -1235,10 +1314,32 @@ export default class PurchasePage extends AbstractClass {
 			item.productName = ''
 			item.suggestions = this.getSuggestions(input.value)
 			this.updateReceiptReviewProductDom(item)
+			this.updateReceiptReviewValidationDom()
 			return
 		}
+		if (['quantity', 'unit', 'total'].includes(input.name)) item.reviewConfirmed = false
 		if (input.name === 'total') this.updateReceiptReviewTotalsDom()
 		if (input.name === 'unit') this.updateReceiptReviewProductDom(item)
+		if (['quantity', 'total'].includes(input.name)) this.updateReceiptReviewItemStatusDom(item)
+		if (['quantity', 'unit', 'total'].includes(input.name)) this.updateReceiptReviewValidationDom()
+	}
+
+	updateReceiptReviewValidationDom() {
+		const review = this.state.receiptReview
+		const blockingError = this.getReceiptReviewBlockingError()
+		const blockingNode = document.querySelector('[data-review-blocking-error]')
+		const submitErrorNode = document.querySelector('[data-review-submit-error]')
+		const submitButton = document.querySelector('[data-purchase-action="confirm-receipt-review"]')
+		if (blockingNode) {
+			blockingNode.textContent = blockingError
+			blockingNode.hidden = !blockingError
+		}
+		if (submitErrorNode && review.error === blockingError) {
+			review.error = ''
+			submitErrorNode.textContent = ''
+			submitErrorNode.hidden = true
+		}
+		if (submitButton) submitButton.disabled = Boolean(review.loading || review.saving || blockingError)
 	}
 
 	updateReceiptReviewTotalsDom() {
@@ -1258,7 +1359,7 @@ export default class PurchasePage extends AbstractClass {
 			const suggestedTotalNode = suggestionNode.querySelector('[data-review-suggested-total]')
 			const suggestedButtonNode = suggestionNode.querySelector('[data-review-use-suggested-total]')
 			if (suggestedTotalNode) suggestedTotalNode.textContent = formatMoney(itemsTotal)
-			if (suggestedButtonNode) suggestedButtonNode.textContent = `Use ${itemsTotal.toFixed(2)}`
+			if (suggestedButtonNode) suggestedButtonNode.textContent = `Use ${formatMoneyCents(this.getReceiptReviewItemsTotalCents()).replace(' грн', '')}`
 		}
 		if (warningNode) {
 			warningNode.textContent = totalWarning || ''
@@ -1343,7 +1444,7 @@ export default class PurchasePage extends AbstractClass {
 
 	useReviewItemsTotal() {
 		if (!this.state.receiptReview.form) return
-		this.state.receiptReview.form.receiptTotal = normalizeDecimalString(this.getReceiptReviewItemsTotal())
+		this.state.receiptReview.form.receiptTotal = normalizeMoneyString(this.getReceiptReviewItemsTotal())
 		this.state.receiptReview.form.receiptTotalSource = 'suggested'
 		const input = document.querySelector('[data-review-field][name="receiptTotal"]')
 		if (input) input.value = this.state.receiptReview.form.receiptTotal
@@ -1371,27 +1472,81 @@ export default class PurchasePage extends AbstractClass {
 	}
 
 	getReceiptReviewItemsTotal() {
+		return centsToMoney(this.getReceiptReviewItemsTotalCents())
+	}
+
+	getReceiptReviewItemsTotalCents() {
 		return (this.state.receiptReview.form?.items || [])
-			.reduce((sum, item) => sum + (parseDecimalInput(item.total) || 0), 0)
+			.reduce((sum, item) => sum + (toMoneyCents(item.total) || 0), 0)
 	}
 
 	getReceiptReviewTotalWarning() {
-		const receiptTotal = parseDecimalInput(this.state.receiptReview.form?.receiptTotal)
-		if (receiptTotal === null) return 'Check receipt total'
-		const itemsTotal = this.getReceiptReviewItemsTotal()
-		const difference = Math.round((Math.abs(itemsTotal - receiptTotal) + Number.EPSILON) * 100) / 100
-		if (difference <= 0.05) return 'Totals match'
-		return `Totals differ by ${difference.toFixed(2)} грн`
+		const receiptTotalCents = toMoneyCents(this.state.receiptReview.form?.receiptTotal)
+		if (receiptTotalCents === null) return 'Check receipt total'
+		const differenceCents = Math.abs(this.getReceiptReviewItemsTotalCents() - receiptTotalCents)
+		if (differenceCents <= 5) return 'Totals match'
+		return `Totals differ by ${formatMoneyCents(differenceCents)}`
+	}
+
+	getReceiptReviewContextTemplate(form) {
+		const planningItem = form?.context?.planningItem
+		const transaction = form?.context?.transaction
+		if (!planningItem && !transaction) return ''
+		return `<div class="receipt-review-context">
+			${planningItem ? `<span>Planning: <strong>${this.escapeHtml(planningItem.title || `#${planningItem.id}`)}</strong></span>` : ''}
+			${planningItem?.merchantName ? `<span>Planned store: <strong>${this.escapeHtml(planningItem.merchantName)}</strong></span>` : ''}
+			${transaction ? `<span>Linked transaction: <strong>${this.escapeHtml(formatProvider(transaction.provider))} · ${formatMoney(Math.abs(Number(transaction.amount) || 0))}</strong></span>` : ''}
+			${!form?.merchantId && form?.merchantSuggestion ? `<button class="hboo-button" type="button" data-purchase-action="use-review-merchant-suggestion">Use ${this.escapeHtml(form.merchantSuggestion.name)}</button>` : ''}
+		</div>`
+	}
+
+	getReceiptReviewWarningsTemplate(form) {
+		const warnings = Array.isArray(form?.warnings) ? form.warnings : []
+		if (!warnings.length) return ''
+		return `<div class="receipt-review-warning-list">
+			${warnings.map(warning => `<span>${this.escapeHtml(WARNING_LABELS[warning] || warning)}</span>`).join('')}
+		</div>`
 	}
 
 	hasKnownReceiptReviewTotal() {
-		return parseDecimalInput(this.state.receiptReview.form?.receiptTotal) !== null
+		return toMoneyCents(this.state.receiptReview.form?.receiptTotal) !== null
 	}
 
 	getReceiptReviewItemStatus(item) {
-		if ((item.parserWarnings || []).length || item.confidence < 0.6) return 'Check this item'
+		const blocking = this.getReceiptReviewItemBlockingMessage(item)
+		if (blocking) return blocking
+		if (((item.parserWarnings || []).length || item.confidence < 0.6) && !item.reviewConfirmed) return 'Check this item'
 		if (!item.productId) return 'Select product'
 		return ''
+	}
+
+	getReceiptReviewItemBlockingMessage(item) {
+		if (!item.productId) return 'Select product'
+		const quantity = parseDecimalInput(item.quantity)
+		if (!(quantity > 0)) return 'Enter amount'
+		if (!item.unit) return 'Select unit'
+		const total = toMoneyCents(item.total)
+		if (total === null || total < 0) return 'Enter price'
+		return ''
+	}
+
+	getReceiptReviewBlockingError() {
+		const form = this.state.receiptReview.form
+		if (!form) return 'Review is not loaded.'
+		if (!form.items.length) return 'Add at least one receipt item.'
+		const invalidItem = form.items.find(item => this.getReceiptReviewItemBlockingMessage(item))
+		if (invalidItem) {
+			const label = invalidItem.rawName || invalidItem.productName || 'Receipt item'
+			return `${this.getReceiptReviewItemBlockingMessage(invalidItem)}: ${label}`
+		}
+		return ''
+	}
+
+	confirmReceiptReviewItem(rowId) {
+		const item = this.state.receiptReview.form?.items?.find(row => row.rowId === rowId)
+		if (!item) return
+		item.reviewConfirmed = true
+		this.updateReceiptReviewProductDom(item)
 	}
 
 	buildReceiptReviewPayload() {
@@ -1400,13 +1555,13 @@ export default class PurchasePage extends AbstractClass {
 		const items = form.items.map(item => ({
 			item,
 			quantity: parseDecimalInput(item.quantity),
-			total: parseDecimalInput(item.total)
-		})).filter(({item, quantity, total}) => item.productId && quantity > 0 && total !== null && total >= 0)
-			.map(({item, quantity, total}) => ({
+			totalCents: toMoneyCents(item.total)
+		})).filter(({item, quantity, totalCents}) => item.productId && quantity > 0 && totalCents !== null && totalCents >= 0)
+			.map(({item, quantity, totalCents}) => ({
 				product_id: item.productServerId || item.productId,
 				quantity,
 				unit: item.unit,
-				total,
+				total: centsToMoney(totalCents),
 				raw_name: item.rawName || null
 			}))
 		return {
@@ -1414,24 +1569,15 @@ export default class PurchasePage extends AbstractClass {
 			merchant_id: selectedMerchant?.serverId || form.merchantId || null,
 			purchased_at: toApiDateTimeValue(form.purchasedAt),
 			payment_type: form.paymentType,
+			transaction_provider: form.context?.transaction?.provider || null,
+			transaction_id: form.context?.transaction?.providerTransactionId || null,
 			note: 'Created from receipt review',
 			items
 		}
 	}
 
 	validateReceiptReview() {
-		const form = this.state.receiptReview.form
-		if (!form) return 'Review is not loaded.'
-		if (!form.items.some(item => item.productId)) return 'Select at least one product before creating purchase.'
-		const invalidProduct = form.items.find(item => !item.productId)
-		if (invalidProduct) return 'Every review item must have an explicitly selected product, or be removed.'
-		const invalidAmount = form.items.find(item => {
-			const quantity = parseDecimalInput(item.quantity)
-			const total = parseDecimalInput(item.total)
-			return !(quantity > 0) || total === null || total < 0 || !item.unit
-		})
-		if (invalidAmount) return 'Check quantity, unit and total for every item.'
-		return ''
+		return this.getReceiptReviewBlockingError()
 	}
 
 	async confirmReceiptReview() {
@@ -1939,6 +2085,7 @@ export default class PurchasePage extends AbstractClass {
 		const itemsTotal = this.getReceiptReviewItemsTotal()
 		const totalWarning = this.getReceiptReviewTotalWarning()
 		const hasReceiptTotal = this.hasKnownReceiptReviewTotal()
+		const blockingError = form ? this.getReceiptReviewBlockingError() : ''
 		return `<div class="app-modal-backdrop receipt-review-modal-backdrop">
 			<div class="app-modal receipt-review-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-review-title">
 				<div class="app-modal-header">
@@ -1965,13 +2112,14 @@ export default class PurchasePage extends AbstractClass {
 							<span>Items total: <strong data-review-items-total>${formatMoney(itemsTotal)}</strong></span>
 							<span>Receipt total: <strong data-review-receipt-total>${formatOptionalMoney(form.receiptTotal)}</strong></span>
 						</div>
+						${this.getReceiptReviewContextTemplate(form)}
 						<div class="receipt-review-suggestion" data-review-suggestion ${hasReceiptTotal ? 'hidden' : ''}>
 							<span>Suggested total: <strong data-review-suggested-total>${formatMoney(itemsTotal)}</strong></span>
 							<small>Based on reviewed items, not receipt OCR.</small>
-							<button class="hboo-button" type="button" data-purchase-action="use-review-items-total" data-review-use-suggested-total>Use ${itemsTotal.toFixed(2)}</button>
+							<button class="hboo-button" type="button" data-purchase-action="use-review-items-total" data-review-use-suggested-total>Use ${formatMoneyCents(this.getReceiptReviewItemsTotalCents()).replace(' грн', '')}</button>
 						</div>
 						<div class="${totalWarning === 'Totals match' ? 'receipt-review-ok' : 'receipt-review-warning'}" data-review-total-warning ${totalWarning ? '' : 'hidden'}>${this.escapeHtml(totalWarning)}</div>
-						${form.warnings.length ? `<div class="receipt-review-warning">Check receipt totals and parser warnings.</div>` : ''}
+						${this.getReceiptReviewWarningsTemplate(form)}
 						<div class="purchase-items-title">Items</div>
 						<div class="receipt-review-items">${form.items.map(item => this.getReceiptReviewItemTemplate(item)).join('')}</div>
 						<button class="purchase-add-item" type="button" data-purchase-action="add-review-item">+ Add item</button>
@@ -1979,11 +2127,12 @@ export default class PurchasePage extends AbstractClass {
 						<button class="hboo-button receipt-review-raw-toggle" type="button" data-purchase-action="toggle-review-raw">${review.rawOcrOpen ? 'Hide OCR text' : 'Show full OCR text'}</button>
 						${review.rawOcrOpen ? `<pre class="receipt-ocr-raw">${this.escapeHtml(review.rawText || '')}</pre>` : ''}
 					</div>` : ''}
-					${review.error ? `<div class="purchase-save-error">${this.escapeHtml(review.error)}</div>` : ''}
+					<div class="purchase-save-error" data-review-blocking-error ${blockingError ? '' : 'hidden'}>${this.escapeHtml(blockingError)}</div>
+					<div class="purchase-save-error" data-review-submit-error ${review.error ? '' : 'hidden'}>${this.escapeHtml(review.error)}</div>
 				</div>
 				<div class="app-modal-actions receipt-review-actions">
 					<button type="button" data-purchase-action="close-receipt-review" ${review.saving ? 'disabled' : ''}>Cancel</button>
-					<button class="purchase-save product-primary-action" type="button" data-purchase-action="confirm-receipt-review" ${review.loading || review.saving ? 'disabled' : ''}>${review.saving ? 'Creating purchase...' : 'Create purchase'}</button>
+					<button class="purchase-save product-primary-action" type="button" data-purchase-action="confirm-receipt-review" ${review.loading || review.saving || blockingError ? 'disabled' : ''}>${review.saving ? 'Creating purchase...' : 'Create purchase'}</button>
 				</div>
 			</div>
 		</div>`
@@ -2018,6 +2167,7 @@ export default class PurchasePage extends AbstractClass {
 				<label>Price<input name="total" type="text" inputmode="decimal" value="${this.escapeHtml(item.total)}" data-review-item-field data-row-id="${item.rowId}"></label>
 			</div>
 			<div class="receipt-review-item-actions">
+				${status === 'Check this item' ? `<button class="hboo-button" type="button" data-purchase-action="confirm-review-item" data-row-id="${item.rowId}">Confirm item</button>` : ''}
 				${status ? `<button class="hboo-button" type="button" data-purchase-action="toggle-review-evidence" data-row-id="${item.rowId}">${evidenceOpen ? 'Hide OCR text' : 'Show OCR text'}</button>` : ''}
 				<button class="purchase-remove-item" type="button" data-purchase-action="remove-review-item" data-row-id="${item.rowId}">Remove</button>
 			</div>
@@ -2031,7 +2181,7 @@ export default class PurchasePage extends AbstractClass {
 		if (!candidates.length || item.productId) return ''
 		return candidates.map(product => {
 			const exact = isExactProductMatchSource(product.matchSource)
-			const label = exact ? 'Known receipt name' : 'Suggested'
+			const label = MATCH_SOURCE_LABELS[product.matchSource] || (exact ? 'Known receipt name' : 'Suggested')
 			return `<button class="receipt-review-match-option" type="button" data-purchase-action="accept-review-product-match" data-row-id="${item.rowId}" data-product-id="${product.id}">
 				${this.escapeHtml(label)}: ${this.escapeHtml(product.name)} <span>${this.escapeHtml(product.categoryName || '')}</span>
 			</button>`

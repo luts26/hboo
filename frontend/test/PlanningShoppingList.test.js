@@ -8,8 +8,11 @@ import PlanningLocalRepository from '../hbapp/services/PlanningLocalRepository.j
 import {loadProductsForSuggestions, searchProductsFromCache} from '../hbapp/services/ProductSearchService.js'
 import {
 	applySelectedShoppingProduct,
+	buildShoppingItemsFromText,
 	buildShoppingItemFromFormData,
+	formatShoppingListForCopy,
 	getShoppingItemEditorData,
+	parseShoppingListText,
 	renderShoppingProductSuggestions,
 	syncShoppingProductIdentityFromNameInput
 } from '../hbapp/services/PlanningShoppingListUiService.js'
@@ -290,16 +293,14 @@ test('planning shopping input renders matching product suggestions without reren
 
 test('planning shopping suggestion selection stores product id and canonical product name in the form', async () => {
 	const product = {id: 2, name: 'Молоко безлактозне', categoryName: 'Молочні', status: 'active'}
-	const nameInput = {value: ''}
+	const nameInput = {value: '', focused: false, focus() { this.focused = true }}
 	const hiddenProductId = {value: ''}
 	const suggestions = {innerHTML: '<button>Молоко безлактозне</button>'}
-	const amountInput = {focused: false, focus() { this.focused = true }}
 	const form = {
 		querySelector: selector => {
 			if (selector === '[name="name"]') return nameInput
 			if (selector === '[name="productId"]') return hiddenProductId
 			if (selector === '[data-shopping-suggestions]') return suggestions
-			if (selector === '[name="amount"]') return amountInput
 			return null
 		}
 	}
@@ -317,7 +318,7 @@ test('planning shopping suggestion selection stores product id and canonical pro
 	assert.equal(nameInput.value, 'Молоко безлактозне')
 	assert.equal(hiddenProductId.value, 2)
 	assert.equal(suggestions.innerHTML, '')
-	assert.equal(amountInput.focused, true)
+	assert.equal(nameInput.focused, true)
 	assert.equal(shoppingItem.productId, 2)
 	assert.equal(shoppingItem.name, 'Молоко безлактозне')
 })
@@ -365,6 +366,134 @@ test('planning modal shopping row serializes selected product identity, amount a
 	assert.equal(item.unit, 'l')
 	assert.equal(item.checked, false)
 	assert.equal(item.createdAt, 100)
+})
+
+test('planning shopping quick add is the default compact workflow and Enter path', () => {
+	const source = read('hbapp/pages/PlaningPage.js')
+	const quickTemplate = source.match(/getShoppingQuickAddTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const addQuick = source.match(/addChecklistQuickItem\(event\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const events = source.match(/eventsRegister\(event, eventKey\) \{[\s\S]*?\n\}/)?.[0] || ''
+
+	assert.match(quickTemplate, /planing-shopping-quick-add-form/)
+	assert.match(quickTemplate, /placeholder="Add product\.\.\."/)
+	assert.doesNotMatch(quickTemplate, /name="amount"|name="unit"/)
+	assert.match(addQuick, /getChecklistFormRowTemplate\(item\)/)
+	assert.match(addQuick, /nameInput\.focus\(\)/)
+	assert.match(events, /eventKey === 'keypressenter'/)
+	assert.match(events, /planing-shopping-quick-add-form/)
+})
+
+test('planning shopping quantity and unit stay optional until item is expanded', () => {
+	const item = buildShoppingItemFromFormData({
+		get: key => ({
+			name: 'Чай',
+			productId: '',
+			amount: '',
+			unit: ''
+		})[key]
+	}, {createId: () => 'shopping-tea', position: 0, now: () => 100})
+	const source = read('hbapp/pages/PlaningPage.js')
+	const rowTemplate = source.match(/getChecklistFormRowTemplate\(checklistItem = \{\}, \{expanded = false\} = \{\}\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const css = read('hbapp/assets/styles/main.css')
+
+	assert.equal(item.amount, null)
+	assert.equal(item.unit, null)
+	assert.match(rowTemplate, /planing-shopping-edit-fields/)
+	assert.match(rowTemplate, /name="amount"/)
+	assert.match(rowTemplate, /name="unit"/)
+	assert.match(css, /\.planing-shopping-edit-fields \{\s*display: none;/)
+	assert.match(css, /\.planing-checklist-form-row \.planing-shopping-edit-fields \{\s*display: none;/)
+	assert.match(css, /\.planing-checklist-form-row\.is-expanded \.planing-shopping-details/)
+})
+
+test('planning shopping expanded edit row preserves existing amount and unit fields', () => {
+	const source = read('hbapp/pages/PlaningPage.js')
+	const rowTemplate = source.match(/getChecklistFormRowTemplate\(checklistItem = \{\}, \{expanded = false\} = \{\}\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const toggle = source.match(/toggleChecklistFormRow\(actionTarget\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(rowTemplate, /const amount = checklistItem\.amount === null/)
+	assert.match(rowTemplate, /value="\$\{amount\}"/)
+	assert.match(rowTemplate, /this\.getUnitOptions\(unit\)/)
+	assert.match(rowTemplate, /data-action="planning-checklist-edit"/)
+	assert.match(toggle, /row\.classList\.toggle\('is-expanded', expanded\)/)
+	assert.match(toggle, /actionTarget\.textContent = expanded \? 'Done' : 'Edit'/)
+})
+
+test('planning shopping compact row has one editor that is hidden until Edit', () => {
+	const source = read('hbapp/pages/PlaningPage.js')
+	const rowTemplate = source.match(/getChecklistFormRowTemplate\(checklistItem = \{\}, \{expanded = false\} = \{\}\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const css = read('hbapp/assets/styles/main.css')
+
+	assert.match(rowTemplate, /planing-shopping-compact/)
+	assert.match(rowTemplate, /planing-shopping-compact-name/)
+	assert.match(rowTemplate, /planing-shopping-compact-main/)
+	assert.match(rowTemplate, /getShoppingItemQuantityLabel\(checklistItem\)/)
+	assert.equal((rowTemplate.match(/class="purchase-product-cell planing-shopping-edit-fields"/g) || []).length, 1)
+	assert.equal((rowTemplate.match(/class="planing-shopping-details planing-shopping-edit-fields"/g) || []).length, 1)
+	assert.match(css, /\.planing-shopping-edit-fields \{\s*display: none;/)
+	assert.match(css, /\.planing-checklist-form-row\.is-expanded \.planing-shopping-edit-fields \{\s*display: block;/)
+})
+
+test('planning shopping import panel is collapsed by default and closes after form import', () => {
+	const source = read('hbapp/pages/PlaningPage.js')
+	const bulkTemplate = source.match(/getShoppingBulkPasteTemplate\(\{showToggle = true\} = \{\}\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const applyPaste = source.match(/async applyShoppingPaste\(actionTarget\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.match(bulkTemplate, /data-action="planning-shopping-paste-toggle">Import list/)
+	assert.match(bulkTemplate, /data-shopping-paste-panel hidden/)
+	assert.match(bulkTemplate, /data-action="planning-shopping-paste-preview"/)
+	assert.match(read('hbapp/assets/styles/main.css'), /\.planing-shopping-paste-panel\[hidden\] \{\s*display: none;/)
+	assert.match(applyPaste, /const panel = container\.querySelector\('\[data-shopping-paste-panel\]'\)/)
+	assert.match(applyPaste, /if \(panel\) panel\.hidden = true/)
+})
+
+test('planning shopping Copy list is absent from creation form and present in saved Shopping List modal', () => {
+	const source = read('hbapp/pages/PlaningPage.js')
+	const formTemplate = source.match(/getChecklistFormTemplate\(item = null\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+	const savedTemplate = source.match(/getShoppingListTemplate\(item\) \{[\s\S]*?\n\t\}/)?.[0] || ''
+
+	assert.doesNotMatch(formTemplate, /planning-shopping-copy|Copy list/)
+	assert.match(savedTemplate, /data-action="planning-shopping-copy"/)
+	assert.match(savedTemplate, /Copy list/)
+	assert.match(savedTemplate, /planing-shopping-header-actions/)
+})
+
+test('planning shopping bulk paste parses plain numbered and bulleted text without duplicate imports', () => {
+	const text = `Молоко\n- Хліб\n1. Чай\n2) Чай\n• Помідори`
+	const lines = parseShoppingListText(text)
+	const products = [{id: 7, name: 'Молоко', status: 'active'}]
+	const items = buildShoppingItemsFromText(text, products, {createId: () => `shopping-${Math.random()}`, startPosition: 2, now: () => 100})
+
+	assert.deepEqual(lines, ['Молоко', 'Хліб', 'Чай', 'Помідори'])
+	assert.equal(items.length, 4)
+	assert.equal(items[0].productId, 7)
+	assert.equal(items[0].name, 'Молоко')
+	assert.equal(items[1].productId, null)
+	assert.equal(items[0].amount, null)
+	assert.equal(items[0].position, 2)
+})
+
+test('planning shopping copy formatting is clean and uses explicit quantities only', () => {
+	const text = formatShoppingListForCopy([
+		{name: 'Молоко', productId: 1, amount: 1, unit: 'l'},
+		{name: 'Хліб', productId: null, amount: null, unit: null},
+		{name: 'Чай', amount: '', unit: 'g'}
+	])
+
+	assert.equal(text, 'Молоко 1 l\nХліб\nЧай')
+	assert.doesNotMatch(text, /productId|localId|price|total/i)
+})
+
+test('planning shopping paste and copy actions are wired for create edit and detail views', () => {
+	const source = read('hbapp/pages/PlaningPage.js')
+
+	assert.match(source, /data-action="planning-shopping-paste-toggle"/)
+	assert.match(source, /data-action="planning-shopping-paste-preview"/)
+	assert.match(source, /data-action="planning-shopping-paste-apply"/)
+	assert.match(source, /data-action="planning-shopping-copy"/)
+	assert.match(source, /buildShoppingItemsFromText\(text, this\.products/)
+	assert.match(source, /formatShoppingListForCopy\(items\)/)
+	assert.match(source, /updatePlanningShoppingItems\(selectedItem\.id, \[\.\.\.shoppingItems, \.\.\.items\]/)
 })
 
 test('editing selected product text clears stale product id before serialization', () => {

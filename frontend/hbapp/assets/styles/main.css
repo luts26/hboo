@@ -4052,6 +4052,14 @@ textarea.planing-textarea {
 	margin-top: 1rem;
 }
 
+.planing-checklist-editor-head {
+	align-items: center;
+	display: flex;
+	gap: .65rem;
+	justify-content: space-between;
+	margin-bottom: .55rem;
+}
+
 .planing-checklist-editor-title,
 .planing-detail-section-title {
 	color: #778ba5;
@@ -4070,8 +4078,67 @@ textarea.planing-textarea {
 	align-items: center;
 	display: grid;
 	gap: .5rem;
-	grid-template-columns: minmax(0, 1fr) minmax(170px, .55fr) 42px;
+	grid-template-columns: minmax(0, 1fr);
 	position: relative;
+}
+
+.planing-shopping-compact {
+	align-items: center;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	display: grid;
+	gap: .5rem;
+	grid-template-columns: minmax(0, 1fr) auto 42px;
+	min-height: 40px;
+	padding: .25rem 0;
+}
+
+.planing-shopping-compact-main {
+	display: grid;
+	gap: .15rem;
+	min-width: 0;
+}
+
+.planing-shopping-compact-name {
+	color: #334155;
+	font-weight: 700;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.planing-shopping-compact-main small {
+	color: #778ba5;
+	font-size: 10pt;
+}
+
+.planing-shopping-icon-btn,
+.planing-shopping-secondary-btn {
+	background: #ebf5fc;
+	border: none;
+	border-radius: 8px;
+	box-shadow: -2px -2px 4px #ffffff, 3px 3px 5px rgba(70,70,70,.15);
+	color: #778ba5;
+	cursor: pointer;
+	font-weight: 700;
+	min-height: 36px;
+	padding: .45rem .65rem;
+}
+
+.planing-shopping-edit-fields {
+	display: none;
+}
+
+.planing-checklist-form-row .planing-shopping-edit-fields {
+	display: none;
+}
+
+.planing-checklist-form-row.is-expanded .planing-shopping-edit-fields {
+	display: block;
+}
+
+.planing-checklist-form-row.is-expanded .planing-shopping-details {
+	display: grid;
 }
 
 .planing-checklist-input {
@@ -4809,10 +4876,24 @@ textarea.planing-textarea {
 	margin-bottom: 1rem;
 }
 
+.planing-shopping-header-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .5rem;
+	margin-left: auto;
+}
+
 .planing-shopping-add-form {
 	display: grid;
 	gap: .5rem;
 	margin: .75rem 0 1rem;
+}
+
+.planing-shopping-quick-add-form {
+	display: grid;
+	gap: .5rem;
+	grid-template-columns: minmax(0, 1fr) auto;
+	margin: .65rem 0;
 }
 
 .planing-shopping-input {
@@ -4828,6 +4909,49 @@ textarea.planing-textarea {
 .planing-checklist-form-row .planing-shopping-details {
 	grid-template-columns: minmax(76px, 1fr) 82px;
 	min-width: 0;
+}
+
+.planing-shopping-bulk {
+	margin: .5rem 0 .75rem;
+}
+
+.planing-shopping-paste-panel {
+	display: grid;
+	gap: .55rem;
+	margin-top: .55rem;
+}
+
+.planing-shopping-paste-panel[hidden] {
+	display: none;
+}
+
+.planing-shopping-paste-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .5rem;
+}
+
+.planing-shopping-paste-preview-list {
+	border: 1px solid rgba(119,139,165,.18);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.planing-shopping-paste-preview-row {
+	align-items: center;
+	display: flex;
+	gap: .6rem;
+	justify-content: space-between;
+	padding: .55rem .65rem;
+}
+
+.planing-shopping-paste-preview-row + .planing-shopping-paste-preview-row {
+	border-top: 1px solid rgba(119,139,165,.14);
+}
+
+.planing-shopping-paste-preview-row small,
+.planing-shopping-paste-empty {
+	color: #778ba5;
 }
 
 .planing-shopping-suggestions:empty {
@@ -6556,6 +6680,23 @@ textarea.planing-textarea {
 	font-size: 10pt;
 }
 
+.receipt-review-context,
+.receipt-review-warning-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .45rem .65rem;
+}
+
+.receipt-review-context span,
+.receipt-review-warning-list span {
+	background: #f5f8f7;
+	border: 1px solid rgba(0, 134, 90, .16);
+	border-radius: 8px;
+	color: #43515a;
+	font-size: 9.5pt;
+	padding: .35rem .5rem;
+}
+
 .receipt-review-warning {
 	background: #fff6db;
 	border: 1px solid #f0cf76;
@@ -6705,7 +6846,9 @@ textarea.planing-textarea {
 .dark-theme .receipt-review-item,
 .dark-theme .receipt-review-warning,
 .dark-theme .receipt-review-ok,
-.dark-theme .receipt-review-suggestion {
+.dark-theme .receipt-review-suggestion,
+.dark-theme .receipt-review-context span,
+.dark-theme .receipt-review-warning-list span {
 	background: #2e3b4a;
 	border-color: rgba(255,255,255,.08);
 }

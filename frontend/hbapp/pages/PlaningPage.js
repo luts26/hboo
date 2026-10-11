@@ -8,7 +8,9 @@ import {normalizeSearchText} from '../services/ProductCatalogLocalRepository.js'
 import {loadProductsForSuggestions, searchProductsFromCache} from '../services/ProductSearchService.js'
 import {
 	applySelectedShoppingProduct,
+	buildShoppingItemsFromText,
 	buildShoppingItemFromFormData,
+	formatShoppingListForCopy,
 	getShoppingItemEditorData,
 	renderShoppingProductSuggestions,
 	syncShoppingProductIdentityFromNameInput
@@ -818,14 +820,13 @@ export default class PlaningPage extends AbstractClass {
 
 	getChecklistFormRowsTemplate(item = null) {
 		const checklist = this.getChecklistItems(item)
-		const rows = checklist.length ? checklist : [{id: this.createChecklistId(), title: '', checked: false}]
-
-		return rows.map(checklistItem => this.getChecklistFormRowTemplate(checklistItem)).join('')
+		return checklist.map(checklistItem => this.getChecklistFormRowTemplate(checklistItem)).join('')
 	}
 
-	getChecklistFormRowTemplate(checklistItem = {}) {
+	getChecklistFormRowTemplate(checklistItem = {}, {expanded = false} = {}) {
 		const id = checklistItem.localId || checklistItem.id || this.createChecklistId()
 		const name = this.escapeHtml(checklistItem.name || checklistItem.title || '')
+		const quantityLabel = this.getShoppingItemQuantityLabel(checklistItem)
 		const amount = checklistItem.amount === null || checklistItem.amount === undefined ? '' : this.escapeHtml(checklistItem.amount)
 		const unit = checklistItem.unit || ''
 		const productId = checklistItem.productId ?? ''
@@ -834,19 +835,26 @@ export default class PlaningPage extends AbstractClass {
 		const checked = checklistItem.checked ? 'true' : 'false'
 
 		return `
-			<div class="planing-checklist-form-row" data-shopping-editor data-checklist-id="${this.escapeHtml(id)}" data-shopping-id="${this.escapeHtml(checklistItem.id || id)}" data-shopping-local-id="${this.escapeHtml(id)}" data-shopping-server-id="${this.escapeHtml(serverId)}" data-shopping-created-at="${this.escapeHtml(createdAt)}" data-checklist-checked="${checked}">
-				<div class="purchase-product-cell">
+			<div class="planing-checklist-form-row${expanded ? ' is-expanded' : ''}" data-shopping-editor data-checklist-id="${this.escapeHtml(id)}" data-shopping-id="${this.escapeHtml(checklistItem.id || id)}" data-shopping-local-id="${this.escapeHtml(id)}" data-shopping-server-id="${this.escapeHtml(serverId)}" data-shopping-created-at="${this.escapeHtml(createdAt)}" data-checklist-checked="${checked}">
+				<div class="planing-shopping-compact">
+					<span class="planing-shopping-compact-main">
+						<span class="planing-shopping-compact-name">${name}</span>
+						${quantityLabel ? `<small>${this.escapeHtml(quantityLabel)}</small>` : ''}
+					</span>
+					<button class="planing-shopping-icon-btn" type="button" data-action="planning-checklist-edit" title="${expanded ? 'Done editing' : 'Edit item'}">${expanded ? 'Done' : '✎'}</button>
+					<button class="planing-checklist-remove-btn" type="button" data-action="planning-checklist-remove" title="Remove item">×</button>
+				</div>
+				<div class="purchase-product-cell planing-shopping-edit-fields">
 					<input class="planing-checklist-input planing-shopping-input" type="text" name="name" value="${name}" placeholder="Назва товару" autocomplete="off" data-shopping-field data-selected-product-name="${productId ? name : ''}">
 					${this.getShoppingSuggestionsTemplate()}
+					<input type="hidden" name="productId" value="${this.escapeHtml(productId)}">
 				</div>
-				<div class="planing-shopping-details">
+				<div class="planing-shopping-details planing-shopping-edit-fields">
 					<input name="amount" type="text" inputmode="decimal" placeholder="Amount" value="${amount}" data-shopping-field>
 					<select name="unit" data-shopping-field>
 						${this.getUnitOptions(unit)}
 					</select>
-					<input type="hidden" name="productId" value="${this.escapeHtml(productId)}">
 				</div>
-				<button class="planing-checklist-remove-btn" type="button" data-action="planning-checklist-remove" title="Remove item">×</button>
 			</div>`
 	}
 
@@ -862,13 +870,18 @@ export default class PlaningPage extends AbstractClass {
 	}
 
 	getChecklistFormTemplate(item = null) {
+		const count = this.getChecklistItems(item).length
 		return `
 			<div class="planing-checklist-editor">
-				<div class="planing-checklist-editor-title">Shopping list</div>
+				<div class="planing-checklist-editor-head">
+					<div class="planing-checklist-editor-title">Shopping list</div>
+					${count ? `<div class="planing-shopping-count">${count} ${count === 1 ? 'item' : 'items'}</div>` : ''}
+				</div>
+				${this.getShoppingQuickAddTemplate()}
+				${this.getShoppingBulkPasteTemplate()}
 				<div class="planing-checklist-form-rows">
 					${this.getChecklistFormRowsTemplate(item)}
 				</div>
-				<button class="planing-checklist-add-btn" type="button" data-action="planning-checklist-add">+ Add item</button>
 			</div>`
 	}
 
@@ -998,10 +1011,13 @@ export default class PlaningPage extends AbstractClass {
 	}
 
 	getShoppingItemLabel(item) {
-		const amount = item.amount === null || item.amount === undefined || item.amount === ''
-			? ''
-			: `, ${this.escapeHtml(item.amount)}${item.unit ? ` ${this.escapeHtml(item.unit)}` : ''}`
-		return `${this.escapeHtml(item.name || item.title || '')}${amount}`
+		const quantity = this.getShoppingItemQuantityLabel(item)
+		return `${this.escapeHtml(item.name || item.title || '')}${quantity ? `, ${this.escapeHtml(quantity)}` : ''}`
+	}
+
+	getShoppingItemQuantityLabel(item) {
+		if (item.amount === null || item.amount === undefined || item.amount === '') return ''
+		return `${item.amount}${item.unit ? ` ${item.unit}` : ''}`
 	}
 
 	getShoppingSuggestionsTemplate(suggestions = []) {
@@ -1014,15 +1030,34 @@ export default class PlaningPage extends AbstractClass {
 				<input class="planing-shopping-input" name="name" type="text" placeholder="Search or add product..." autocomplete="off" data-shopping-field data-selected-product-name="">
 				${this.getShoppingSuggestionsTemplate()}
 			</div>
-			<div class="planing-shopping-details">
-				<input name="amount" type="text" inputmode="decimal" placeholder="Amount" data-shopping-field>
-				<select name="unit" data-shopping-field>
-					${this.getUnitOptions()}
-				</select>
-				<input type="hidden" name="productId" value="">
-				<button class="planing-checklist-add-btn" type="submit" data-action="planning-shopping-add">+ Add item</button>
-			</div>
+			<input type="hidden" name="productId" value="">
+			<button class="planing-checklist-add-btn" type="submit" data-action="planning-shopping-add">Add</button>
 		</form>`
+	}
+
+	getShoppingQuickAddTemplate() {
+		return `<div class="planing-shopping-quick-add-form" data-shopping-editor>
+			<div class="purchase-product-cell">
+				<input class="planing-shopping-input" name="name" type="text" placeholder="Add product..." autocomplete="off" data-shopping-field data-selected-product-name="">
+				${this.getShoppingSuggestionsTemplate()}
+			</div>
+			<input type="hidden" name="productId" value="">
+			<button class="planing-checklist-add-btn" type="submit" data-action="planning-checklist-quick-add">Add</button>
+		</div>`
+	}
+
+	getShoppingBulkPasteTemplate({showToggle = true} = {}) {
+		return `<div class="planing-shopping-bulk">
+			${showToggle ? '<button class="hboo-button planing-shopping-secondary-btn" type="button" data-action="planning-shopping-paste-toggle">Import list</button>' : ''}
+			<div class="planing-shopping-paste-panel" data-shopping-paste-panel hidden>
+				<textarea class="planing-textarea" data-shopping-paste-text placeholder="Paste one product per line"></textarea>
+				<div class="planing-shopping-paste-actions">
+					<button class="hboo-button" type="button" data-action="planning-shopping-paste-preview">Preview</button>
+					<button class="hboo-button product-primary-action" type="button" data-action="planning-shopping-paste-apply" disabled>Add preview</button>
+				</div>
+				<div class="planing-shopping-paste-preview" data-shopping-paste-preview></div>
+			</div>
+		</div>`
 	}
 
 	getShoppingListTemplate(item) {
@@ -1034,8 +1069,13 @@ export default class PlaningPage extends AbstractClass {
 					<div class="planing-detail-section-title">Shopping list</div>
 					<div class="planing-shopping-count">${progress.checked} / ${progress.total} completed</div>
 				</div>
+				<div class="planing-shopping-header-actions">
+					<button class="hboo-button planing-shopping-secondary-btn" type="button" data-action="planning-shopping-paste-toggle">Import list</button>
+					<button class="hboo-button planing-shopping-secondary-btn" type="button" data-action="planning-shopping-copy">Copy list</button>
+				</div>
 			</div>
 			${this.getShoppingAddTemplate()}
+			${this.getShoppingBulkPasteTemplate({showToggle: false})}
 			${this.getChecklistDetailTemplate(item, false)}
 		</div>`
 	}
@@ -1142,6 +1182,7 @@ export default class PlaningPage extends AbstractClass {
 						<button class="planing-remove-btn" type="button">Delete</button>
 						${statusActions}
 						<button class="planing-transaction-btn d-none" type="button" data-action="planning-transactions-open" data-itemid="${item.id}">Transactions</button>
+						<button class="hboo-button" type="button" data-action="planning-receipt-import" data-itemid="${item.id}">Import receipt</button>
 						<button class="planing-edit-btn" type="button">Edit</button>
 					</div>
 			</div>`
@@ -1246,6 +1287,13 @@ export default class PlaningPage extends AbstractClass {
 				event.preventDefault()
 				event.stopPropagation()
 				this.addShoppingItem(event).catch(() => {})
+			})
+		})
+		container.querySelectorAll('.planing-shopping-quick-add-form').forEach(form => {
+			form.addEventListener('submit', event => {
+				event.preventDefault()
+				event.stopPropagation()
+				this.addChecklistQuickItem(event)
 			})
 		})
 	}
@@ -1397,6 +1445,13 @@ export default class PlaningPage extends AbstractClass {
 		this.router.redirectRouter(`/purchases#purchase=${encodeURIComponent(purchaseId)}`)
 	}
 
+	openReceiptImport(actionTarget) {
+		const itemId = actionTarget?.dataset.itemid
+		if (!itemId) return
+		this.closeModal()
+		this.router.redirectRouter(`/purchases#planningItem=${encodeURIComponent(itemId)}`)
+	}
+
 	getChecklistFormData(form) {
 		const checklist = Array.from(form.querySelectorAll('.planing-checklist-form-row'))
 			.map((row, index) => getShoppingItemEditorData(row, {
@@ -1406,6 +1461,15 @@ export default class PlaningPage extends AbstractClass {
 			.filter(Boolean)
 
 		return checklist.length ? checklist : undefined
+	}
+
+	getShoppingItemsFromChecklistRows(form) {
+		return Array.from(form?.querySelectorAll('.planing-checklist-form-row') || [])
+			.map((row, index) => getShoppingItemEditorData(row, {
+				createId: () => this.createChecklistId(),
+				position: index
+			}))
+			.filter(Boolean)
 	}
 
 	async createPlanningItem(event) {
@@ -1527,6 +1591,29 @@ export default class PlaningPage extends AbstractClass {
 		applySelectedShoppingProduct(form, product)
 	}
 
+	addChecklistQuickItem(event) {
+		const form = event.target.closest('.planing-shopping-quick-add-form')
+		const planningForm = form?.closest('.planing-form')
+		const rows = planningForm?.querySelector('.planing-checklist-form-rows')
+		if (!form || !rows) return
+		event.preventDefault()
+		const formData = {get: key => form.querySelector(`[name="${key}"]`)?.value || ''}
+		const item = this.buildShoppingItemFromFormData(formData, rows.querySelectorAll('.planing-checklist-form-row').length)
+		if (!item) return
+		rows.insertAdjacentHTML('beforeend', this.getChecklistFormRowTemplate(item))
+		const nameInput = form.querySelector('[name="name"]')
+		const productIdInput = form.querySelector('[name="productId"]')
+		const suggestions = form.querySelector('[data-shopping-suggestions]')
+		if (nameInput) {
+			nameInput.value = ''
+			nameInput.dataset.selectedProductName = ''
+			nameInput.focus()
+		}
+		if (productIdInput) productIdInput.value = ''
+		if (suggestions) suggestions.innerHTML = ''
+		this.bindShoppingItemEditors(rows.closest('.app-modal') || rows)
+	}
+
 	async addShoppingItem(event) {
 		const form = event.target.closest('.planing-shopping-add-form')
 		if (!form) return
@@ -1550,6 +1637,102 @@ export default class PlaningPage extends AbstractClass {
 			createId: () => this.createChecklistId(),
 			position
 		})
+	}
+
+	toggleChecklistFormRow(actionTarget) {
+		const row = actionTarget?.closest('.planing-checklist-form-row')
+		if (!row) return
+		const expanded = !row.classList.contains('is-expanded')
+		row.classList.toggle('is-expanded', expanded)
+		actionTarget.textContent = expanded ? 'Done' : 'Edit'
+		actionTarget.title = expanded ? 'Done editing' : 'Edit item'
+		const input = row.querySelector('.planing-shopping-input')
+		if (expanded && input) input.focus()
+	}
+
+	toggleShoppingPastePanel(actionTarget) {
+		const container = actionTarget?.closest('.planing-checklist-editor, .planing-shopping-view')
+		const panel = container?.querySelector('[data-shopping-paste-panel]')
+		if (!panel) return
+		panel.hidden = !panel.hidden
+		if (!panel.hidden) panel.querySelector('[data-shopping-paste-text]')?.focus()
+	}
+
+	async previewShoppingPaste(actionTarget) {
+		const container = actionTarget?.closest('.planing-checklist-editor, .planing-shopping-view')
+		const text = container?.querySelector('[data-shopping-paste-text]')?.value || ''
+		const preview = container?.querySelector('[data-shopping-paste-preview]')
+		const applyButton = container?.querySelector('[data-action="planning-shopping-paste-apply"]')
+		if (!preview) return
+		await this.ensureShoppingProductsLoaded()
+		const existingCount = container.querySelectorAll('.planing-checklist-form-row').length
+		const items = buildShoppingItemsFromText(text, this.products, {
+			createId: () => this.createChecklistId(),
+			startPosition: existingCount
+		})
+		preview.innerHTML = items.length
+			? `<div class="planing-shopping-paste-preview-list">${items.map(item => `
+				<div class="planing-shopping-paste-preview-row">
+					<span>${this.escapeHtml(item.name)}</span>
+					<small>${item.productId ? 'Catalog product' : 'Needs review'}</small>
+				</div>
+			`).join('')}</div>`
+			: '<div class="planing-shopping-paste-empty">No items to import.</div>'
+		preview.dataset.previewCount = String(items.length)
+		if (applyButton) applyButton.disabled = !items.length
+	}
+
+	async applyShoppingPaste(actionTarget) {
+		const container = actionTarget?.closest('.planing-checklist-editor, .planing-shopping-view')
+		const textInput = container?.querySelector('[data-shopping-paste-text]')
+		const preview = container?.querySelector('[data-shopping-paste-preview]')
+		const text = textInput?.value || ''
+		await this.ensureShoppingProductsLoaded()
+		const rows = container?.querySelector('.planing-checklist-form-rows')
+		if (rows) {
+			const existingCount = rows.querySelectorAll('.planing-checklist-form-row').length
+			const items = buildShoppingItemsFromText(text, this.products, {
+				createId: () => this.createChecklistId(),
+				startPosition: existingCount
+			})
+			items.forEach(item => rows.insertAdjacentHTML('beforeend', this.getChecklistFormRowTemplate(item)))
+			if (textInput) textInput.value = ''
+			if (preview) {
+				preview.innerHTML = ''
+				preview.dataset.previewCount = '0'
+			}
+			const panel = container.querySelector('[data-shopping-paste-panel]')
+			if (panel) panel.hidden = true
+			actionTarget.disabled = true
+			this.bindShoppingItemEditors(rows.closest('.app-modal') || rows)
+			return
+		}
+
+		const selectedItem = this.getSelectedItem()
+		if (!selectedItem) return
+		const shoppingItems = this.getChecklistItems(selectedItem)
+		const items = buildShoppingItemsFromText(text, this.products, {
+			createId: () => this.createChecklistId(),
+			startPosition: shoppingItems.length
+		})
+		if (!items.length) return
+		await planningStore.updatePlanningShoppingItems(selectedItem.id, [...shoppingItems, ...items], {reason: 'shopping-list-paste'})
+		this.setModalView('shoppingList')
+	}
+
+	async copyShoppingList(actionTarget) {
+		const planningForm = actionTarget?.closest('.planing-form')
+		const items = planningForm
+			? this.getShoppingItemsFromChecklistRows(planningForm)
+			: this.getChecklistItems(this.getSelectedItem())
+		const text = formatShoppingListForCopy(items)
+		if (!text) return
+		try {
+			await navigator.clipboard.writeText(text)
+			Toast.show('Shopping list copied', {type: 'success', key: 'shopping-list-copied'})
+		} catch {
+			Toast.show(text, {type: 'info', key: 'shopping-list-copy-fallback'})
+		}
 	}
 
 	getTransactionActionPayload(actionTarget) {
@@ -1607,7 +1790,7 @@ export default class PlaningPage extends AbstractClass {
 			id: this.createChecklistId(),
 			title: '',
 			checked: false
-		}))
+		}, {expanded: true}))
 		const lastInput = rows.querySelector('.planing-checklist-form-row:last-child .planing-checklist-input')
 		if (lastInput) lastInput.focus()
 	}
@@ -1672,13 +1855,20 @@ export default class PlaningPage extends AbstractClass {
 			if (actionTarget?.dataset.action === 'planning-shopping-open') return this.setModalView('shoppingList')
 			if (actionTarget?.dataset.action === 'planning-shopping-back') return this.setModalView('details')
 			if (actionTarget?.dataset.action === 'planning-shopping-select-product') return this.selectShoppingProduct(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-shopping-copy') return this.copyShoppingList(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-shopping-paste-toggle') return this.toggleShoppingPastePanel(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-shopping-paste-preview') return this.previewShoppingPaste(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-shopping-paste-apply') return this.applyShoppingPaste(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-merchant-select') return this.selectMerchant(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-shopping-add') return this.addShoppingItem(event)
 			if (actionTarget?.dataset.action === 'planning-checklist-toggle') return this.toggleChecklistItem(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-smart-confirm') return this.confirmSmartSuggestion(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-view-purchase') return this.openPurchaseFromFact(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-receipt-import') return this.openReceiptImport(actionTarget)
 			// if (actionTarget?.dataset.action === 'planning-transaction-link') return this.linkPlanningTransaction(actionTarget)
 			// if (actionTarget?.dataset.action === 'planning-transaction-unlink') return this.unlinkPlanningTransaction(actionTarget)
+			if (actionTarget?.dataset.action === 'planning-checklist-quick-add') return this.addChecklistQuickItem(event)
+			if (actionTarget?.dataset.action === 'planning-checklist-edit') return this.toggleChecklistFormRow(actionTarget)
 			if (actionTarget?.dataset.action === 'planning-checklist-add') return this.addChecklistFormRow(event)
 			if (actionTarget?.dataset.action === 'planning-checklist-remove') return this.removeChecklistFormRow(event)
 			if (event.target.closest('.planing-remove-btn')) return this.removePlanningItem(event)
@@ -1688,10 +1878,11 @@ export default class PlaningPage extends AbstractClass {
 			}
 		}
 		if (eventKey === 'keypressenter') {
+			if (event.target.closest('.planing-shopping-quick-add-form')) return this.addChecklistQuickItem(event)
 			if (event.target.closest('.planing-shopping-add-form')) return this.addShoppingItem(event)
 			if (event.target.closest('.planing-period-form')) return this.savePeriod(event)
 			if (event.target.closest('.planing-complete-form')) return this.completePlanningItem(event)
-			if (event.target.closest('.planing-checklist-input')) return
+			if (event.target.closest('.planing-checklist-form-row')) return
 			if (event.target.closest('.planing-form')) {
 				return this.state.modal === 'edit' ? this.savePlanningItem(event) : this.createPlanningItem(event)
 			}
@@ -1700,6 +1891,7 @@ export default class PlaningPage extends AbstractClass {
 			if (event.target.closest('.planing-period-input')) return
 		}
 		if (event.type === 'submit') {
+			if (event.target.closest('.planing-shopping-quick-add-form')) return this.addChecklistQuickItem(event)
 			if (event.target.closest('.planing-shopping-add-form')) return this.addShoppingItem(event)
 			if (event.target.closest('.planing-period-form')) return this.savePeriod(event)
 			if (event.target.closest('.planing-complete-form')) return this.completePlanningItem(event)

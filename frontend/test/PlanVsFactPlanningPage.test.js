@@ -58,3 +58,9 @@ test('Plan vs Fact item metrics use Difference terminology', () => {
 	assert.match(source, /<div><span>Difference<\/span><strong>\$\{difference\}<\/strong><\/div>/)
 	assert.doesNotMatch(source, /<div><span>\$\{this\.getPlanVsFactResultLabel\(item\.result\)\}<\/span><strong>\$\{difference\}<\/strong><\/div>/)
 })
+
+test('planning detail can start receipt import with planning context', () => {
+	assert.match(source, /data-action="planning-receipt-import"/)
+	assert.match(source, /openReceiptImport\(actionTarget\)/)
+	assert.match(source, /planningItem=\$\{encodeURIComponent\(itemId\)\}/)
+})

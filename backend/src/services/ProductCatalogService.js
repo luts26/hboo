@@ -56,7 +56,8 @@ class ProductCatalogService {
     async matchProduct(data) {
         return this.matcher.match({
             rawName: data.rawName ?? data.raw_name,
-            merchantId: data.merchantId ?? data.merchant_id ?? null
+            merchantId: data.merchantId ?? data.merchant_id ?? null,
+            shoppingItems: data.shoppingItems ?? data.shopping_items ?? []
         });
     }
 
@@ -176,11 +177,21 @@ class ProductCatalogService {
 
     async createPurchaseFromReceipt(userId, receiptId, data) {
         const purchase = await this.buildPurchase(data);
-        const result = await this.purchasesRepository.createPurchaseFromReceipt(
-            this.requireId(userId, 'user id'),
-            this.requireId(receiptId, 'receipt id'),
-            purchase
-        );
+        let result;
+        try {
+            result = await this.purchasesRepository.createPurchaseFromReceipt(
+                this.requireId(userId, 'user id'),
+                this.requireId(receiptId, 'receipt id'),
+                purchase
+            );
+        } catch (error) {
+            if (error?.code === 'PURCHASE_TRANSACTION_CONFLICT') {
+                const conflict = new Error(error.message);
+                conflict.statusCode = 409;
+                throw conflict;
+            }
+            throw error;
+        }
 
         if (result.status === 'not_found') {
             const error = new Error('Receipt not found');

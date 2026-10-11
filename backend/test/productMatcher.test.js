@@ -130,6 +130,37 @@ test('returns conservative token suggestions without deterministic match', async
     assert.equal(result.candidates[0].source, 'token_similarity');
 });
 
+test('adds Shopping List contextual suggestions after deterministic catalog matching', async () => {
+    const matcher = new ProductMatcher({catalogRepository: makeRepository()});
+    const result = await matcher.match({
+        rawName: 'Молоко фермерське',
+        shoppingItems: [{productId: 1, productName: 'Молоко', amount: 2, unit: 'l'}]
+    });
+
+    assert.equal(result.match, null);
+    assert.equal(result.source, 'token_similarity');
+    assert.equal(result.candidates[0].productName, 'Молоко');
+    assert.equal(result.candidates[0].source, 'token_similarity');
+});
+
+test('uses Shopping List exact product names only as suggestions, not confirmed matches', async () => {
+    const matcher = new ProductMatcher({catalogRepository: makeRepository()});
+    const result = await matcher.match({
+        rawName: 'Сир',
+        shoppingItems: [{productId: 3, productName: 'Сир', amount: 1, unit: 'kg'}]
+    });
+
+    assert.equal(result.source, 'product_name');
+    assert.equal(result.match.productName, 'Сир');
+
+    const contextual = await matcher.match({
+        rawName: 'Сир кисломолочний',
+        shoppingItems: [{productId: 3, productName: 'Сир', amount: 1, unit: 'kg'}]
+    });
+    assert.equal(contextual.match, null);
+    assert.equal(contextual.candidates[0].source, 'shopping_list');
+});
+
 test('does not force unrelated or weak short-token matches', async () => {
     const matcher = new ProductMatcher({catalogRepository: makeRepository()});
 

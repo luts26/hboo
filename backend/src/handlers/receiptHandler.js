@@ -34,7 +34,10 @@ function createReceiptHandler({
         }
 
         if (receiptId && req.params.mode === 'parse' && req.method === 'GET') {
-            sendJson(res, 200, await parser.parseReceipt(userId, receiptId));
+            const url = new URL(req.url, `http://${req.headers.host}`);
+            sendJson(res, 200, await parser.parseReceipt(userId, receiptId, {
+                planningItemId: url.searchParams.get('planning_item_id')
+            }));
             return;
         }
 

@@ -1,4 +1,5 @@
 import pool from '../database/mysql.js';
+import transactionRepository from './TransactionRepository.js';
 
 const purchaseFields = `
     p.id,
@@ -269,6 +270,7 @@ class PurchaseRepository {
                 connection
             );
             if (existingByMutation) {
+                await this.createPurchaseTransactionLinkIfPresent(connection, existingByMutation.id, purchase);
                 await connection.execute(`
                     UPDATE receipt
                     SET purchase_id = ?,
@@ -336,6 +338,8 @@ class PurchaseRepository {
                 ]);
             }
 
+            await this.createPurchaseTransactionLinkIfPresent(connection, purchaseId, purchase);
+
             const [linkResult] = await connection.execute(`
                 UPDATE receipt
                 SET purchase_id = ?,
@@ -365,6 +369,34 @@ class PurchaseRepository {
         } finally {
             connection.release();
         }
+    }
+
+    async createPurchaseTransactionLinkIfPresent(connection, purchaseId, purchase) {
+        if (!purchase.transactionProvider || !purchase.transactionId) return null;
+        const existingPurchaseLink = await transactionRepository.findPurchaseTransactionLinkByPurchaseWithConnection(
+            connection,
+            purchaseId
+        );
+        if (existingPurchaseLink) return existingPurchaseLink.id;
+
+        const existingTransactionLink = await transactionRepository.findPurchaseTransactionLinkByTransactionWithConnection(
+            connection,
+            purchase.transactionProvider,
+            purchase.transactionId
+        );
+        if (existingTransactionLink) {
+            if (Number(existingTransactionLink.purchaseId) === Number(purchaseId)) return existingTransactionLink.id;
+            const error = new Error('Bank transaction is already linked to another purchase');
+            error.code = 'PURCHASE_TRANSACTION_CONFLICT';
+            throw error;
+        }
+
+        return transactionRepository.createPurchaseTransactionLinkWithConnection(
+            connection,
+            purchaseId,
+            purchase.transactionProvider,
+            purchase.transactionId
+        );
     }
 
     async replacePurchase(userId, purchaseId, purchase) {
