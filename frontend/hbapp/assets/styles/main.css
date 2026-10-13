@@ -5583,7 +5583,7 @@ textarea.planing-textarea {
 
 .forecast-dashboard {
 	display: grid;
-	gap: 1.25rem;
+	gap: .9rem;
 	margin-left: auto;
 	margin-right: auto;
 	min-width: 0;
@@ -5599,7 +5599,7 @@ textarea.planing-textarea {
 	border-radius: 8px;
 	box-shadow: -5px -5px 10px rgba(255,255,255,.55), 5px 5px 10px rgba(70,70,70,.14);
 	min-width: 0;
-	padding: 1rem;
+	padding: .85rem;
 	width: 100%;
 }
 
@@ -5608,7 +5608,7 @@ textarea.planing-textarea {
 	display: flex;
 	gap: 1rem;
 	justify-content: space-between;
-	margin-bottom: 1rem;
+	margin-bottom: .75rem;
 	min-width: 0;
 }
 
@@ -5657,9 +5657,9 @@ textarea.planing-textarea {
 	border-radius: 8px;
 	box-shadow: inset 1px 1px 2px rgba(255,255,255,.72), inset -1px -1px 2px rgba(70,70,70,.08);
 	display: grid;
-	gap: .35rem;
+	gap: .25rem;
 	min-width: 0;
-	padding: .85rem;
+	padding: .7rem .75rem;
 }
 
 .forecast-overview-card span,
@@ -5674,10 +5674,11 @@ textarea.planing-textarea {
 
 .forecast-overview-card strong {
 	color: #25364d;
-	font-size: 15pt;
+	font-size: 13.5pt;
 	letter-spacing: 0;
 	line-height: 1.15;
 	overflow-wrap: anywhere;
+	white-space: normal;
 }
 
 .forecast-chart-card {
@@ -5687,7 +5688,7 @@ textarea.planing-textarea {
 }
 
 .forecast-chart-shell {
-	height: 270px;
+	height: 200px;
 	min-width: 0;
 	position: relative;
 	width: 100%;
@@ -5695,9 +5696,14 @@ textarea.planing-textarea {
 
 .forecast-chart-svg {
 	display: block;
-	height: 270px;
+	height: 200px;
 	overflow: visible;
 	width: 100%;
+}
+
+.forecast-chart-card-compact .forecast-chart-shell,
+.forecast-chart-card-compact .forecast-chart-svg {
+	height: 132px;
 }
 
 .forecast-chart-grid {
@@ -5705,6 +5711,10 @@ textarea.planing-textarea {
 	stroke-dasharray: 4 5;
 	stroke-width: 1.2;
 	vector-effect: non-scaling-stroke;
+}
+
+.forecast-chart-zero {
+	stroke: rgba(212,91,91,.42);
 }
 
 .forecast-chart-line {
@@ -5725,6 +5735,13 @@ textarea.planing-textarea {
 
 .forecast-chart-marker.negative {
 	stroke: #d45b5b;
+}
+
+.forecast-chart-value-label {
+	fill: #778ba5;
+	font-size: 9px;
+	font-weight: 800;
+	letter-spacing: 0;
 }
 
 .forecast-chart-axis-label {
@@ -5760,6 +5777,9 @@ textarea.planing-textarea {
 	display: block;
 	height: 10px;
 	margin: 9px;
+	opacity: 0;
+	transform: scale(.75);
+	transition: opacity .16s ease, transform .16s ease, box-shadow .16s ease;
 	width: 10px;
 }
 
@@ -5772,10 +5792,13 @@ textarea.planing-textarea {
 .forecast-chart-target:focus-visible:after,
 .forecast-chart-target.active:after {
 	box-shadow: 0 0 0 6px rgba(52,152,219,.2);
+	opacity: 1;
+	transform: scale(1);
 }
 
 .forecast-chart-target:focus-visible {
-	outline: none;
+	outline: 2px solid rgba(52,152,219,.42);
+	outline-offset: 2px;
 }
 
 .forecast-tooltip {
@@ -5813,7 +5836,7 @@ textarea.planing-textarea {
 .forecast-issue-list,
 .forecast-warning-list {
 	display: grid;
-	gap: .75rem;
+	gap: .45rem;
 	min-width: 0;
 }
 
@@ -5824,13 +5847,13 @@ textarea.planing-textarea {
 	border: 1px solid rgba(255,255,255,.62);
 	border-radius: 8px;
 	min-width: 0;
-	padding: .75rem;
+	padding: .55rem .65rem;
 }
 
 .forecast-expense-row {
 	align-items: center;
 	display: grid;
-	gap: .75rem;
+	gap: .55rem;
 	grid-template-columns: minmax(0, 1fr) minmax(116px, auto) auto;
 }
 
@@ -5845,7 +5868,7 @@ textarea.planing-textarea {
 .forecast-expense-main strong,
 .forecast-issue-row strong {
 	color: #25364d;
-	font-size: 11pt;
+	font-size: 10.5pt;
 	line-height: 1.25;
 	overflow-wrap: anywhere;
 }
@@ -5867,7 +5890,7 @@ textarea.planing-textarea {
 
 .forecast-expense-values strong,
 .forecast-issue-row b {
-	font-size: 11pt;
+	font-size: 10.5pt;
 	line-height: 1.25;
 	overflow-wrap: anywhere;
 }
@@ -5882,8 +5905,8 @@ textarea.planing-textarea {
 	font: inherit;
 	font-size: 10pt;
 	font-weight: 800;
-	min-height: 34px;
-	padding: .45rem .7rem;
+	min-height: 32px;
+	padding: .38rem .62rem;
 }
 
 .forecast-planning-link:hover,
@@ -5895,8 +5918,8 @@ textarea.planing-textarea {
 .forecast-issue-row {
 	align-items: center;
 	display: grid;
-	gap: .75rem;
-	grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+	gap: .55rem;
+	grid-template-columns: minmax(0, 1fr) minmax(96px, auto) auto;
 }
 
 .forecast-issue-row b {
@@ -5910,9 +5933,19 @@ textarea.planing-textarea {
 
 .forecast-warning {
 	color: #25364d;
-	font-size: 10.5pt;
+	font-size: 10pt;
 	font-weight: 800;
 	line-height: 1.35;
+	padding-left: .8rem;
+	position: relative;
+}
+
+.forecast-warning:before {
+	border-radius: 999px;
+	content: '';
+	inset: .55rem auto .55rem .35rem;
+	position: absolute;
+	width: 4px;
 }
 
 .forecast-warning-error {
@@ -5920,14 +5953,26 @@ textarea.planing-textarea {
 	color: #bf0404;
 }
 
+.forecast-warning-error:before {
+	background: #d45b5b;
+}
+
 .forecast-warning-warning {
 	border-color: rgba(217,119,6,.24);
 	color: #a15c00;
 }
 
+.forecast-warning-warning:before {
+	background: #d97706;
+}
+
 .forecast-warning-info {
 	border-color: rgba(52,152,219,.24);
 	color: #1f6f9f;
+}
+
+.forecast-warning-info:before {
+	background: #3498db;
 }
 
 .forecast-empty-state {
@@ -5937,12 +5982,105 @@ textarea.planing-textarea {
 	font-size: 11pt;
 	font-weight: 800;
 	justify-content: center;
-	min-height: 120px;
+	min-height: 88px;
 	text-align: center;
 }
 
+.forecast-empty-state-compact {
+	min-height: 56px;
+}
+
 .forecast-empty-state-small {
-	min-height: 64px;
+	min-height: 48px;
+}
+
+.forecast-constant-chart {
+	align-items: center;
+	display: grid;
+	gap: .45rem;
+	min-height: 112px;
+	padding: .4rem 0;
+	position: relative;
+	text-align: center;
+}
+
+.forecast-constant-line {
+	background: #3498db;
+	border-radius: 999px;
+	height: 3px;
+	margin: 0 auto;
+	width: min(420px, 78%);
+}
+
+.forecast-constant-meta {
+	display: grid;
+	gap: .15rem;
+	justify-items: center;
+}
+
+.forecast-constant-meta strong {
+	color: #25364d;
+	font-size: 12.5pt;
+	line-height: 1.2;
+	overflow-wrap: anywhere;
+}
+
+.forecast-constant-meta span,
+.forecast-constant-chart p {
+	color: #778ba5;
+	font-size: 9.5pt;
+	font-weight: 800;
+	line-height: 1.3;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.forecast-issue-summary {
+	background: rgba(255,255,255,.36);
+	border: 1px solid rgba(217,119,6,.2);
+	border-radius: 8px;
+	display: grid;
+	gap: .2rem;
+	margin-bottom: .55rem;
+	min-width: 0;
+	padding: .55rem .65rem;
+}
+
+.forecast-issue-summary strong {
+	color: #25364d;
+	font-size: 10.5pt;
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+.forecast-issue-summary span {
+	color: #a15c00;
+	font-size: 9.5pt;
+	font-weight: 800;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+.forecast-show-more {
+	background: transparent;
+	border: 1px solid rgba(119,139,165,.24);
+	border-radius: 8px;
+	color: #1f6f9f;
+	cursor: pointer;
+	font: inherit;
+	font-size: 10pt;
+	font-weight: 900;
+	min-height: 36px;
+	padding: .45rem .65rem;
+	text-align: center;
+}
+
+.forecast-show-more:hover,
+.forecast-show-more:focus-visible {
+	border-color: rgba(52,152,219,.42);
+	outline: 2px solid rgba(52,152,219,.25);
+	outline-offset: 2px;
+}
 }
 
 .forecast-excluded-details {
@@ -5987,9 +6125,20 @@ textarea.planing-textarea {
 .dark-theme .forecast-overview-card,
 .dark-theme .forecast-expense-row,
 .dark-theme .forecast-issue-row,
-.dark-theme .forecast-warning {
+.dark-theme .forecast-warning,
+.dark-theme .forecast-issue-summary {
 	background: rgba(15,23,42,.32);
 	border-color: rgba(148,163,184,.16);
+}
+
+.dark-theme .forecast-constant-meta strong,
+.dark-theme .forecast-issue-summary strong {
+	color: #e5edf7;
+}
+
+.dark-theme .forecast-constant-meta span,
+.dark-theme .forecast-constant-chart p {
+	color: #9fb0c5;
 }
 
 
@@ -6457,7 +6606,7 @@ textarea.planing-textarea {
 	}
 
 	.forecast-dashboard {
-		gap: 1rem;
+		gap: .75rem;
 		padding-right: 0;
 	}
 
@@ -6468,7 +6617,7 @@ textarea.planing-textarea {
 		border-left: 0;
 		border-right: 0;
 		box-shadow: none;
-		padding: 1rem;
+		padding: .8rem;
 	}
 
 	.forecast-section-header {
@@ -6488,16 +6637,22 @@ textarea.planing-textarea {
 	}
 
 	.forecast-card-grid {
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+		gap: .55rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.forecast-overview-card strong {
-		font-size: 13pt;
+		font-size: 12pt;
 	}
 
 	.forecast-chart-shell,
 	.forecast-chart-svg {
-		height: 230px;
+		height: 170px;
+	}
+
+	.forecast-chart-card-compact .forecast-chart-shell,
+	.forecast-chart-card-compact .forecast-chart-svg {
+		height: 118px;
 	}
 
 	.forecast-chart-axis-label {
@@ -6506,6 +6661,7 @@ textarea.planing-textarea {
 
 	.forecast-expense-row {
 		align-items: stretch;
+		gap: .45rem;
 		grid-template-columns: minmax(0, 1fr);
 	}
 
@@ -6515,7 +6671,8 @@ textarea.planing-textarea {
 	}
 
 	.forecast-planning-link {
-		width: 100%;
+		justify-self: start;
+		min-width: 108px;
 	}
 
 	.forecast-issue-row {

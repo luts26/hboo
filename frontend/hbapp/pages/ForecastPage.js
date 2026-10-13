@@ -34,7 +34,8 @@ export default class ForecastPage extends AbstractClass {
 		categories: [],
 		forecast: null,
 		error: null,
-		linkHydrating: false
+		linkHydrating: false,
+		ambiguousExpanded: false
 	}
 
 	constructor(hbapp) {
@@ -145,6 +146,17 @@ export default class ForecastPage extends AbstractClass {
 		const planningLink = event.target.closest('[data-forecast-planning-id]')
 		if (planningLink) {
 			this.router.redirectRouter(`/planing#item=${encodeURIComponent(planningLink.dataset.forecastPlanningId)}`)
+			return
+		}
+		const issueToggle = event.target.closest('[data-forecast-toggle-issues]')
+		if (issueToggle) {
+			this.state.ambiguousExpanded = !this.state.ambiguousExpanded
+			this.render()
+			return
+		}
+		const chartTarget = event.target.closest('[data-forecast-day]')
+		if (chartTarget) {
+			this.showChartTooltip(chartTarget.dataset.forecastDay, chartTarget)
 		}
 	}
 
@@ -278,6 +290,7 @@ export default class ForecastPage extends AbstractClass {
 
 	getChartTemplate() {
 		const forecast = this.state.forecast
+		const isConstant = this.isConstantBalanceForecast(forecast.daily)
 		return `<section class="forecast-section" aria-labelledby="forecast-chart-title">
 			<div class="forecast-section-header">
 				<div>
@@ -285,24 +298,55 @@ export default class ForecastPage extends AbstractClass {
 					<p>${forecast.events.length ? `${forecast.events.length} scheduled expense${forecast.events.length === 1 ? '' : 's'}` : 'No scheduled future expenses in this period.'}</p>
 				</div>
 			</div>
-			<div class="forecast-chart-card" data-forecast-chart>
-				${this.renderBalanceChart(forecast.daily)}
+			<div class="forecast-chart-card ${!forecast.events.length || isConstant ? 'forecast-chart-card-compact' : ''}" data-forecast-chart>
+				${forecast.events.length || !isConstant ? this.renderBalanceChart(forecast.daily) : this.renderConstantBalanceChart(forecast.daily)}
 				<div class="forecast-tooltip" data-forecast-tooltip role="status" aria-live="polite"></div>
 			</div>
 		</section>`
 	}
 
+	isConstantBalanceForecast(rows = []) {
+		if (!rows.length) return true
+		const values = rows.map(row => Number(row.closingBalance) || 0)
+		return values.every(value => Math.abs(value - values[0]) < 0.005)
+	}
+
+	getChartDomain(values = []) {
+		if (!values.length) return {minValue: -1, maxValue: 1}
+		const actualMin = Math.min(...values)
+		const actualMax = Math.max(...values)
+		const midpoint = (actualMin + actualMax) / 2
+		const actualSpan = actualMax - actualMin
+		const magnitude = Math.max(Math.abs(actualMin), Math.abs(actualMax), 1)
+		const minimumSpan = Math.max(100, magnitude * 0.03)
+		const paddedSpan = Math.max(actualSpan * 1.35, minimumSpan)
+		let minValue = midpoint - paddedSpan / 2
+		let maxValue = midpoint + paddedSpan / 2
+
+		if (actualMin < 0 && actualMax > 0) {
+			const zeroPadding = paddedSpan * 0.08
+			minValue = Math.min(minValue, -zeroPadding)
+			maxValue = Math.max(maxValue, zeroPadding)
+		}
+
+		if (actualSpan === 0 && actualMin === 0) {
+			minValue = -1
+			maxValue = 1
+		}
+
+		return {minValue, maxValue}
+	}
+
 	renderBalanceChart(rows = []) {
 		if (!rows.length) return '<div class="forecast-empty-state">No forecast days available.</div>'
 		const width = 640
-		const height = 250
-		const padding = {top: 18, right: 20, bottom: 38, left: 58}
+		const height = 190
+		const padding = {top: 14, right: 16, bottom: 32, left: 54}
 		const plotWidth = width - padding.left - padding.right
 		const plotHeight = height - padding.top - padding.bottom
 		const values = rows.map(row => Number(row.closingBalance) || 0)
-		const minValue = Math.min(...values, 0)
-		const maxValue = Math.max(...values, 0)
-		const span = maxValue === minValue ? 1 : maxValue - minValue
+		const {minValue, maxValue} = this.getChartDomain(values)
+		const span = maxValue - minValue
 		const yFor = value => padding.top + plotHeight - ((Number(value) - minValue) / span) * plotHeight
 		const pointCount = Math.max(rows.length - 1, 1)
 		const points = rows.map((row, index) => ({
@@ -313,6 +357,8 @@ export default class ForecastPage extends AbstractClass {
 		}))
 		const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
 		const zeroY = yFor(0)
+		const showZeroLine = minValue < 0 && maxValue > 0
+		const activePoint = points.find(point => point.dateKey === this.activeChartKey)
 		const axisLabels = points
 			.filter((point, index) => rows.length <= 10 || index === 0 || index === rows.length - 1 || index % Math.ceil(rows.length / 6) === 0)
 			.map(point => `<text class="forecast-chart-axis-label" x="${point.x.toFixed(2)}" y="${height - 14}" text-anchor="middle">${this.escapeHtml(this.formatDayMonth(point.date))}</text>`)
@@ -324,12 +370,30 @@ export default class ForecastPage extends AbstractClass {
 		}).join('')
 		return `<div class="forecast-chart-shell">
 			<svg class="forecast-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily projected balance">
-				<line class="forecast-chart-grid" x1="${padding.left}" x2="${width - padding.right}" y1="${zeroY.toFixed(2)}" y2="${zeroY.toFixed(2)}"></line>
+				<line class="forecast-chart-grid" x1="${padding.left}" x2="${width - padding.right}" y1="${padding.top}" y2="${padding.top}"></line>
+				<line class="forecast-chart-grid" x1="${padding.left}" x2="${width - padding.right}" y1="${(padding.top + plotHeight).toFixed(2)}" y2="${(padding.top + plotHeight).toFixed(2)}"></line>
+				${showZeroLine ? `<line class="forecast-chart-grid forecast-chart-zero" x1="${padding.left}" x2="${width - padding.right}" y1="${zeroY.toFixed(2)}" y2="${zeroY.toFixed(2)}"></line>` : ''}
 				<path class="forecast-chart-line" d="${path}"></path>
-				${points.map(point => `<circle class="forecast-chart-marker ${point.closingBalance < 0 ? 'negative' : ''}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4"></circle>`).join('')}
+				${activePoint ? `<circle class="forecast-chart-marker ${activePoint.closingBalance < 0 ? 'negative' : ''}" cx="${activePoint.x.toFixed(2)}" cy="${activePoint.y.toFixed(2)}" r="4"></circle>` : ''}
+				<text class="forecast-chart-value-label" x="${padding.left - 8}" y="${padding.top + 4}" text-anchor="end">${this.escapeHtml(this.formatCompactMoney(maxValue))}</text>
+				<text class="forecast-chart-value-label" x="${padding.left - 8}" y="${padding.top + plotHeight}" text-anchor="end">${this.escapeHtml(this.formatCompactMoney(minValue))}</text>
 				${axisLabels}
 			</svg>
 			<div class="forecast-chart-targets">${targets}</div>
+		</div>`
+	}
+
+	renderConstantBalanceChart(rows = []) {
+		if (!rows.length) return '<div class="forecast-empty-state forecast-empty-state-compact">No forecast days available.</div>'
+		const first = rows[0]
+		const last = rows[rows.length - 1]
+		return `<div class="forecast-constant-chart" role="img" aria-label="Projected balance remains constant">
+			<div class="forecast-constant-line"></div>
+			<div class="forecast-constant-meta">
+				<strong>${this.escapeHtml(this.formatMoney(first.closingBalance))}</strong>
+				<span>${this.escapeHtml(this.formatDate(first.date))} - ${this.escapeHtml(this.formatDate(last.date))}</span>
+			</div>
+			<p>No scheduled future expenses are available, so the projected balance stays unchanged.</p>
 		</div>`
 	}
 
@@ -415,6 +479,9 @@ export default class ForecastPage extends AbstractClass {
 		const ambiguous = forecast.ambiguous || []
 		const excluded = (forecast.excluded || []).filter(item => !['completed', 'cancelled', 'outside_forecast_range'].includes(item.reason))
 		const completedExcluded = (forecast.excluded || []).filter(item => ['completed', 'cancelled'].includes(item.reason))
+		const visibleAmbiguous = this.state.ambiguousExpanded ? ambiguous : ambiguous.slice(0, 5)
+		const hiddenAmbiguousCount = Math.max(0, ambiguous.length - visibleAmbiguous.length)
+		const ambiguousSummary = this.getAmbiguousSummary(ambiguous)
 		return `<section class="forecast-section" aria-labelledby="forecast-ambiguous-title">
 			<div class="forecast-section-header">
 				<div>
@@ -422,12 +489,26 @@ export default class ForecastPage extends AbstractClass {
 					<p>Items here are separated from the projected balance to avoid unsafe financial assumptions.</p>
 				</div>
 			</div>
+			<div class="forecast-issue-summary">
+				<strong>${this.escapeHtml(ambiguousSummary)}</strong>
+				<span>These expenses are not included in the projected balance.</span>
+			</div>
 			<div class="forecast-issue-list">
-				${ambiguous.length ? ambiguous.map(item => this.getIssueRowTemplate(item, 'ambiguous')).join('') : '<div class="forecast-empty-state forecast-empty-state-small">No ambiguous Planning expenses.</div>'}
+				${visibleAmbiguous.length ? visibleAmbiguous.map(item => this.getIssueRowTemplate(item, 'ambiguous')).join('') : '<div class="forecast-empty-state forecast-empty-state-small">No ambiguous Planning expenses.</div>'}
+				${hiddenAmbiguousCount ? `<button class="forecast-show-more" type="button" data-forecast-toggle-issues aria-expanded="false" aria-label="Show all ambiguous Planning expenses">Show all ${ambiguous.length} ambiguous expenses</button>` : ''}
+				${this.state.ambiguousExpanded && ambiguous.length > 5 ? '<button class="forecast-show-more" type="button" data-forecast-toggle-issues aria-expanded="true" aria-label="Collapse ambiguous Planning expenses">Show fewer ambiguous expenses</button>' : ''}
 				${excluded.length ? excluded.map(item => this.getIssueRowTemplate(item, 'excluded')).join('') : ''}
 				${completedExcluded.length ? `<details class="forecast-excluded-details"><summary>Completed or cancelled excluded items (${completedExcluded.length})</summary>${completedExcluded.map(item => this.getIssueRowTemplate(item, 'excluded')).join('')}</details>` : ''}
 			</div>
 		</section>`
+	}
+
+	getAmbiguousSummary(ambiguous = []) {
+		const total = ambiguous.reduce((sum, item) => {
+			const amount = Number(item.amount)
+			return Number.isFinite(amount) ? sum + amount : sum
+		}, 0)
+		return `${ambiguous.length} expense${ambiguous.length === 1 ? '' : 's'} · ${this.formatMoney(total)} not included in forecast`
 	}
 
 	getIssueRowTemplate(item, type) {
@@ -437,6 +518,7 @@ export default class ForecastPage extends AbstractClass {
 				<span>${this.escapeHtml(this.getReasonLabel(item.reason))}${item.date ? ` · ${this.escapeHtml(this.formatDate(item.date))}` : ''}</span>
 			</div>
 			<b>${this.escapeHtml(this.formatMoney(item.amount))}</b>
+			${item.planningItemId ? `<button class="forecast-planning-link" type="button" data-forecast-planning-id="${this.escapeHtml(item.planningItemId)}">Planning</button>` : ''}
 		</article>`
 	}
 
@@ -470,6 +552,11 @@ export default class ForecastPage extends AbstractClass {
 	formatMoney(value) {
 		const num = Number(value) || 0
 		return `${num.toLocaleString('uk-UA', {minimumFractionDigits: 2, maximumFractionDigits: 2})} грн`
+	}
+
+	formatCompactMoney(value) {
+		const num = Number(value) || 0
+		return `${num.toLocaleString('uk-UA', {maximumFractionDigits: 0})} грн`
 	}
 
 	formatDate(value) {

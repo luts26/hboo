@@ -66,6 +66,49 @@ test('Forecast CSS provides responsive layout without horizontal fixed-width row
 	assert.match(css, /\.forecast-dashboard\s*\{[\s\S]*min-width: 0/)
 	assert.match(css, /\.forecast-segmented-control\s*\{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/)
 	assert.match(css, /\.forecast-expense-row\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(116px, auto\) auto/)
+	assert.match(css, /\.forecast-card-grid\s*\{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/)
+	assert.match(css, /\.forecast-chart-shell\s*\{[\s\S]*height: 200px/)
+	assert.match(css, /\.forecast-chart-target:after\s*\{[\s\S]*opacity: 0/)
+	assert.match(css, /\.forecast-chart-target:hover:after,[\s\S]*\.forecast-chart-target:focus-visible:after,[\s\S]*\.forecast-chart-target.active:after\s*\{[\s\S]*opacity: 1/)
 	assert.match(css, /@media screen and \(max-width: 600px\)[\s\S]*\.forecast-segmented-control\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
+	assert.match(css, /@media screen and \(max-width: 600px\)[\s\S]*\.forecast-card-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
 	assert.match(css, /@media screen and \(max-width: 600px\)[\s\S]*\.forecast-expense-row\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/)
+})
+
+test('Forecast chart uses dynamic scale and compact constant-balance state', () => {
+	const source = read('hbapp/pages/ForecastPage.js')
+
+	assert.match(source, /getChartDomain\(values = \[\]\)/)
+	assert.match(source, /actualMin = Math\.min\(\.\.\.values\)/)
+	assert.match(source, /minimumSpan = Math\.max\(100, magnitude \* 0\.03\)/)
+	assert.match(source, /actualMin < 0 && actualMax > 0/)
+	assert.match(source, /renderConstantBalanceChart/)
+	assert.match(source, /No scheduled future expenses are available/)
+	assert.doesNotMatch(source, /points\.map\(point => `<circle class="forecast-chart-marker/)
+	assert.match(source, /activePoint \? `<circle class="forecast-chart-marker/)
+})
+
+test('Forecast issue summary and collapse keep ambiguous totals informational', () => {
+	const source = read('hbapp/pages/ForecastPage.js')
+
+	assert.match(source, /getAmbiguousSummary\(ambiguous = \[\]\)/)
+	assert.match(source, /getAmbiguousSummary\(ambiguous\)/)
+	assert.match(source, /not included in forecast/)
+	assert.match(source, /These expenses are not included in the projected balance/)
+	assert.match(source, /ambiguous\.slice\(0, 5\)/)
+	assert.match(source, /completedExcluded = \(forecast\.excluded \|\| \[\]\)\.filter/)
+	assert.match(source, /data-forecast-toggle-issues/)
+	assert.match(source, /aria-expanded/)
+	assert.match(source, /data-forecast-planning-id/)
+	assert.doesNotMatch(source, /projectedEndingBalance\s*[-+]=|scheduledExpenses\s*[-+]=/)
+})
+
+test('Forecast warning and list styles are compact and accessible', () => {
+	const css = read('hbapp/assets/styles/main.css')
+
+	assert.match(css, /\.forecast-warning\s*\{[\s\S]*padding-left: \.8rem/)
+	assert.match(css, /\.forecast-warning:before\s*\{[\s\S]*content: ''/)
+	assert.match(css, /\.forecast-show-more:focus-visible\s*\{[\s\S]*outline/)
+	assert.match(css, /\.forecast-overview-card strong\s*\{[\s\S]*white-space: normal/)
+	assert.match(css, /\.forecast-expense-main strong,[\s\S]*\.forecast-issue-row strong\s*\{[\s\S]*overflow-wrap: anywhere/)
 })
