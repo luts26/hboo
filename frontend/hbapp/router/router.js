@@ -9,6 +9,7 @@ import PurchasePage from '../pages/PurchasePage.js'
 import ProductAnalyticsPage from '../pages/ProductAnalyticsPage.js'
 import ProductCatalogPage from '../pages/ProductCatalogPage.js'
 import StatisticsPage from '../pages/StatisticsPage.js'
+import ForecastPage from '../pages/ForecastPage.js'
 
 const router = {
 
@@ -18,6 +19,7 @@ const router = {
 		'balance': BalancePage,
 		'transaction': TransactionPage,
 		'statistics': StatisticsPage,
+		'forecast': ForecastPage,
 		'purchases': PurchasePage,
 		'purchases/analytics': ProductAnalyticsPage,
 		'products': ProductCatalogPage,

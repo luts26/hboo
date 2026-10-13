@@ -1,5 +1,5 @@
 const DATABASE_NAME = 'hboo-offline-v1'
-const DATABASE_VERSION = 8
+const DATABASE_VERSION = 9
 
 const STORE_DEFINITIONS = {
 	meta: {
@@ -48,6 +48,15 @@ const STORE_DEFINITIONS = {
 		indexes: [
 			{name: 'fetchedAt', keyPath: 'fetchedAt'},
 			{name: 'serverVersion', keyPath: 'serverVersion'}
+		]
+	},
+	planningTransactionLinks: {
+		keyPath: 'localId',
+		indexes: [
+			{name: 'userId', keyPath: 'userId'},
+			{name: 'environmentKey', keyPath: 'environmentKey'},
+			{name: 'planningItemId', keyPath: 'planningItemId'},
+			{name: 'updatedAt', keyPath: 'updatedAt'}
 		]
 	},
 	transactions: {
@@ -202,7 +211,8 @@ const migrations = {
 	5: ensureStoreDefinitions,
 	6: ensureStoreDefinitions,
 	7: ensureStoreDefinitions,
-	8: ensureStoreDefinitions
+	8: ensureStoreDefinitions,
+	9: ensureStoreDefinitions
 }
 
 const assertIndexedDbAvailable = () => {

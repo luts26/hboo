@@ -70,8 +70,11 @@ test('service worker precaches the complete ES module graph from entry modules',
 	const requiredShellAssets = parseArrayConstant(swSource, 'REQUIRED_SHELL_ASSETS')
 	const moduleGraph = collectJavaScriptGraph(requiredShellAssets)
 
-	assert.match(swSource, /2026-09-29-receipts-v1/)
+	assert.match(swSource, /2026-10-13-forecast-link-cache-v1/)
 	assert.ok(moduleGraph.has('/hbapp/index.js'))
+	assert.ok(moduleGraph.has('/hbapp/pages/ForecastPage.js'))
+	assert.ok(moduleGraph.has('/hbapp/services/FinancialForecastAdapter.js'))
+	assert.ok(moduleGraph.has('/hbapp/services/FinancialForecastService.js'))
 	assert.ok(moduleGraph.has('/hbapp/services/TransactionDateRange.js'))
 	assert.ok(moduleGraph.has('/hbapp/services/ReceiptLocalRepository.js'))
 

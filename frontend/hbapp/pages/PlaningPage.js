@@ -894,7 +894,7 @@ export default class PlaningPage extends AbstractClass {
 		const plannedDate = this.timeStampToStringDate(item?.date || Date.now(), '-')
 
 		return `
-			<form class="planing-form" data-itemid="${item?.id || ''}">
+			<form class="planing-form" data-itemid="${item?.id || ''}" data-original-planned-date="${plannedDate}" data-date-confirmed="false">
 					<div class="planing-form-row">
 						<div class="input-wraper planing-input">
 							<input type="number" name="sum" min="0" step="0.01" placeholder="Сума" value="${sum}">
@@ -1491,6 +1491,7 @@ export default class PlaningPage extends AbstractClass {
 			actualAmount: null,
 			shoppingItems: this.getChecklistFormData(form),
 			date: plannedDate,
+			dateSource: 'user',
 			status: 'pending'
 		})
 		this.closeModal()
@@ -1555,8 +1556,11 @@ export default class PlaningPage extends AbstractClass {
 		if (!sum || sum <= 0) return
 		const plannedDate = this.getDateInputTimestamp(formData.get('plannedDate')) || Date.now()
 		const currentItem = this.getSelectedItem()
+		const currentDate = this.getDateInputTimestamp(form.dataset.originalPlannedDate)
+		const dateWasConfirmed = form.dataset.dateConfirmed === 'true'
+		const dateWasChanged = currentDate !== null && plannedDate !== currentDate
 
-		await planningStore.updatePlanningItem(form.dataset.itemid, {
+		const patch = {
 			sum,
 			categoryId: formData.get('categoryId') || null,
 			merchantId: this.getMerchantIdFromForm(form),
@@ -1565,7 +1569,10 @@ export default class PlaningPage extends AbstractClass {
 			desc: formData.get('note') || '',
 			date: plannedDate,
 			shoppingItems: this.getChecklistFormData(form)
-		})
+		}
+		if (dateWasConfirmed || dateWasChanged) patch.dateSource = 'user'
+
+		await planningStore.updatePlanningItem(form.dataset.itemid, patch)
 		this.closeModal()
 	}
 
@@ -1888,6 +1895,11 @@ export default class PlaningPage extends AbstractClass {
 			}
 		}
 		if (eventKey === 'change') {
+			if (event.target.closest('.planing-form [name="plannedDate"]')) {
+				const form = event.target.closest('.planing-form')
+				if (form) form.dataset.dateConfirmed = 'true'
+				return
+			}
 			if (event.target.closest('.planing-period-input')) return
 		}
 		if (event.type === 'submit') {

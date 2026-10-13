@@ -25,7 +25,7 @@ test('financial summary cards remain the primary workspace navigation targets', 
 		...Array.from(purchaseSummarySource.matchAll(/data-summary-nav="([^"]+)"/g), match => match[1])
 	]
 
-	assert.deepEqual(targets.sort(), ['balance', 'planing', 'purchases', 'transaction'])
+	assert.deepEqual(targets.sort(), ['balance', 'forecast', 'planing', 'purchases', 'transaction'])
 })
 
 test('sidebar financial summary transactions are independent from selected Transactions range', () => {

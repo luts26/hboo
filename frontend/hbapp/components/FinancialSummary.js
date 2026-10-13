@@ -115,6 +115,10 @@ export default class FinancialSummary {
 								<strong>${formatDate(data.targetDate)}</strong>
 							</div>
 						</div>
+						<button class="financial-summary-row financial-summary-forecast-link financial-summary-row-link" type="button" data-summary-nav="forecast" title="View financial forecast">
+							<span>View financial forecast</span>
+							<strong aria-hidden="true">&#8250;</strong>
+						</button>
 					</div>
 				</div>
 				<div class="financial-summary-card financial-summary-planning">

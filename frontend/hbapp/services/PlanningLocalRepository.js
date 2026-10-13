@@ -5,12 +5,22 @@ const LEGACY_STORAGE_KEY = 'hboo-planing-items-v1'
 const STORAGE_KEY_PREFIX = 'hboo-planning-v2'
 const UNSCOPED_STORAGE_KEY = STORAGE_KEY_PREFIX
 const STORAGE_VERSION = 2
+const LINK_STATE_STORAGE_KEY_PREFIX = 'hboo-planning-transaction-links-v1'
 const PLANNING_META_PREFIX = 'planning.state'
 const PLANNING_MIGRATION_META_PREFIX = 'planning.localStorageMigration.v1'
 
 const getPlanningStorageKey = userId => `${STORAGE_KEY_PREFIX}:user:${Number(userId)}`
 const getPlanningMetaKey = userId => `${PLANNING_META_PREFIX}:user:${Number(userId)}`
 const getPlanningMigrationMetaKey = userId => `${PLANNING_MIGRATION_META_PREFIX}:user:${Number(userId)}`
+const getEnvironmentKey = () => {
+	if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin
+	if (typeof globalThis !== 'undefined' && globalThis.location?.origin) return globalThis.location.origin
+	return 'local'
+}
+const getLinkStateStorageKey = (userId, environmentKey = getEnvironmentKey()) => {
+	const safeEnvironmentKey = encodeURIComponent(String(environmentKey || 'local'))
+	return `${LINK_STATE_STORAGE_KEY_PREFIX}:env:${safeEnvironmentKey}:user:${Number(userId)}`
+}
 
 const toNumber = value => {
 	const num = Number(value)
@@ -80,6 +90,14 @@ const normalizeStatus = status => {
 	}
 
 	return map[status] || 'pending'
+}
+
+const normalizeDateSource = ({source, plannedDate, hasDate, hasCreatedAt}) => {
+	const value = String(source || '').trim().toLowerCase()
+	if (['user', 'server', 'fallback'].includes(value)) return value
+	if (plannedDate) return 'server'
+	if (!hasDate && !hasCreatedAt) return 'fallback'
+	return null
 }
 
 const normalizeChecklist = checklist => {
@@ -159,8 +177,14 @@ const normalizePeriod = period => {
 const normalizeItem = (item, periodId) => {
 	const now = Date.now()
 	const plannedDate = dateStringToTimestamp(item?.plannedAt || item?.planned_at)
-	const date = toNumber(item?.date || item?.createdAt) || plannedDate || now
+	const date = toNumber(item?.date) || plannedDate || toNumber(item?.createdAt) || now
 	const createdAt = toNumber(item?.createdAt) || date
+	const dateSource = normalizeDateSource({
+		source: item?.dateSource ?? item?.date_source,
+		plannedDate,
+		hasDate: item?.date !== null && item?.date !== undefined && item?.date !== '',
+		hasCreatedAt: item?.createdAt !== null && item?.createdAt !== undefined && item?.createdAt !== ''
+	})
 	const description = item?.desc ?? item?.description ?? ''
 	const normalizedItem = {
 		...item,
@@ -181,6 +205,9 @@ const normalizeItem = (item, periodId) => {
 		createdAt,
 		updatedAt: toNumber(item?.updatedAt) || createdAt
 	}
+	if (dateSource) normalizedItem.dateSource = dateSource
+	else delete normalizedItem.dateSource
+	delete normalizedItem.date_source
 	const shoppingItems = normalizeShoppingItems(item?.shoppingItems || item?.shopping_items || item?.checklist)
 	const checklist = normalizeChecklist(item?.checklist || shoppingItems)
 
@@ -293,6 +320,95 @@ const migrateLegacyData = legacyData => {
 	}
 }
 
+const normalizeLinkedTransaction = transaction => {
+	if (!transaction || typeof transaction !== 'object') return null
+	const provider = transaction.provider === null || transaction.provider === undefined
+		? ''
+		: String(transaction.provider)
+	const providerTransactionId = transaction.providerTransactionId
+		?? transaction.provider_transaction_id
+		?? transaction.id
+		?? null
+
+	if (!provider || providerTransactionId === null || providerTransactionId === undefined || providerTransactionId === '') {
+		return null
+	}
+
+	return {
+		...transaction,
+		provider,
+		providerTransactionId: String(providerTransactionId)
+	}
+}
+
+const normalizeTransactionLinkState = (itemId, state = {}, {updatedAt = Date.now(), environmentKey = getEnvironmentKey()} = {}) => {
+	const planningItemId = String(itemId || state.planningItemId || state.planning_item_id || '')
+	if (!planningItemId || isTemporaryId(planningItemId)) return null
+
+	const linkedTransactions = (Array.isArray(state.linkedTransactions)
+		? state.linkedTransactions
+		: (Array.isArray(state.transactions) ? state.transactions : []))
+		.map(normalizeLinkedTransaction)
+		.filter(Boolean)
+	const linkedAmountValue = Number(state.linkedAmount ?? state.linked_amount ?? 0)
+	const remainingValue = state.remainingAmount ?? state.remaining_amount
+	const remainingAmount = Number.isFinite(Number(remainingValue)) ? Number(remainingValue) : null
+	const linkStateKnown = state.linkStateKnown !== false && !state.error && !state.loading
+
+	if (!linkStateKnown) {
+		return {
+			planningItemId,
+			linkStateKnown: false,
+			linkedTransactions: [],
+			linkedAmount: 0,
+			remainingAmount: null,
+			updatedAt,
+			lastSuccessfulSyncAt: null,
+			environmentKey
+		}
+	}
+
+	return {
+		planningItemId,
+		linkStateKnown: true,
+		linkedTransactions,
+		linkedAmount: Number.isFinite(linkedAmountValue) ? linkedAmountValue : 0,
+		remainingAmount,
+		updatedAt,
+		lastSuccessfulSyncAt: Number(state.lastSuccessfulSyncAt || state.syncedAt || updatedAt) || updatedAt,
+		environmentKey
+	}
+}
+
+const normalizeTransactionLinkStateMap = (states = {}, options = {}) => {
+	return Object.entries(states || {}).reduce((acc, [itemId, state]) => {
+		const normalized = normalizeTransactionLinkState(itemId, state, options)
+		if (normalized) acc[String(normalized.planningItemId)] = normalized
+		return acc
+	}, {})
+}
+
+const linkStateToStorageRecord = (state, userId, environmentKey = getEnvironmentKey()) => ({
+	...state,
+	localId: `env:${environmentKey}:user:${Number(userId)}:planning-item:${String(state.planningItemId)}`,
+	userId: Number(userId),
+	environmentKey,
+	planningItemId: String(state.planningItemId)
+})
+
+const storageRecordToLinkState = record => {
+	const {
+		localId,
+		userId,
+		...state
+	} = record || {}
+
+	return normalizeTransactionLinkState(state?.planningItemId, state, {
+		updatedAt: Number(state?.updatedAt) || Date.now(),
+		environmentKey: state?.environmentKey || getEnvironmentKey()
+	})
+}
+
 class LocalStoragePlanningRepository {
 
 	constructor(options = {}, legacyStorageKey = LEGACY_STORAGE_KEY) {
@@ -312,6 +428,15 @@ class LocalStoragePlanningRepository {
 
 		const userId = this.getUserId()
 		return userId ? getPlanningStorageKey(userId) : null
+	}
+
+	getEnvironmentKey() {
+		return getEnvironmentKey()
+	}
+
+	getLinkStateStorageKey() {
+		const userId = this.getUserId()
+		return userId ? getLinkStateStorageKey(userId, this.getEnvironmentKey()) : null
 	}
 
 	migrateUnscopedStorage(storageKey) {
@@ -378,6 +503,71 @@ class LocalStoragePlanningRepository {
 			currentPeriod,
 			items: currentPeriod ? data.items.filter(item => String(item.periodId) === String(currentPeriod.id)) : []
 		}
+	}
+
+	async getTransactionLinkStates() {
+		const storageKey = this.getLinkStateStorageKey()
+		if (!storageKey) return {}
+		const cached = readJson(storageKey, null)
+		if (cached?.version !== 1 || cached.environmentKey !== this.getEnvironmentKey()) return {}
+		return normalizeTransactionLinkStateMap(cached.links || {}, {environmentKey: this.getEnvironmentKey()})
+	}
+
+	async saveTransactionLinkState(itemId, state) {
+		const storageKey = this.getLinkStateStorageKey()
+		if (!storageKey) return null
+		const current = await this.getTransactionLinkStates()
+		const normalized = normalizeTransactionLinkState(itemId, state, {environmentKey: this.getEnvironmentKey()})
+		if (!normalized) return null
+		const links = {
+			...current,
+			[String(normalized.planningItemId)]: normalized
+		}
+		writeJson(storageKey, {
+			version: 1,
+			userId: Number(this.getUserId()),
+			environmentKey: this.getEnvironmentKey(),
+			updatedAt: Date.now(),
+			links
+		})
+		return normalized
+	}
+
+	async pruneTransactionLinkStates(itemIds = []) {
+		const storageKey = this.getLinkStateStorageKey()
+		if (!storageKey) return {}
+		const allowedIds = new Set(itemIds.map(String).filter(id => id && !isTemporaryId(id)))
+		const current = await this.getTransactionLinkStates()
+		const links = Object.entries(current).reduce((acc, [itemId, state]) => {
+			if (allowedIds.has(String(itemId))) acc[itemId] = state
+			return acc
+		}, {})
+		writeJson(storageKey, {
+			version: 1,
+			userId: Number(this.getUserId()),
+			environmentKey: this.getEnvironmentKey(),
+			updatedAt: Date.now(),
+			links
+		})
+		return links
+	}
+
+	async removeTransactionLinkState(itemId) {
+		const storageKey = this.getLinkStateStorageKey()
+		if (!storageKey) return {}
+		const current = await this.getTransactionLinkStates()
+		const links = Object.entries(current).reduce((acc, [cachedItemId, state]) => {
+			if (String(cachedItemId) !== String(itemId)) acc[cachedItemId] = state
+			return acc
+		}, {})
+		writeJson(storageKey, {
+			version: 1,
+			userId: Number(this.getUserId()),
+			environmentKey: this.getEnvironmentKey(),
+			updatedAt: Date.now(),
+			links
+		})
+		return links
 	}
 
 	async replaceFromServer({period, items = [], statistics = null}, {preserveDirty = false} = {}) {
@@ -484,6 +674,7 @@ class LocalStoragePlanningRepository {
 		const item = normalizeItem({
 			status: 'pending',
 			date: now,
+			dateSource: 'fallback',
 			createdAt: now,
 			updatedAt: now,
 			...data,
@@ -840,6 +1031,15 @@ export default class PlanningLocalRepository {
 		return userId ? getPlanningStorageKey(userId) : null
 	}
 
+	getEnvironmentKey() {
+		return getEnvironmentKey()
+	}
+
+	getLinkStateStorageKey() {
+		const userId = this.getUserId()
+		return userId ? getLinkStateStorageKey(userId, this.getEnvironmentKey()) : null
+	}
+
 	getMetaKey() {
 		const userId = this.getUserId()
 		return userId ? getPlanningMetaKey(userId) : null
@@ -1073,6 +1273,92 @@ export default class PlanningLocalRepository {
 		}
 	}
 
+	async readFallbackTransactionLinkStates() {
+		return this.fallbackRepository.getTransactionLinkStates()
+	}
+
+	async getTransactionLinkStates() {
+		const isIndexedDbReady = await this.ensureIndexedDbReady()
+		if (!isIndexedDbReady) return this.readFallbackTransactionLinkStates()
+
+		try {
+			const userId = Number(this.getUserId())
+			const environmentKey = this.getEnvironmentKey()
+			const records = await this.indexedDbClient.getAll('planningTransactionLinks')
+			const states = records
+				.filter(record => Number(record.userId) === userId && record.environmentKey === environmentKey)
+				.map(storageRecordToLinkState)
+				.filter(Boolean)
+				.reduce((acc, state) => {
+					acc[String(state.planningItemId)] = state
+					return acc
+				}, {})
+			return states
+		} catch (error) {
+			console.warn('Planning transaction link cache is not readable; falling back to localStorage', error)
+			this.useFallback = true
+			return this.readFallbackTransactionLinkStates()
+		}
+	}
+
+	async saveTransactionLinkState(itemId, state) {
+		const normalized = normalizeTransactionLinkState(itemId, state, {environmentKey: this.getEnvironmentKey()})
+		if (!normalized) return null
+
+		const isIndexedDbReady = await this.ensureIndexedDbReady()
+		if (!isIndexedDbReady) return this.fallbackRepository.saveTransactionLinkState(itemId, normalized)
+
+		try {
+			const userId = Number(this.getUserId())
+			const record = linkStateToStorageRecord(normalized, userId, this.getEnvironmentKey())
+			await this.indexedDbClient.put('planningTransactionLinks', record)
+			await this.fallbackRepository.saveTransactionLinkState(itemId, normalized)
+			return normalized
+		} catch (error) {
+			console.warn('Planning transaction link cache is not writable; falling back to localStorage', error)
+			this.useFallback = true
+			return this.fallbackRepository.saveTransactionLinkState(itemId, normalized)
+		}
+	}
+
+	async pruneTransactionLinkStates(itemIds = []) {
+		const allowedIds = new Set(itemIds.map(String).filter(id => id && !isTemporaryId(id)))
+		const isIndexedDbReady = await this.ensureIndexedDbReady()
+		if (!isIndexedDbReady) return this.fallbackRepository.pruneTransactionLinkStates(itemIds)
+
+		try {
+			const userId = Number(this.getUserId())
+			const environmentKey = this.getEnvironmentKey()
+			const records = await this.indexedDbClient.getAll('planningTransactionLinks')
+			await Promise.all(records
+				.filter(record => Number(record.userId) === userId && record.environmentKey === environmentKey)
+				.filter(record => !allowedIds.has(String(record.planningItemId)))
+				.map(record => this.indexedDbClient.delete('planningTransactionLinks', record.localId)))
+			return this.fallbackRepository.pruneTransactionLinkStates(itemIds)
+		} catch (error) {
+			console.warn('Planning transaction link cache cleanup failed; falling back to localStorage', error)
+			this.useFallback = true
+			return this.fallbackRepository.pruneTransactionLinkStates(itemIds)
+		}
+	}
+
+	async removeTransactionLinkState(itemId) {
+		const isIndexedDbReady = await this.ensureIndexedDbReady()
+		if (!isIndexedDbReady) return this.fallbackRepository.removeTransactionLinkState(itemId)
+
+		try {
+			const userId = Number(this.getUserId())
+			const environmentKey = this.getEnvironmentKey()
+			const record = linkStateToStorageRecord({planningItemId: String(itemId)}, userId, environmentKey)
+			await this.indexedDbClient.delete('planningTransactionLinks', record.localId)
+			return this.fallbackRepository.removeTransactionLinkState(itemId)
+		} catch (error) {
+			console.warn('Planning transaction link cache removal failed; falling back to localStorage', error)
+			this.useFallback = true
+			return this.fallbackRepository.removeTransactionLinkState(itemId)
+		}
+	}
+
 	async replaceFromServer({period, items = [], statistics = null}, {preserveDirty = false} = {}) {
 		const storage = await this.readStorage()
 		const normalizedPeriod = normalizePeriod(period)
@@ -1172,6 +1458,7 @@ export default class PlanningLocalRepository {
 		const item = normalizeItem({
 			status: 'pending',
 			date: now,
+			dateSource: 'fallback',
 			createdAt: now,
 			updatedAt: now,
 			...data,

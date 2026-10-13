@@ -244,6 +244,25 @@ const hasUsableApiAuth = () => {
 	return authState.apiAuthStatus !== API_AUTH_STATUS.REJECTED
 }
 
+const isReliableForecastLinkState = state => {
+	if (!state || state.loading || state.error || state.linkStateKnown === false) return false
+	return Number.isFinite(Number(state.linkedAmount))
+}
+
+const getPersistableLinkState = (itemId, state = {}) => ({
+	planningItemId: String(itemId),
+	linkStateKnown: true,
+	linkedTransactions: Array.isArray(state.linkedTransactions) ? state.linkedTransactions : [],
+	linkedAmount: Number(state.linkedAmount) || 0,
+	remainingAmount: Number.isFinite(Number(state.remainingAmount)) ? Number(state.remainingAmount) : null,
+	lastSuccessfulSyncAt: Date.now()
+})
+
+const isPlanningItemLinkStateInvalidatedByPatch = patch => {
+	const keys = ['sum', 'plannedAmount', 'planned_amount', 'actualAmount', 'actual_amount', 'status', 'date', 'plannedAt', 'planned_at', 'dateSource', 'date_source']
+	return keys.some(key => Object.prototype.hasOwnProperty.call(patch || {}, key))
+}
+
 class PlanningStore {
 
 	constructor({
@@ -392,6 +411,40 @@ class PlanningStore {
 		this.updateSummary()
 	}
 
+	async restoreCachedTransactionLinks(planningItems = []) {
+		if (typeof this.repository.getTransactionLinkStates !== 'function') return {}
+		const cachedLinks = await this.repository.getTransactionLinkStates().catch(() => ({}))
+		const persistedItemIds = new Set(planningItems
+			.map(item => String(item.id || ''))
+			.filter(id => id && !isTemporaryId(id)))
+		const transactionLinks = Object.entries(cachedLinks || {}).reduce((acc, [itemId, state]) => {
+			if (persistedItemIds.has(String(itemId))) acc[String(itemId)] = state
+			return acc
+		}, {})
+		if (typeof this.repository.pruneTransactionLinkStates === 'function') {
+			this.repository.pruneTransactionLinkStates(Array.from(persistedItemIds)).catch(() => {})
+		}
+		return transactionLinks
+	}
+
+	async persistTransactionLinkState(itemId) {
+		const state = this.getTransactionLinkState(itemId)
+		if (!isReliableForecastLinkState(state) || typeof this.repository.saveTransactionLinkState !== 'function') return null
+		return this.repository.saveTransactionLinkState(itemId, getPersistableLinkState(itemId, state)).catch(() => null)
+	}
+
+	async invalidateTransactionLinkState(itemId) {
+		this.setState({
+			transactionLinks: Object.entries(this.state.transactionLinks || {}).reduce((acc, [cachedItemId, state]) => {
+				if (String(cachedItemId) !== String(itemId)) acc[cachedItemId] = state
+				return acc
+			}, {})
+		})
+		if (typeof this.repository.removeTransactionLinkState === 'function') {
+			await this.repository.removeTransactionLinkState(itemId).catch(() => null)
+		}
+	}
+
 	updateSummary() {
 		const summary = {
 			...calculateSummary({
@@ -517,10 +570,12 @@ class PlanningStore {
 	async fetchData() {
 		const bankData = this.getCachedBankData()
 		const cachedState = await this.repository.getPlanningState()
+		const transactionLinks = await this.restoreCachedTransactionLinks(cachedState.items || [])
 
 		this.applyPlanningState(cachedState, {
 			balance: bankData.balance,
 			transactions: bankData.transactions,
+			transactionLinks,
 			loading: false,
 			loaded: true,
 			source: 'cache',
@@ -608,6 +663,7 @@ class PlanningStore {
 		await this.repository.updateItem(id, data, {markDirty})
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		if (isPlanningItemLinkStateInvalidatedByPatch(data)) await this.invalidateTransactionLinkState(id)
 		if (markDirty) await this.enqueueAutosync({reason: 'item-update'})
 		return this.getState()
 	}
@@ -656,6 +712,7 @@ class PlanningStore {
 		await this.repository.removeItem(id)
 		const planningState = await this.repository.getPlanningState()
 		this.applyPlanningState(planningState, {saveError: null})
+		await this.invalidateTransactionLinkState(id)
 		await this.enqueueAutosync({reason: 'item-delete'})
 		return this.getState()
 	}
@@ -738,6 +795,7 @@ class PlanningStore {
 
 		if (result.linked) {
 			this.applyLinkedTransactionResult(itemId, result.linked)
+			await this.persistTransactionLinkState(itemId)
 		}
 
 		return this.getState()
@@ -798,6 +856,7 @@ class PlanningStore {
 			linkedTransactions,
 			linkedAmount: Number(result.linkedAmount) || 0,
 			remainingAmount: result.remainingAmount,
+			linkStateKnown: true,
 			candidates: currentState.candidates.map(transaction => ({
 				...transaction,
 				linked: linkedKeys.has(this.getTransactionKey(transaction))
@@ -833,6 +892,7 @@ class PlanningStore {
 			this.setTransactionLinkState(itemId, {
 				loading: false,
 				error: null,
+				linkStateKnown: true,
 				candidates: (Array.isArray(candidates) ? candidates : []).map(transaction => ({
 					...transaction,
 					linked: Boolean(transaction.linked) || linkedKeys.has(this.getTransactionKey(transaction))
@@ -841,10 +901,19 @@ class PlanningStore {
 				linkedAmount: Number(linkedResult.linkedAmount) || 0,
 				remainingAmount: linkedResult.remainingAmount
 			})
+			await this.persistTransactionLinkState(itemId)
 		} catch (error) {
 			this.setTransactionLinkState(itemId, {loading: false, error})
 		}
 
+		return this.getState()
+	}
+
+	async refreshForecastTransactionLinks(planningItems = this.state.planningItems) {
+		if (this.isOffline() || !hasUsableApiAuth()) return this.getState()
+		const items = (Array.isArray(planningItems) ? planningItems : [])
+			.filter(item => item?.status === 'pending' && !isTemporaryId(item.id))
+		await Promise.all(items.map(item => this.loadPlanningItemTransactions(item.id).catch(() => null)))
 		return this.getState()
 	}
 
@@ -983,6 +1052,7 @@ class PlanningStore {
 	async linkPlanningTransaction(itemId, transaction) {
 		const result = await this.apiService.linkTransaction(itemId, transaction)
 		this.applyLinkedTransactionResult(itemId, result)
+		await this.persistTransactionLinkState(itemId)
 		await this.loadPlanningItemFact(itemId, {force: true})
 		return this.getState()
 	}
@@ -990,6 +1060,7 @@ class PlanningStore {
 	async unlinkPlanningTransaction(itemId, transaction) {
 		const result = await this.apiService.unlinkTransaction(itemId, transaction)
 		this.applyLinkedTransactionResult(itemId, result)
+		await this.persistTransactionLinkState(itemId)
 		await this.loadPlanningItemFact(itemId, {force: true})
 		return this.getState()
 	}
@@ -1421,6 +1492,7 @@ class PlanningStore {
 			})
 			await this.markServerRevalidationSucceeded()
 			this.refreshSmartSuggestions()
+			this.refreshForecastTransactionLinks(planningState.items).catch(() => {})
 			return this.getState()
 		}
 
@@ -1429,6 +1501,7 @@ class PlanningStore {
 
 		if (localMatchesBase && remoteMatchesBase) {
 			await this.markServerRevalidationSucceeded()
+			this.refreshForecastTransactionLinks(localState.items).catch(() => {})
 			return this.getState()
 		}
 
@@ -1454,11 +1527,13 @@ class PlanningStore {
 			})
 			await this.markServerRevalidationSucceeded()
 			this.refreshSmartSuggestions()
+			this.refreshForecastTransactionLinks(planningState.items).catch(() => {})
 			return this.getState()
 		}
 
 		if (!localMatchesBase && remoteMatchesBase) {
 			await this.markServerRevalidationSucceeded()
+			this.refreshForecastTransactionLinks(localState.items).catch(() => {})
 			return this.getState()
 		}
 
