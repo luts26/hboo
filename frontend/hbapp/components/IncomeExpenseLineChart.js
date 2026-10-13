@@ -52,6 +52,24 @@ const getPointValueLabel = ({point, series, formatAmount, getSignedAmount}) => {
 	return parts.join('. ')
 }
 
+const shouldShowPermanentMarker = ({point, rows, markerDensity}) => {
+	if (point.coverage === 'missing') return true
+	if (markerDensity === 'none') return false
+	if (markerDensity === 'all') return true
+	return rows.length <= 8
+}
+
+const getSeriesMarkers = ({point, series, coverageClass, classPrefix = 'home-line-marker', active = false}) => {
+	const markerClass = active ? `${classPrefix} ${classPrefix}-active` : classPrefix
+	const income = series.includes('income') && point.incomeY !== null
+		? `<circle class="${markerClass} home-line-marker-income${coverageClass}" cx="${point.x.toFixed(2)}" cy="${point.incomeY.toFixed(2)}" r="${active ? 4.5 : 4}"></circle>`
+		: ''
+	const expense = series.includes('expenses') && point.expenseY !== null
+		? `<circle class="${markerClass} home-line-marker-expense${coverageClass}" cx="${point.x.toFixed(2)}" cy="${point.expenseY.toFixed(2)}" r="${active ? 4.5 : 4}"></circle>`
+		: ''
+	return `${income}${expense}`
+}
+
 const render = ({
 	rows = [],
 	mode = 'both',
@@ -61,6 +79,8 @@ const render = ({
 	targetDataAttr = 'data-home-month',
 	targetClass = 'home-income-month',
 	ariaLabel = 'Income and expenses',
+	markerDensity = 'auto',
+	showActivePointMarker = true,
 	formatAmount = value => String(value ?? 0),
 	getSignedAmount = value => `${Number(value) >= 0 ? '+' : '-'}${formatAmount(Math.abs(Number(value) || 0))}`
 } = {}) => {
@@ -105,14 +125,23 @@ const render = ({
 		</g>`
 	}).join('')
 	const markers = points.map(point => {
+		const key = String(point[keyField])
+		const isActive = key === activeKey
 		if (point.coverage === 'missing') {
 			return `<circle class="home-line-marker home-line-marker-missing" cx="${point.x.toFixed(2)}" cy="${(padding.top + plotHeight).toFixed(2)}" r="4"></circle>`
 		}
+		if (!shouldShowPermanentMarker({point, rows, markerDensity})) return ''
 		const coverageClass = point.coverage === 'partial' ? ' home-line-marker-partial' : ''
-		const income = series.includes('income') ? `<circle class="home-line-marker home-line-marker-income${coverageClass}" cx="${point.x.toFixed(2)}" cy="${point.incomeY.toFixed(2)}" r="4"></circle>` : ''
-		const expense = series.includes('expenses') ? `<circle class="home-line-marker home-line-marker-expense${coverageClass}" cx="${point.x.toFixed(2)}" cy="${point.expenseY.toFixed(2)}" r="4"></circle>` : ''
-		return `${income}${expense}`
+		return getSeriesMarkers({point, series, coverageClass, active: isActive})
 	}).join('')
+	const activeMarkers = showActivePointMarker
+		? points.map(point => {
+			const key = String(point[keyField])
+			if (key !== activeKey || point.coverage === 'missing') return ''
+			const coverageClass = point.coverage === 'partial' ? ' home-line-marker-partial' : ''
+			return getSeriesMarkers({point, series, coverageClass, active: true})
+		}).join('')
+		: ''
 	const targets = points.map(point => {
 		const key = String(point[keyField])
 		const isActive = key === activeKey
@@ -133,6 +162,7 @@ const render = ({
 			${incomePaths.map(path => `<path class="home-line-series home-line-series-income" d="${path}"></path>`).join('')}
 			${expensePaths.map(path => `<path class="home-line-series home-line-series-expense" d="${path}"></path>`).join('')}
 			${markers}
+			${activeMarkers}
 		</svg>
 		<div class="home-income-targets">${targets}</div>
 	</div>`

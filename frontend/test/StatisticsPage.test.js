@@ -171,6 +171,7 @@ test('Statistics UI has responsive cards charts and no framework dependency', ()
 
 	assert.match(source, /statistics-card-grid/)
 	assert.match(source, /IncomeExpenseLineChart\.render/)
+	assert.match(source, /AnalyticsCategoryCards\.render/)
 	assert.match(source, /data-statistics-trend-chart/)
 	assert.match(source, /statistics-category-row/)
 	assert.match(source, /statistics-comparison-table/)
@@ -178,6 +179,18 @@ test('Statistics UI has responsive cards charts and no framework dependency', ()
 	assert.match(css, /\.statistics-trend-control\s*\{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
 	assert.match(css, /@media screen and \(max-width: 600px\)[\s\S]*\.statistics-card-grid\s*\{[\s\S]*grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 140px\), 1fr\)\)/)
 	assert.doesNotMatch(source, /from ['"](?!\.)[^'"\n]*(?:React|Vue|Angular|Chart\.js|chart\.js)[^'"\n]*['"]/)
+})
+
+test('Statistics trend uses active marker behavior and keeps zero-value points in chart rows', () => {
+	const source = read('hbapp/pages/StatisticsPage.js')
+	const chart = read('hbapp/components/IncomeExpenseLineChart.js')
+
+	assert.match(source, /markerDensity: 'none'/)
+	assert.match(source, /showActivePointMarker: true/)
+	assert.match(source, /trend\.items\.map/)
+	assert.match(chart, /Number\(item\[key\]\) \|\| 0/)
+	assert.match(chart, /getLineSegments\(points, 'incomeY'\)/)
+	assert.match(chart, /getLineSegments\(points, 'expenseY'\)/)
 })
 
 test('Statistics comparison renders compact change values and mobile card labels from the same markup', async () => {

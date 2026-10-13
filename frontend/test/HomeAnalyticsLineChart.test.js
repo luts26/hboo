@@ -17,6 +17,8 @@ test('Income vs Expenses renders as a responsive SVG line chart', () => {
 	assert.match(chart, /home-line-series-income/)
 	assert.match(chart, /home-line-series-expense/)
 	assert.match(chart, /home-income-targets/)
+	assert.match(chart, /markerDensity = 'auto'/)
+	assert.match(chart, /showActivePointMarker = true/)
 })
 
 test('legacy monthly income and expense bars are no longer rendered', () => {
@@ -34,6 +36,20 @@ test('missing months are excluded from factual line segments and kept interactiv
 	assert.match(source, /home-line-marker-missing/)
 	assert.match(source, /targetDataAttr/)
 	assert.match(source, /Local history unavailable/)
+})
+
+test('dense Home and Statistics charts avoid unnecessary permanent markers while keeping active targets', () => {
+	const chart = read('hbapp/components/IncomeExpenseLineChart.js')
+	const homeSource = read('hbapp/pages/HomePage.js')
+	const statisticsSource = read('hbapp/pages/StatisticsPage.js')
+	const css = read('hbapp/assets/styles/main.css')
+
+	assert.match(chart, /shouldShowPermanentMarker/)
+	assert.match(chart, /rows\.length <= 8/)
+	assert.match(statisticsSource, /markerDensity: 'none'/)
+	assert.match(homeSource, /markerDensity: 'auto'/)
+	assert.match(css, /\.home-income-month:hover \.home-income-target-dot/)
+	assert.match(css, /\.home-income-month:focus-visible,[\s\S]*\.home-financial-point:focus-visible\s*\{[\s\S]*outline/)
 })
 
 test('partial months remain visually identifiable without recalculating values', () => {
@@ -86,6 +102,7 @@ test('Financial Position chart renders zero line, states, sparse and one-point c
 	assert.match(source, /home-financial-marker-credit/)
 	assert.match(source, /home-financial-marker-zero/)
 	assert.match(source, /home-financial-point/)
+	assert.match(source, /points\.length <= 8/)
 	assert.match(source, /No balance observations for this period/)
 	assert.match(source, /Last snapshot before selected period/)
 	assert.match(css, /\.home-financial-zero-line/)
@@ -108,8 +125,8 @@ test('IndexedDB has dedicated balanceHistory store and Service Worker avoids API
 	assert.match(indexedDb, /balanceHistory/)
 	assert.match(indexedDb, /userProvider/)
 	assert.match(indexedDb, /planningShoppingItems/)
-	assert.match(indexedDb, /const DATABASE_VERSION = 8/)
-	assert.match(indexedDb, /8: ensureStoreDefinitions/)
+	assert.match(indexedDb, /const DATABASE_VERSION = 9/)
+	assert.match(indexedDb, /9: ensureStoreDefinitions/)
 	assert.match(sw, /url\.pathname\.startsWith\('\/api\/'\)/)
 })
 

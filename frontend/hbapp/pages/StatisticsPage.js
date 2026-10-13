@@ -3,6 +3,7 @@ import TransactionLocalRepository from '../services/TransactionLocalRepository.j
 import PlanningLocalRepository from '../services/PlanningLocalRepository.js'
 import CategoryApiService from '../services/CategoryApiService.js'
 import IncomeExpenseLineChart from '../components/IncomeExpenseLineChart.js'
+import AnalyticsCategoryCards from '../components/AnalyticsCategoryCards.js'
 import {
 	COVERAGE_COMPLETE,
 	buildStatistics,
@@ -409,6 +410,8 @@ export default class StatisticsPage extends AbstractClass {
 					targetDataAttr: 'data-statistics-trend-point',
 					targetClass: 'home-income-month',
 					ariaLabel: 'Income and expenses for selected statistics period',
+					markerDensity: 'none',
+					showActivePointMarker: true,
 					formatAmount: value => this.formatMoney(value),
 					getSignedAmount: value => `${Number(value) >= 0 ? '+' : '-'}${this.formatMoney(Math.abs(Number(value) || 0))}`
 				}) : '<div class="statistics-empty-state">No cached transactions for this period.</div>'}
@@ -502,28 +505,18 @@ export default class StatisticsPage extends AbstractClass {
 				</div>
 			</div>
 			<div class="statistics-category-list">
-				${items.length ? items.map(item => this.getCategoryRowTemplate(item, stats.categories.total)).join('') : '<div class="statistics-empty-state">No expenses in this period.</div>'}
+				${AnalyticsCategoryCards.render({
+					items,
+					total: stats.categories.total,
+					getCategoryDisplay: categoryId => this.getCategoryDisplay(categoryId),
+					formatMoney: value => this.formatMoney(value),
+					formatPercent: value => this.formatPercent(value),
+					getChangeTemplate: change => this.getChangeTemplate(change),
+					escapeHtml: value => this.escapeHtml(value),
+					emptyTemplate: '<div class="statistics-empty-state">No expenses in this period.</div>'
+				})}
 			</div>
 		</section>`
-	}
-
-	getCategoryRowTemplate(item, total) {
-		const category = this.getCategoryDisplay(item.categoryId)
-		const width = total > 0 ? Math.min(100, Math.max(2, item.current / total * 100)) : 0
-		return `<article class="statistics-category-row">
-			<div class="statistics-category-main">
-				<span class="statistics-category-icon ${this.escapeHtml(category.icon || 'other-icon')}" aria-hidden="true"></span>
-				<div>
-					<strong>${this.escapeHtml(category.name)}</strong>
-					<small>${this.formatPercent(item.percentage)} of expenses</small>
-				</div>
-			</div>
-			<div class="statistics-category-values">
-				<strong>${this.formatMoney(item.current)}</strong>
-				${this.getChangeTemplate(item.change)}
-			</div>
-			<div class="statistics-category-bar" aria-hidden="true"><span style="width:${width.toFixed(1)}%"></span></div>
-		</article>`
 	}
 
 	getComparisonTemplate() {

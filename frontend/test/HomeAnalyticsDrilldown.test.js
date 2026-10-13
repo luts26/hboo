@@ -60,3 +60,18 @@ test('drill-down navigation does not call transaction bank refresh actions direc
 	assert.match(drilldownMethod, /router\.redirectRouter/)
 	assert.doesNotMatch(drilldownMethod, /refresh\(|updateTransaction|confirmRefresh|TransactionApiService/)
 })
+
+test('Home category cards reuse Statistics category presentation with icons and fallback', () => {
+	const homeSource = fs.readFileSync(path.join(frontendRoot, 'hbapp/pages/HomePage.js'), 'utf8')
+	const component = fs.readFileSync(path.join(frontendRoot, 'hbapp/components/AnalyticsCategoryCards.js'), 'utf8')
+	const css = fs.readFileSync(path.join(frontendRoot, 'hbapp/assets/styles/main.css'), 'utf8')
+
+	assert.match(homeSource, /AnalyticsCategoryCards\.render/)
+	assert.match(homeSource, /actionDataAttr: 'data-home-category-id'/)
+	assert.match(homeSource, /icon: category\?\.icon \|\| 'other-icon'/)
+	assert.match(component, /statistics-category-icon/)
+	assert.match(component, /statistics-category-bar/)
+	assert.match(component, /formatPercent\(percentage\).*of expenses/)
+	assert.match(css, /\.statistics-category-bar span\s*\{[\s\S]*linear-gradient\(90deg, #d45b5b, #f0a45f\)/)
+	assert.match(css, /\.home-category-card\.statistics-category-row-action:focus-visible/)
+})

@@ -1250,16 +1250,16 @@ img.pb-icon {
 	width: 14px;
 }
 
-.home-income-month:focus-visible {
-	outline: none;
-}
-
+.home-income-month:focus-visible,
 .home-financial-point:focus-visible {
-	outline: none;
+	outline: 2px solid rgba(52,152,219,.42);
+	outline-offset: 2px;
 }
 
+.home-income-month:hover .home-income-target-dot,
 .home-income-month:focus-visible .home-income-target-dot,
 .home-income-month.active .home-income-target-dot,
+.home-financial-point:hover .home-financial-target-dot,
 .home-financial-point:focus-visible .home-financial-target-dot,
 .home-financial-point.active .home-financial-target-dot {
 	border-color: rgba(52,152,219,.72);
@@ -1438,8 +1438,34 @@ img.pb-icon {
 
 .home-category-list {
 	display: grid;
-	gap: .75rem;
+	gap: .55rem;
 	min-width: 0;
+}
+
+.home-category-card {
+	appearance: none;
+	background: rgba(255,255,255,.42);
+	color: inherit;
+	cursor: default;
+	font: inherit;
+	text-align: left;
+	width: 100%;
+}
+
+.home-category-card.statistics-category-row-action {
+	cursor: pointer;
+}
+
+.home-category-card.statistics-category-row-action:hover,
+.home-category-card.statistics-category-row-action:focus-visible {
+	border-color: rgba(52,152,219,.32);
+	outline: 2px solid rgba(52,152,219,.22);
+	outline-offset: 2px;
+}
+
+.home-category-card.statistics-category-row-action:hover .statistics-category-main strong,
+.home-category-card.statistics-category-row-action:focus-visible .statistics-category-main strong {
+	color: var(--hboo-accent);
 }
 
 .home-category-row {

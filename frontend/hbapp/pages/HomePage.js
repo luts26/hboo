@@ -4,6 +4,7 @@ import CategoryApiService from '../services/CategoryApiService.js'
 import BalanceApiService from '../services/BalanceApiService.js'
 import BalanceHistoryLocalRepository from '../services/BalanceHistoryLocalRepository.js'
 import IncomeExpenseLineChart from '../components/IncomeExpenseLineChart.js'
+import AnalyticsCategoryCards from '../components/AnalyticsCategoryCards.js'
 import transactionStore from '../stores/TransactionStore.js'
 import router from '../router/router.js'
 import {
@@ -288,12 +289,18 @@ export default class HomePage extends AbstractClass {
 
 	getCategoryDisplay(categoryId) {
 		if (String(categoryId) === UNCATEGORIZED_CATEGORY_ID) {
-			return {name: 'Без категорії'}
+			return {name: 'Без категорії', icon: 'other-icon'}
 		}
 		const category = this.categories.find(item => String(item.id) === String(categoryId))
 		return {
-			name: category?.name || `Category #${categoryId}`
+			name: category?.name || `Category #${categoryId}`,
+			icon: category?.icon || 'other-icon'
 		}
+	}
+
+	formatPercent(value) {
+		const num = Number(value) || 0
+		return `${num.toLocaleString('uk-UA', {maximumFractionDigits: 1, minimumFractionDigits: 0})}%`
 	}
 
 	escapeHtml(value) {
@@ -387,6 +394,8 @@ export default class HomePage extends AbstractClass {
 			targetDataAttr: 'data-home-month',
 			targetClass: 'home-income-month',
 			ariaLabel: 'Income and expenses by month',
+			markerDensity: 'auto',
+			showActivePointMarker: true,
 			formatAmount: value => this.formatAmount(value),
 			getSignedAmount: value => this.getSignedAmount(value)
 		})
@@ -571,10 +580,13 @@ export default class HomePage extends AbstractClass {
 			if (x < padding.left - 2 || x > width - padding.right + 2) return ''
 			return `<text class="home-line-axis-label" x="${x.toFixed(2)}" y="${height - 14}" text-anchor="middle">${this.escapeHtml(item.label)}</text>`
 		}).join('')
+		const showPermanentMarkers = points.length <= 8
 		const markers = points.map(point => {
+			if (!showPermanentMarkers && point.id !== this.activeFinancialSnapshot && point.inRange !== false) return ''
 			const stateClass = point.state === 'credit' ? 'home-financial-marker-credit' : point.state === 'zero' ? 'home-financial-marker-zero' : 'home-financial-marker-own'
 			const mutedClass = point.inRange === false ? ' home-financial-marker-context' : ''
-			return `<circle class="home-line-marker home-financial-marker ${stateClass}${mutedClass}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${point.inRange === false ? 3 : 4}"></circle>`
+			const activeClass = point.id === this.activeFinancialSnapshot ? ' home-line-marker-active' : ''
+			return `<circle class="home-line-marker home-financial-marker ${stateClass}${mutedClass}${activeClass}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${point.id === this.activeFinancialSnapshot ? 4.5 : point.inRange === false ? 3 : 4}"></circle>`
 		}).join('')
 		const targets = points.map(point => {
 			const isActive = point.id === this.activeFinancialSnapshot
@@ -700,25 +712,17 @@ export default class HomePage extends AbstractClass {
 			return
 		}
 
-		list.innerHTML = data.items.map(item => {
-			const width = Math.max(3, item.percentage)
-			const category = this.getCategoryDisplay(item.categoryId)
-			const canDrillDown = String(item.categoryId) !== UNCATEGORIZED_CATEGORY_ID
-			const tag = canDrillDown ? 'button' : 'div'
-			const drillAttrs = canDrillDown
-				? `type="button" data-home-category-id="${this.escapeHtml(item.categoryId)}" title="Open transactions"`
-				: 'aria-disabled="true"'
-			return `<${tag} class="home-category-row ${canDrillDown ? 'home-category-row-action' : 'home-category-row-static'}" ${drillAttrs}>
-				<div class="home-category-main">
-					<span class="home-category-name">${this.escapeHtml(category.name)}</span>
-					<strong>${this.formatAmount(item.amount)}</strong>
-					<em>${item.percentage.toFixed(1)}%</em>
-				</div>
-				<div class="home-category-track" aria-hidden="true">
-					<div class="home-category-bar" style="width:${width}%"></div>
-				</div>
-			</${tag}>`
-		}).join('')
+		list.innerHTML = AnalyticsCategoryCards.render({
+			items: data.items,
+			total: data.total,
+			getCategoryDisplay: categoryId => this.getCategoryDisplay(categoryId),
+			formatMoney: value => this.formatAmount(value),
+			formatPercent: value => this.formatPercent(value),
+			escapeHtml: value => this.escapeHtml(value),
+			actionDataAttr: 'data-home-category-id',
+			rowClass: 'home-category-card',
+			emptyTemplate: '<div class="home-empty-state">No expense transactions in this period.</div>'
+		})
 	}
 
 	async setIncomePeriod(months) {
