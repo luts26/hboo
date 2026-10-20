@@ -6928,6 +6928,83 @@ textarea.planing-textarea {
 	justify-content: flex-end;
 }
 
+.purchase-method-modal {
+	max-width: 420px;
+	width: min(420px, calc(100vw - 2rem));
+}
+
+.purchase-method-list {
+	display: grid;
+	gap: .7rem;
+	padding: 1rem;
+}
+
+.purchase-method-option {
+	align-items: center;
+	background: rgba(255, 255, 255, .04);
+	border: 1px solid rgba(148, 163, 184, .28);
+	border-radius: 14px;
+	color: inherit;
+	cursor: pointer;
+	display: grid;
+	gap: .85rem;
+	grid-template-columns: 42px minmax(0, 1fr);
+	min-height: 68px;
+	padding: .8rem;
+	text-align: left;
+	width: 100%;
+}
+
+.purchase-method-option:hover,
+.purchase-method-option:focus-visible {
+	border-color: #4e91ff;
+	outline: none;
+}
+
+.purchase-method-icon {
+	align-items: center;
+	background: rgba(78, 145, 255, .13);
+	border-radius: 12px;
+	color: #4e91ff;
+	display: flex;
+	font-size: 22px;
+	height: 42px;
+	justify-content: center;
+	width: 42px;
+}
+
+.purchase-method-option strong,
+.purchase-method-option small,
+.receipt-review-merchant-source span,
+.receipt-review-merchant-source small {
+	display: block;
+}
+
+.purchase-method-option small {
+	color: #9baabd;
+	font-size: 9pt;
+	margin-top: .2rem;
+}
+
+.receipt-review-merchant-source {
+	background: rgba(78, 145, 255, .08);
+	border: 1px solid rgba(78, 145, 255, .22);
+	border-radius: 12px;
+	display: grid;
+	gap: .4rem;
+	padding: .75rem;
+}
+
+.receipt-review-merchant-source small {
+	color: #9baabd;
+}
+
+.receipt-review-merchant-suggestions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .5rem;
+}
+
 .purchase-domain-switch {
 	min-width: 128px;
 }
@@ -8111,6 +8188,18 @@ textarea.planing-textarea {
 }
 
 @media (max-width: 600px) {
+	.purchase-method-modal-backdrop {
+		align-items: flex-end;
+		padding: 0;
+	}
+
+	.purchase-method-modal {
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
+		max-height: calc(100dvh - 2rem);
+		width: 100%;
+	}
+
 	.planing-checklist-form-row {
 		grid-template-columns: minmax(0, 1fr) 42px;
 	}

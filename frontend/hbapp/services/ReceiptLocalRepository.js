@@ -33,6 +33,11 @@ const normalizeReceipt = receipt => {
 		originalFilename: receipt.originalFilename || null,
 		size: Number(receipt.size || receipt.blob?.size || 0),
 		ocr: normalizeOcr(receipt.ocr),
+		sourceType: receipt.sourceType || (receipt.xmlDraft ? 'xml' : 'image'),
+		sourceFormat: receipt.sourceFormat || receipt.xmlDraft?.sourceFormat || null,
+		sourceHash: receipt.sourceHash || null,
+		rawXml: receipt.rawXml || null,
+		xmlDraft: receipt.xmlDraft || null,
 		syncStatus,
 		error: receipt.error || null,
 		createdAt: receipt.createdAt || nowIso(),
@@ -114,6 +119,57 @@ export default class ReceiptLocalRepository {
 		})
 		await this.indexedDbClient.put(STORE, record)
 		notifyProductCatalogChanged({entityType: 'purchase', action: 'standalone-receipt-save'})
+		return cloneReceipt(record)
+	}
+
+	async findXmlDuplicate({sourceHash, fiscalIdentity, userId = getUserId()} = {}) {
+		const records = await this.listByUser(userId)
+		return records.find(record => {
+			if (record.sourceType !== 'xml') return false
+			if (sourceHash && record.sourceHash === sourceHash) return true
+			const existing = record.xmlDraft?.fiscalIdentity
+			return Boolean(fiscalIdentity?.fiscalRegisterNumber && fiscalIdentity?.receiptNumber && fiscalIdentity?.timestamp
+				&& existing?.fiscalRegisterNumber === fiscalIdentity.fiscalRegisterNumber
+				&& existing?.receiptNumber === fiscalIdentity.receiptNumber
+				&& existing?.timestamp === fiscalIdentity.timestamp)
+		}) || null
+	}
+
+	async saveXmlDraft({draft, rawXml, file} = {}) {
+		const duplicate = await this.findXmlDuplicate({sourceHash: draft?.sourceHash, fiscalIdentity: draft?.fiscalIdentity})
+		if (duplicate) return {receipt: duplicate, duplicate: true}
+		const record = normalizeReceipt({
+			userId: getUserId(),
+			purchaseLocalId: null,
+			clientMutationId: createLocalId('receipt-xml'),
+			blob: null,
+			mimeType: 'application/xml',
+			originalFilename: file?.name || draft?.originalFilename || null,
+			size: Number(file?.size || new Blob([rawXml || '']).size),
+			sourceType: 'xml',
+			sourceFormat: draft?.sourceFormat || null,
+			sourceHash: draft?.sourceHash || null,
+			rawXml: rawXml || null,
+			xmlDraft: draft || null,
+			syncStatus: 'local_draft',
+			error: null
+		})
+		await this.indexedDbClient.put(STORE, record)
+		notifyProductCatalogChanged({entityType: 'purchase', action: 'xml-receipt-save'})
+		return {receipt: cloneReceipt(record), duplicate: false}
+	}
+
+	async updateXmlReview(receiptLocalId, review = {}, {userId = getUserId()} = {}) {
+		const existing = await this.getByLocalId(receiptLocalId, {includeDeleted: true, userId})
+		if (!existing || existing.sourceType !== 'xml') return null
+		const record = normalizeReceipt({
+			...existing,
+			xmlDraft: {
+				...existing.xmlDraft,
+				review: {...(existing.xmlDraft?.review || {}), ...review}
+			}
+		})
+		await this.indexedDbClient.put(STORE, record)
 		return cloneReceipt(record)
 	}
 
@@ -219,7 +275,7 @@ export default class ReceiptLocalRepository {
 			purchaseLocalId,
 			purchaseServerId: toServerId(purchase?.serverId ?? purchase?.id),
 			serverReceiptId: existing.serverReceiptId || purchase?.receipt?.id || null,
-			syncStatus: 'synced',
+			syncStatus: existing.sourceType === 'xml' ? 'local_linked' : 'synced',
 			error: null
 		})
 		await this.indexedDbClient.put(STORE, record)

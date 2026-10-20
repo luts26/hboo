@@ -89,17 +89,20 @@ test('Purchase editor uses viewport overlay modal instead of permanent page form
 	assert.match(source, /renderEditorModal\(\)/)
 	assert.match(source, /overlayHost\.render\('purchase-editor-modal'/)
 	assert.match(source, /class="app-modal purchase-editor-modal"/)
-	assert.match(source, /data-purchase-action="new-purchase">\+ Add purchase<\/button>/)
+	assert.match(source, /data-purchase-action="open-purchase-method-menu">\+ Add purchase<\/button>/)
 	assert.doesNotMatch(templateMethod, /getFormTemplate\(\)/)
 	assert.doesNotMatch(templateMethod, /purchase-layout/)
 })
 
-test('Purchases page exposes manual add and first-class scan receipt actions', () => {
+test('Purchases page exposes one Add purchase action with a method selector', () => {
 	const source = read('hbapp/pages/PurchasePage.js')
 	const template = source.match(/getTemplate\(\) \{[\s\S]*?\n\t\}/)?.[0] || ''
 
-	assert.match(template, /data-purchase-action="new-purchase">[\s\S]*\+ Add purchase/)
-	assert.match(template, /data-purchase-action="scan-receipt">[\s\S]*Scan receipt/)
+	assert.match(template, /data-purchase-action="open-purchase-method-menu">[\s\S]*\+ Add purchase/)
+	assert.doesNotMatch(template, /data-purchase-action="scan-receipt"/)
+	assert.match(source, /choose-manual-purchase/)
+	assert.match(source, /choose-scan-receipt/)
+	assert.match(source, /choose-import-xml/)
 	assert.doesNotMatch(source.match(/renderHeaderContextMenu[\s\S]*/)?.[0] || '', /Scan receipt/)
 })
 

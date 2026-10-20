@@ -7,6 +7,9 @@ import ReceiptLocalRepository from '../services/ReceiptLocalRepository.js'
 import ReceiptApiService from '../services/ReceiptApiService.js'
 import networkStatusService from '../services/NetworkStatusService.js'
 import {prepareReceiptImage} from '../services/ReceiptImageService.js'
+import {parseFiscalXmlFile} from '../services/FiscalXmlReceiptParser.js'
+import {matchXmlMerchant} from '../services/XmlMerchantMatcher.js'
+import XmlMerchantMappingRepository from '../services/XmlMerchantMappingRepository.js'
 import {MEASUREMENT_LABELS, UNIT_LABELS, getAllowedUnits, normalizeSearchText} from '../services/ProductUnitService.js'
 import {matchesProductQuery} from '../services/ProductSearchService.js'
 import {getCurrentPurchaseRange} from '../services/PurchaseDateRange.js'
@@ -97,6 +100,9 @@ const normalizeReviewUnit = unit => {
 }
 
 const deriveReviewAmount = item => {
+	if (item.quantityNormalized) {
+		return {quantity: item.quantity ?? null, unit: normalizeReviewUnit(item.unit)}
+	}
 	const receiptQuantity = parseDecimalInput(item.quantity)
 	const receiptUnit = normalizeReviewUnit(item.unit)
 	const packageAmount = extractPackageAmount(item.rawName)
@@ -132,8 +138,10 @@ const createReceiptReviewItem = (item = {}) => ({
 	rawText: item.rawText || '',
 	quantity: deriveReviewAmount(item).quantity === null || deriveReviewAmount(item).quantity === undefined ? '' : normalizeDecimalString(deriveReviewAmount(item).quantity),
 	unit: deriveReviewAmount(item).unit || '',
-	receiptQuantity: item.quantity === null || item.quantity === undefined ? null : Number(item.quantity),
-	receiptUnit: item.unit || null,
+	receiptQuantity: item.sourceQuantity === null || item.sourceQuantity === undefined
+		? (item.quantity === null || item.quantity === undefined ? null : Number(item.quantity))
+		: Number(item.sourceQuantity),
+	receiptUnit: item.sourceUnit || item.unit || null,
 	receiptUnitPrice: item.unitPrice === null || item.unitPrice === undefined ? null : Number(item.unitPrice),
 	receiptLineTotal: item.total === null || item.total === undefined ? null : Number(item.total),
 	total: item.total === null || item.total === undefined ? '' : normalizeMoneyString(item.total),
@@ -182,7 +190,9 @@ const WARNING_LABELS = {
 	ITEMS_TOTAL_MISMATCH: 'Receipt item totals differ from detected total.',
 	ITEMS_NOT_FOUND: 'No receipt items were detected.',
 	TOTAL_NOT_FOUND: 'Receipt total was not detected.',
-	TOTAL_UNCERTAIN: 'Receipt total is uncertain.'
+	TOTAL_UNCERTAIN: 'Receipt total is uncertain.',
+	DUPLICATE_XML_RECEIPT: 'This XML receipt was already imported. The existing draft was opened.',
+	QUANTITY_REVIEW_REQUIRED: 'Receipt quantity needs manual review.'
 }
 
 const getReviewUnitOptions = item => {
@@ -198,6 +208,7 @@ export default class PurchasePage extends AbstractClass {
 	apiService = new ProductCatalogApiService()
 	receiptLocalRepository = new ReceiptLocalRepository()
 	receiptApiService = new ReceiptApiService()
+	xmlMerchantMappingRepository = new XmlMerchantMappingRepository()
 	activeReceiptUrls = new Set()
 	openedPurchaseHash = ''
 	state = {
@@ -244,6 +255,7 @@ export default class PurchasePage extends AbstractClass {
 			form: null
 		},
 		deleteConfirmation: null,
+		purchaseMethodMenuOpen: false,
 		paymentMatch: {
 			loading: false,
 			loaded: false,
@@ -255,7 +267,8 @@ export default class PurchasePage extends AbstractClass {
 		},
 		loading: true,
 		saving: false,
-		saveError: ''
+		saveError: '',
+		xmlImportError: ''
 	}
 
 	constructor(hbapp) {
@@ -265,6 +278,7 @@ export default class PurchasePage extends AbstractClass {
 			else if (event.key === 'Escape' && this.state.receiptReview.open) this.closeReceiptReview()
 			else if (event.key === 'Escape' && this.state.receiptFlow.open) this.closeReceiptFlow()
 			else if (event.key === 'Escape' && this.state.editorOpen) this.closeEditor()
+			else if (event.key === 'Escape' && this.state.purchaseMethodMenuOpen) this.closePurchaseMethodMenu()
 		}
 		document.addEventListener('keydown', this.handleKeydown)
 		this.unsubscribeProductCatalogChanges = subscribeProductCatalogChanges(event => {
@@ -282,6 +296,7 @@ export default class PurchasePage extends AbstractClass {
 		overlayHost.clear('purchase-editor-modal')
 		overlayHost.clear('receipt-flow-modal')
 		overlayHost.clear('receipt-review-modal')
+		overlayHost.clear('purchase-method-modal')
 	}
 
 	init() {
@@ -366,6 +381,11 @@ export default class PurchasePage extends AbstractClass {
 			return
 		}
 
+		if (type === 'click' && event.target.classList.contains('purchase-method-modal-backdrop')) {
+			this.closePurchaseMethodMenu()
+			return
+		}
+
 		if ((type === 'change' || type === 'input') && event.target.closest('[data-purchase-field]')) {
 			this.updatePurchaseField(event.target)
 			return
@@ -378,6 +398,12 @@ export default class PurchasePage extends AbstractClass {
 
 		if (type === 'change' && event.target.closest('[data-receipt-input]')) {
 			this.handleReceiptFile(event.target.files?.[0]).catch(() => {})
+			event.target.value = ''
+			return
+		}
+
+		if (type === 'change' && event.target.closest('[data-xml-receipt-input]')) {
+			this.handleXmlReceiptFile(event.target.files?.[0]).catch(() => {})
 			event.target.value = ''
 			return
 		}
@@ -405,6 +431,8 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'select-review-product') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
 		if (action === 'accept-review-product-match') this.selectReceiptReviewProduct(target.dataset.rowId, target.dataset.productId)
 		if (action === 'use-review-merchant-suggestion') this.useReceiptReviewMerchantSuggestion()
+		if (action === 'select-review-merchant-suggestion') this.selectReceiptReviewMerchantSuggestion(target.dataset.merchantId)
+		if (action === 'remember-review-merchant') this.rememberReceiptReviewMerchant()
 		if (action === 'remember-review-product-alias') this.rememberReceiptReviewAlias(target.dataset.rowId)
 		if (action === 'confirm-review-item') this.confirmReceiptReviewItem(target.dataset.rowId)
 		if (action === 'start-create-product') this.startCreateProduct(target.dataset.rowId)
@@ -412,12 +440,17 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'save-new-product') this.saveNewProduct()
 		if (action === 'save-purchase') this.savePurchase()
 		if (action === 'open-purchase') this.openPurchase(target.dataset.purchaseId)
-		if (action === 'new-purchase') this.openNewPurchase()
+		if (action === 'open-purchase-method-menu') this.openPurchaseMethodMenu()
+		if (action === 'close-purchase-method-menu') this.closePurchaseMethodMenu()
+		if (action === 'choose-manual-purchase') this.chooseManualPurchase()
+		if (action === 'choose-scan-receipt') this.chooseScanReceipt()
+		if (action === 'choose-import-xml') this.chooseImportXml()
 		if (action === 'close-purchase-editor') this.closeEditor()
 		if (action === 'delete-purchase') this.openDeleteConfirmation(target.dataset.purchaseId)
 		if (action === 'close-delete-confirm') this.closeDeleteConfirmation()
 		if (action === 'confirm-delete-purchase') this.deletePurchase()
 		if (action === 'scan-receipt') this.openReceiptFirstFlow()
+		if (action === 'import-xml-receipt') this.chooseXmlReceipt()
 		if (action === 'open-receipt-flow') this.openReceiptFlowFromPurchase()
 		if (action === 'choose-receipt') this.chooseReceipt()
 		if (action === 'remove-receipt') this.removeReceipt()
@@ -757,6 +790,31 @@ export default class PurchasePage extends AbstractClass {
 		this.render()
 	}
 
+	openPurchaseMethodMenu() {
+		this.state.purchaseMethodMenuOpen = true
+		this.renderPurchaseMethodModal()
+	}
+
+	closePurchaseMethodMenu() {
+		this.state.purchaseMethodMenuOpen = false
+		overlayHost.clear('purchase-method-modal')
+	}
+
+	chooseManualPurchase() {
+		this.closePurchaseMethodMenu()
+		this.openNewPurchase()
+	}
+
+	chooseScanReceipt() {
+		this.closePurchaseMethodMenu()
+		this.openReceiptFirstFlow()
+	}
+
+	chooseImportXml() {
+		this.closePurchaseMethodMenu()
+		this.chooseXmlReceipt()
+	}
+
 	closeEditor({render = true} = {}) {
 		if (this.state.saving) return
 		this.revokeReceiptUrls()
@@ -1043,6 +1101,10 @@ export default class PurchasePage extends AbstractClass {
 	async openStandaloneReceipt(receiptId) {
 		const receipt = await this.receiptLocalRepository.getByLocalId(receiptId)
 		if (!receipt) return
+		if (receipt.sourceType === 'xml') {
+			this.openXmlReceiptReview(receipt)
+			return
+		}
 		this.resetForm({render: false})
 		this.state.form.receipt = {
 			...receipt,
@@ -1114,6 +1176,10 @@ export default class PurchasePage extends AbstractClass {
 
 	async openReceiptReview() {
 		const receipt = this.state.form.receipt
+		if (receipt?.sourceType === 'xml' && receipt.xmlDraft) {
+			this.openXmlReceiptReview(receipt)
+			return
+		}
 		if (!receipt?.localId || !receipt.serverReceiptId) {
 			this.state.receiptFlow.error = 'Receipt must be synced before review.'
 			this.render()
@@ -1126,6 +1192,7 @@ export default class PurchasePage extends AbstractClass {
 		}
 		this.state.receiptReview = {
 			open: true,
+			duplicateExistingPurchase: Boolean(receipt.duplicateExistingPurchase),
 			receiptLocalId: receipt.localId,
 			receiptServerId: receipt.serverReceiptId,
 			loading: true,
@@ -1163,8 +1230,62 @@ export default class PurchasePage extends AbstractClass {
 		this.render()
 	}
 
+	chooseXmlReceipt() {
+		document.querySelector('[data-xml-receipt-input]')?.click()
+	}
+
+	async handleXmlReceiptFile(file) {
+		if (!file) return
+		try {
+			const parsed = await parseFiscalXmlFile(file)
+			const result = await this.receiptLocalRepository.saveXmlDraft({draft: parsed.draft, rawXml: parsed.xml, file})
+			this.state.standaloneReceipts = await this.receiptLocalRepository.listStandaloneByUser(this.apiService.getUserId())
+			if (result.duplicate) {
+				result.receipt.duplicateExistingPurchase = Boolean(result.receipt.purchaseLocalId)
+				result.receipt.xmlDraft = {
+					...result.receipt.xmlDraft,
+					warnings: [...new Set([...(result.receipt.xmlDraft?.warnings || []), 'DUPLICATE_XML_RECEIPT'])]
+				}
+			}
+			this.state.xmlImportError = ''
+			this.openXmlReceiptReview(result.receipt)
+		} catch (error) {
+			this.state.xmlImportError = error?.message || 'Could not import XML receipt.'
+			this.render()
+		}
+	}
+
+	async openXmlReceiptReview(receipt) {
+		const draft = receipt?.xmlDraft
+		if (!receipt?.localId || !draft) return
+		const mappings = await this.xmlMerchantMappingRepository.list(this.apiService.getUserId())
+		const merchantMatch = matchXmlMerchant({merchant: draft.merchant, merchants: this.state.merchants, mappings})
+		draft.merchantMatch = merchantMatch
+		this.state.receiptReview = {
+			open: true,
+			duplicateExistingPurchase: Boolean(receipt.duplicateExistingPurchase),
+			receiptLocalId: receipt.localId,
+			receiptServerId: null,
+			loading: false,
+			saving: false,
+			error: '',
+			rawOcrOpen: false,
+			evidenceRowId: null,
+			rawText: receipt.rawXml || '',
+			draft,
+			form: this.createReceiptReviewForm(receipt, draft)
+		}
+		this.state.receiptFlow = {open: false, origin: null, originalReceipt: null, originalReceiptAction: null, error: ''}
+		overlayHost.clear('receipt-flow-modal')
+		this.render()
+		if (!draft?.review?.merchantId && merchantMatch?.match?.id) this.persistXmlMerchantSelection().catch(() => {})
+		this.loadReceiptReviewProductMatches().catch(() => {})
+	}
+
 	createReceiptReviewForm(receipt, draft) {
-		const merchantId = this.findExactMerchantId(draft?.merchant)
+		const merchantMatch = draft?.merchantMatch || null
+		const storedMerchantId = draft?.review?.merchantId
+		const merchantId = storedMerchantId || merchantMatch?.match?.id || this.findExactMerchantId(draft?.merchant)
 		const items = Array.isArray(draft?.items) && draft.items.length
 			? draft.items.map(item => createReceiptReviewItem(item))
 			: [createReceiptReviewItem()]
@@ -1174,6 +1295,13 @@ export default class PurchasePage extends AbstractClass {
 		return {
 			clientMutationId: createReviewMutationId(receipt),
 			merchantId: merchantId || '',
+			merchantRawName: draft?.merchant?.rawName || draft?.merchant?.legalName || '',
+			merchantMetadata: draft?.merchant || null,
+			merchantMatchStatus: storedMerchantId ? 'selected' : (merchantMatch?.status || 'unmatched'),
+			merchantMatchSuggestions: merchantMatch?.suggestions || [],
+			merchantIdentityKeys: merchantMatch?.identityKeys || [],
+			merchantMappingSaved: merchantMatch?.status === 'confirmed_mapping',
+			merchantMappingError: '',
 			purchasedAt: toDateTimeLocalValue(draft?.purchasedAt?.value),
 			paymentType: 'bank',
 			receiptTotal: draft?.total?.value === null || draft?.total?.value === undefined ? '' : normalizeMoneyString(draft.total.value),
@@ -1218,6 +1346,49 @@ export default class PurchasePage extends AbstractClass {
 		this.loadReceiptReviewProductMatches().catch(() => {})
 	}
 
+	selectReceiptReviewMerchantSuggestion(merchantId) {
+		const form = this.state.receiptReview.form
+		const merchant = this.state.merchants.find(item => String(item.id) === String(merchantId))
+		if (!form || !merchant) return
+		form.merchantId = merchant.id
+		form.merchantMatchStatus = 'selected'
+		form.merchantMappingSaved = false
+		this.persistXmlMerchantSelection().catch(() => {})
+		this.renderReceiptReviewModalPreservingScroll()
+		this.loadReceiptReviewProductMatches().catch(() => {})
+	}
+
+	async persistXmlMerchantSelection() {
+		if (this.state.receiptReview.draft?.sourceType !== 'xml') return
+		const form = this.state.receiptReview.form
+		await this.receiptLocalRepository.updateXmlReview(this.state.receiptReview.receiptLocalId, {
+			merchantId: form?.merchantId || null
+		})
+	}
+
+	async rememberReceiptReviewMerchant() {
+		const form = this.state.receiptReview.form
+		if (!form?.merchantId || !form.merchantIdentityKeys?.length || form.merchantMappingSaved) return
+		const merchant = this.state.merchants.find(item => String(item.id) === String(form.merchantId))
+		if (!merchant) return
+		form.merchantMappingError = ''
+		try {
+			for (const identityKey of form.merchantIdentityKeys) {
+				await this.xmlMerchantMappingRepository.save({
+					identityKey,
+					merchantId: merchant.id,
+					merchantName: merchant.name,
+					ownerId: this.apiService.getUserId()
+				})
+			}
+			form.merchantMappingSaved = true
+			form.merchantMatchStatus = 'confirmed_mapping'
+		} catch (error) {
+			form.merchantMappingError = error?.message || 'Could not remember Merchant mapping.'
+		}
+		this.renderReceiptReviewModalPreservingScroll()
+	}
+
 	async loadReceiptReviewProductMatches() {
 		const form = this.state.receiptReview.form
 		if (!form?.items?.length) return
@@ -1236,7 +1407,10 @@ export default class PurchasePage extends AbstractClass {
 		results.forEach(entry => {
 			if (!entry) return
 			if (entry.error) {
-				entry.item.productMatchError = 'Product matching is unavailable.'
+				entry.item.productMatchCandidates = this.getSuggestions(entry.item.rawName)
+					.slice(0, 3)
+					.map(product => ({...product, matchSource: 'token_similarity'}))
+				entry.item.productMatchError = entry.item.productMatchCandidates.length ? '' : 'Product matching is unavailable offline.'
 				return
 			}
 			this.applyReceiptReviewProductMatch(entry.item, entry.result)
@@ -1302,7 +1476,19 @@ export default class PurchasePage extends AbstractClass {
 			this.state.receiptReview.form.receiptTotalSource = input.value.trim() ? 'user' : 'unknown'
 			this.updateReceiptReviewTotalsDom()
 		}
-		if (input.name === 'merchantId') this.loadReceiptReviewProductMatches().catch(() => {})
+		if (input.name === 'merchantId') {
+			this.state.receiptReview.form.merchantMappingSaved = false
+			this.state.receiptReview.form.merchantMatchStatus = input.value ? 'selected' : 'unmatched'
+			this.persistXmlMerchantSelection().catch(() => {})
+			this.updateReceiptReviewMerchantDom()
+			this.loadReceiptReviewProductMatches().catch(() => {})
+		}
+	}
+
+	updateReceiptReviewMerchantDom() {
+		const current = document.querySelector('[data-review-merchant-source]')
+		const html = this.getReceiptReviewMerchantTemplate(this.state.receiptReview.form)
+		if (current && html) current.outerHTML = html
 	}
 
 	updateReceiptReviewItemField(input) {
@@ -1500,6 +1686,26 @@ export default class PurchasePage extends AbstractClass {
 		</div>`
 	}
 
+	getReceiptReviewMerchantTemplate(form) {
+		if (!form?.merchantMetadata || this.state.receiptReview.draft?.sourceType !== 'xml') return ''
+		const metadata = form.merchantMetadata
+		const rawName = form.merchantRawName || 'Name is not present in this XML format'
+		const suggestions = form.merchantMatchSuggestions || []
+		const canRemember = Boolean(form.merchantId && form.merchantIdentityKeys?.length && !form.merchantMappingSaved)
+		return `<div class="receipt-review-merchant-source" data-review-merchant-source>
+			<span>XML Merchant: <strong>${this.escapeHtml(rawName)}</strong></span>
+			${metadata.taxId ? `<small>Tax identifier: ${this.escapeHtml(metadata.taxId)}</small>` : ''}
+			${metadata.pointName ? `<small>Store: ${this.escapeHtml(metadata.pointName)}</small>` : ''}
+			${metadata.address ? `<small>${this.escapeHtml(metadata.address)}</small>` : ''}
+			${suggestions.length && !form.merchantId ? `<div class="receipt-review-merchant-suggestions">
+				${suggestions.map(merchant => `<button class="hboo-button" type="button" data-purchase-action="select-review-merchant-suggestion" data-merchant-id="${this.escapeHtml(merchant.id)}">Use ${this.escapeHtml(merchant.name)}</button>`).join('')}
+			</div>` : ''}
+			${canRemember ? '<button class="hboo-button" type="button" data-purchase-action="remember-review-merchant">Remember this Merchant match</button>' : ''}
+			${form.merchantMappingSaved ? '<small>Merchant mapping remembered for future XML receipts.</small>' : ''}
+			${form.merchantMappingError ? `<small class="purchase-save-error">${this.escapeHtml(form.merchantMappingError)}</small>` : ''}
+		</div>`
+	}
+
 	getReceiptReviewWarningsTemplate(form) {
 		const warnings = Array.isArray(form?.warnings) ? form.warnings : []
 		if (!warnings.length) return ''
@@ -1533,6 +1739,7 @@ export default class PurchasePage extends AbstractClass {
 	getReceiptReviewBlockingError() {
 		const form = this.state.receiptReview.form
 		if (!form) return 'Review is not loaded.'
+		if (this.state.receiptReview.duplicateExistingPurchase) return 'This XML receipt is already linked to an existing purchase.'
 		if (!form.items.length) return 'Add at least one receipt item.'
 		const invalidItem = form.items.find(item => this.getReceiptReviewItemBlockingMessage(item))
 		if (invalidItem) {
@@ -1580,6 +1787,38 @@ export default class PurchasePage extends AbstractClass {
 		return this.getReceiptReviewBlockingError()
 	}
 
+	async confirmXmlReceiptReview() {
+		const form = this.state.receiptReview.form
+		const selectedMerchant = this.state.merchants.find(item => String(item.id) === String(form.merchantId))
+		const purchase = await this.apiService.savePurchase({
+			clientMutationId: form.clientMutationId,
+			merchantId: form.merchantId || null,
+			merchantServerId: selectedMerchant?.serverId || null,
+			merchantName: selectedMerchant?.name || null,
+			purchasedAt: toApiDateTimeValue(form.purchasedAt),
+			paymentType: form.paymentType,
+			note: `Created from ${this.state.receiptReview.draft.sourceFormat} XML receipt`,
+			total: centsToMoney(this.getReceiptReviewItemsTotalCents()),
+			items: form.items.map(item => ({
+				productId: item.productId,
+				productServerId: item.productServerId,
+				productName: item.productName,
+				categoryId: item.categoryId,
+				categoryName: item.categoryName,
+				measurementType: item.measurementType,
+				quantity: parseDecimalInput(item.quantity),
+				unit: item.unit,
+				total: centsToMoney(toMoneyCents(item.total)),
+				rawName: item.rawName || null
+			}))
+		})
+		await this.receiptLocalRepository.linkStandaloneToPurchase(this.state.receiptReview.receiptLocalId, purchase)
+		await this.refreshSelectedRangeFromLocal()
+		this.closeReceiptReview({render: false, force: true})
+		this.render()
+		this.apiService.syncService.processQueue({reason: 'xml-receipt-purchase-save'}).catch(() => {})
+	}
+
 	async confirmReceiptReview() {
 		if (this.state.receiptReview.saving) return
 		const validationError = this.validateReceiptReview()
@@ -1592,6 +1831,10 @@ export default class PurchasePage extends AbstractClass {
 		this.state.receiptReview.error = ''
 		this.renderReceiptReviewModal()
 		try {
+			if (this.state.receiptReview.draft?.sourceType === 'xml') {
+				await this.confirmXmlReceiptReview()
+				return
+			}
 			const result = await this.receiptApiService.confirmReceiptPurchase(
 				this.state.receiptReview.receiptServerId,
 				this.buildReceiptReviewPayload()
@@ -1813,9 +2056,16 @@ export default class PurchasePage extends AbstractClass {
 
 	render() {
 		this.$hbapp.innerHTML = this.getTemplate()
+		this.renderPurchaseMethodModal()
 		this.renderEditorModal()
 		this.renderReceiptFlowModal()
 		this.renderReceiptReviewModal()
+	}
+
+	renderPurchaseMethodModal() {
+		const html = this.getPurchaseMethodModalTemplate()
+		if (html) overlayHost.render('purchase-method-modal', html)
+		else overlayHost.clear('purchase-method-modal')
 	}
 
 	getTemplate() {
@@ -1826,18 +2076,42 @@ export default class PurchasePage extends AbstractClass {
 					<h2>${this.state.form.id ? 'Purchase details' : 'Add purchase'}</h2>
 				</div>
 				<div class="purchase-toolbar-actions">
+					<input class="purchase-receipt-input" type="file" accept=".xml,application/xml,text/xml" data-xml-receipt-input>
 					<div class="hboo-segmented-control purchase-domain-switch" role="tablist" aria-label="Purchases domain">
 						<button class="hboo-segment-btn purchase-domain-btn active" type="button" role="tab" aria-selected="true">Purchases</button>
 						<button class="hboo-segment-btn purchase-domain-btn" type="button" role="tab" aria-selected="false" data-purchase-action="go-purchase-analytics">Analytics</button>
 					</div>
-					<button class="hboo-button product-primary-action" type="button" data-purchase-action="new-purchase">+ Add purchase</button>
-					<button class="hboo-button purchase-scan-action" type="button" data-purchase-action="scan-receipt"><span aria-hidden="true">▧</span> Scan receipt</button>
+					<button class="hboo-button product-primary-action" type="button" data-purchase-action="open-purchase-method-menu">+ Add purchase</button>
 				</div>
 			</div>
+			${this.state.xmlImportError ? `<div class="purchase-save-error">${this.escapeHtml(this.state.xmlImportError)}</div>` : ''}
 			${this.getPurchasesListTemplate()}
 			${this.getStandaloneReceiptsTemplate()}
 			${this.getDeleteConfirmationTemplate()}
 		</section>`
+	}
+
+	getPurchaseMethodModalTemplate() {
+		if (!this.state.purchaseMethodMenuOpen) return ''
+		const methods = [
+			{action: 'choose-manual-purchase', icon: '✎', title: 'Enter manually', description: 'Add products and amounts yourself'},
+			{action: 'choose-scan-receipt', icon: '▣', title: 'Scan receipt', description: 'Take a photo or choose an image'},
+			{action: 'choose-import-xml', icon: '▤', title: 'Import XML receipt', description: 'Choose an official fiscal XML file'}
+		]
+		return `<div class="app-modal-backdrop purchase-method-modal-backdrop">
+			<div class="app-modal purchase-method-modal" role="dialog" aria-modal="true" aria-labelledby="purchase-method-title">
+				<div class="app-modal-header">
+					<h4 id="purchase-method-title">Add purchase</h4>
+					<button class="app-modal-close" type="button" aria-label="Close" data-purchase-action="close-purchase-method-menu">×</button>
+				</div>
+				<div class="app-modal-body purchase-method-list">
+					${methods.map(method => `<button class="purchase-method-option" type="button" data-purchase-action="${method.action}">
+						<span class="purchase-method-icon" aria-hidden="true">${method.icon}</span>
+						<span><strong>${method.title}</strong><small>${method.description}</small></span>
+					</button>`).join('')}
+				</div>
+			</div>
+		</div>`
 	}
 
 	renderEditorModal() {
@@ -2112,6 +2386,7 @@ export default class PurchasePage extends AbstractClass {
 							<span>Items total: <strong data-review-items-total>${formatMoney(itemsTotal)}</strong></span>
 							<span>Receipt total: <strong data-review-receipt-total>${formatOptionalMoney(form.receiptTotal)}</strong></span>
 						</div>
+						${this.getReceiptReviewMerchantTemplate(form)}
 						${this.getReceiptReviewContextTemplate(form)}
 						<div class="receipt-review-suggestion" data-review-suggestion ${hasReceiptTotal ? 'hidden' : ''}>
 							<span>Suggested total: <strong data-review-suggested-total>${formatMoney(itemsTotal)}</strong></span>
@@ -2124,7 +2399,7 @@ export default class PurchasePage extends AbstractClass {
 						<div class="receipt-review-items">${form.items.map(item => this.getReceiptReviewItemTemplate(item)).join('')}</div>
 						<button class="purchase-add-item" type="button" data-purchase-action="add-review-item">+ Add item</button>
 						${this.getCreateProductTemplate()}
-						<button class="hboo-button receipt-review-raw-toggle" type="button" data-purchase-action="toggle-review-raw">${review.rawOcrOpen ? 'Hide OCR text' : 'Show full OCR text'}</button>
+						<button class="hboo-button receipt-review-raw-toggle" type="button" data-purchase-action="toggle-review-raw">${review.rawOcrOpen ? 'Hide source text' : (review.draft?.sourceType === 'xml' ? 'Show full XML' : 'Show full OCR text')}</button>
 						${review.rawOcrOpen ? `<pre class="receipt-ocr-raw">${this.escapeHtml(review.rawText || '')}</pre>` : ''}
 					</div>` : ''}
 					<div class="purchase-save-error" data-review-blocking-error ${blockingError ? '' : 'hidden'}>${this.escapeHtml(blockingError)}</div>
@@ -2210,6 +2485,7 @@ export default class PurchasePage extends AbstractClass {
 	}
 
 	getReceiptStatusLabel(receipt) {
+		if (receipt.sourceType === 'xml') return receipt.purchaseLocalId ? 'Purchase created' : `${receipt.sourceFormat || 'XML'} · Awaiting review`
 		if (receipt.ocr?.status === 'completed') return 'Text recognized'
 		if (receipt.ocr?.status === 'failed') return 'OCR failed'
 		if (receipt.ocr?.status === 'processing' || receipt.ocr?.status === 'pending') return 'Recognizing'

@@ -1,5 +1,5 @@
 const DATABASE_NAME = 'hboo-offline-v1'
-const DATABASE_VERSION = 9
+const DATABASE_VERSION = 10
 
 const STORE_DEFINITIONS = {
 	meta: {
@@ -161,6 +161,7 @@ const STORE_DEFINITIONS = {
 			{name: 'purchaseServerId', keyPath: 'purchaseServerId'},
 			{name: 'serverReceiptId', keyPath: 'serverReceiptId'},
 			{name: 'clientMutationId', keyPath: 'clientMutationId'},
+			{name: 'sourceHash', keyPath: 'sourceHash'},
 			{name: 'syncStatus', keyPath: 'syncStatus'},
 			{name: 'updatedAt', keyPath: 'updatedAt'}
 		]
@@ -212,7 +213,8 @@ const migrations = {
 	6: ensureStoreDefinitions,
 	7: ensureStoreDefinitions,
 	8: ensureStoreDefinitions,
-	9: ensureStoreDefinitions
+	9: ensureStoreDefinitions,
+	10: ensureStoreDefinitions
 }
 
 const assertIndexedDbAvailable = () => {

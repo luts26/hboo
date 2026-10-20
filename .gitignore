@@ -1,4 +1,6 @@
 planning/
+docs/receipt_example/
+HBOO_PROJECT_CONTEXT.md
 .idea/
 
 .env
