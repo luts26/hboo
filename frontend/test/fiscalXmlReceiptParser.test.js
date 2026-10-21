@@ -71,6 +71,7 @@ test('normalizes weighted and packaged quantities safely', async () => {
 		<ROW ROWNUM="3"><NAME>Пакет</NAME><UNITNM>шт</UNITNM><AMOUNT>2</AMOUNT><PRICE>1.50</PRICE><COST>3.00</COST></ROW>
 	</CHECKBODY></CHECK>`)
 	assert.deepEqual(synthetic.items.map(item => [item.quantity, item.unit]), [[800, 'g'], [1800, 'ml'], [2, 'pcs']])
+	assert.equal(synthetic.purchasedAt.value, '2026-10-19T12:00:00')
 })
 
 test('applies RQ discounts exactly once and preserves official total', async () => {
@@ -91,6 +92,7 @@ test('treats CHECK COST as the final line amount when a discount is present', ()
 
 test('keeps unknown optional monetary values as null', () => {
 	const draft = parseFiscalXmlText('<RQ><DAT FN="1"><C><P N="1" NM="Товар"/><E FN="1" NO="2" SM="100" TS="20261019120000"/></C></DAT></RQ>')
+	assert.equal(draft.purchasedAt.value, '2026-10-19T12:00:00')
 	assert.equal(draft.items[0].unitPriceCents, null)
 	assert.equal(draft.items[0].grossLineAmountCents, null)
 	assert.equal(draft.items[0].total, null)

@@ -256,6 +256,14 @@ export default class PurchasePage extends AbstractClass {
 		},
 		deleteConfirmation: null,
 		purchaseMethodMenuOpen: false,
+		newMerchant: {
+			open: false,
+			target: null,
+			name: '',
+			saving: false,
+			error: '',
+			existingMerchantId: null
+		},
 		paymentMatch: {
 			loading: false,
 			loaded: false,
@@ -274,7 +282,8 @@ export default class PurchasePage extends AbstractClass {
 	constructor(hbapp) {
 		super(hbapp)
 		this.handleKeydown = event => {
-			if (event.key === 'Escape' && this.state.deleteConfirmation) this.closeDeleteConfirmation()
+			if (event.key === 'Escape' && this.state.newMerchant.open) this.closeNewMerchant()
+			else if (event.key === 'Escape' && this.state.deleteConfirmation) this.closeDeleteConfirmation()
 			else if (event.key === 'Escape' && this.state.receiptReview.open) this.closeReceiptReview()
 			else if (event.key === 'Escape' && this.state.receiptFlow.open) this.closeReceiptFlow()
 			else if (event.key === 'Escape' && this.state.editorOpen) this.closeEditor()
@@ -282,6 +291,10 @@ export default class PurchasePage extends AbstractClass {
 		}
 		document.addEventListener('keydown', this.handleKeydown)
 		this.unsubscribeProductCatalogChanges = subscribeProductCatalogChanges(event => {
+			if (event?.entityType === 'merchant' && event.action === 'replace-local-id') {
+				this.handleMerchantIdReplacement(event).catch(() => {})
+				return
+			}
 			if (event?.entityType !== 'purchase') return
 			if (this.state.saving) return
 			this.refreshSelectedRangeFromLocal().catch(() => {})
@@ -297,6 +310,7 @@ export default class PurchasePage extends AbstractClass {
 		overlayHost.clear('receipt-flow-modal')
 		overlayHost.clear('receipt-review-modal')
 		overlayHost.clear('purchase-method-modal')
+		overlayHost.clear('new-merchant-modal')
 	}
 
 	init() {
@@ -386,6 +400,16 @@ export default class PurchasePage extends AbstractClass {
 			return
 		}
 
+		if (type === 'click' && event.target.classList.contains('new-merchant-modal-backdrop')) {
+			this.closeNewMerchant()
+			return
+		}
+
+		if ((type === 'change' || type === 'input') && event.target.closest('[data-new-merchant-field]')) {
+			this.updateNewMerchantName(event.target.value)
+			return
+		}
+
 		if ((type === 'change' || type === 'input') && event.target.closest('[data-purchase-field]')) {
 			this.updatePurchaseField(event.target)
 			return
@@ -433,6 +457,10 @@ export default class PurchasePage extends AbstractClass {
 		if (action === 'use-review-merchant-suggestion') this.useReceiptReviewMerchantSuggestion()
 		if (action === 'select-review-merchant-suggestion') this.selectReceiptReviewMerchantSuggestion(target.dataset.merchantId)
 		if (action === 'remember-review-merchant') this.rememberReceiptReviewMerchant()
+		if (action === 'open-new-merchant') this.openNewMerchant(target.dataset.merchantTarget)
+		if (action === 'close-new-merchant') this.closeNewMerchant()
+		if (action === 'create-new-merchant') this.createNewMerchant()
+		if (action === 'select-existing-merchant') this.selectExistingMerchant()
 		if (action === 'remember-review-product-alias') this.rememberReceiptReviewAlias(target.dataset.rowId)
 		if (action === 'confirm-review-item') this.confirmReceiptReviewItem(target.dataset.rowId)
 		if (action === 'start-create-product') this.startCreateProduct(target.dataset.rowId)
@@ -493,6 +521,99 @@ export default class PurchasePage extends AbstractClass {
 
 	updatePurchaseField(input) {
 		this.state.form[input.name] = input.value
+	}
+
+	openNewMerchant(target) {
+		if (!['manual', 'review'].includes(target)) return
+		this.state.newMerchant = {open: true, target, name: '', saving: false, error: '', existingMerchantId: null}
+		this.renderNewMerchantModal()
+		setTimeout(() => document.querySelector('[data-new-merchant-field]')?.focus(), 0)
+	}
+
+	closeNewMerchant() {
+		if (this.state.newMerchant.saving) return
+		this.state.newMerchant = {open: false, target: null, name: '', saving: false, error: '', existingMerchantId: null}
+		overlayHost.clear('new-merchant-modal')
+	}
+
+	updateNewMerchantName(value) {
+		this.state.newMerchant.name = value
+		this.state.newMerchant.error = ''
+		this.state.newMerchant.existingMerchantId = null
+	}
+
+	findMerchantByName(name) {
+		const normalizedName = normalizeComparableText(name)
+		if (!normalizedName) return null
+		return this.state.merchants.find(merchant => normalizeComparableText(merchant.name) === normalizedName) || null
+	}
+
+	selectMerchantForActiveForm(merchant) {
+		if (!merchant) return
+		if (this.state.newMerchant.target === 'review' && this.state.receiptReview.form) {
+			this.state.receiptReview.form.merchantId = merchant.id
+			this.state.receiptReview.form.merchantMappingSaved = false
+			this.state.receiptReview.form.merchantMatchStatus = 'selected'
+			this.persistXmlMerchantSelection().catch(() => {})
+			this.loadReceiptReviewProductMatches().catch(() => {})
+			this.renderReceiptReviewModalPreservingScroll()
+			return
+		}
+		this.state.form.merchantId = merchant.id
+		this.renderEditorModal()
+	}
+
+	selectExistingMerchant() {
+		const merchant = this.state.merchants.find(item => String(item.id) === String(this.state.newMerchant.existingMerchantId))
+		if (!merchant) return
+		this.selectMerchantForActiveForm(merchant)
+		this.closeNewMerchant()
+	}
+
+	async createNewMerchant() {
+		const form = this.state.newMerchant
+		if (!form.open || form.saving) return
+		const name = String(form.name || '').trim()
+		if (!name) {
+			form.error = 'Merchant name is required.'
+			this.renderNewMerchantModal()
+			return
+		}
+		const existing = this.findMerchantByName(name)
+		if (existing) {
+			form.existingMerchantId = existing.id
+			form.error = ''
+			this.renderNewMerchantModal()
+			return
+		}
+		form.saving = true
+		form.error = ''
+		this.renderNewMerchantModal()
+		try {
+			const merchant = await this.apiService.createMerchant(name)
+			const duplicate = this.state.merchants.find(item => String(item.id) === String(merchant.id))
+			if (!duplicate) this.state.merchants.push(merchant)
+			this.state.merchants.sort((left, right) => String(left.name).localeCompare(String(right.name), 'uk'))
+			this.selectMerchantForActiveForm(merchant)
+			form.saving = false
+			this.closeNewMerchant()
+		} catch (error) {
+			form.saving = false
+			form.error = error?.message || 'Could not create Merchant locally.'
+			this.renderNewMerchantModal()
+		}
+	}
+
+	async handleMerchantIdReplacement({localId, serverId} = {}) {
+		if (!localId || !serverId) return
+		if (String(this.state.form.merchantId || '') === String(localId)) this.state.form.merchantId = serverId
+		if (String(this.state.receiptReview.form?.merchantId || '') === String(localId)) {
+			this.state.receiptReview.form.merchantId = serverId
+			await this.persistXmlMerchantSelection().catch(() => {})
+		}
+		this.state.merchants = await this.apiService.localRepository.getMerchants({includeDisabled: true})
+		this.renderEditorModal()
+		this.renderReceiptReviewModal()
 	}
 
 	updateItemField(input) {
@@ -2060,6 +2181,38 @@ export default class PurchasePage extends AbstractClass {
 		this.renderEditorModal()
 		this.renderReceiptFlowModal()
 		this.renderReceiptReviewModal()
+		this.renderNewMerchantModal()
+	}
+
+	renderNewMerchantModal() {
+		const html = this.getNewMerchantModalTemplate()
+		if (html) overlayHost.render('new-merchant-modal', html)
+		else overlayHost.clear('new-merchant-modal')
+	}
+
+	getNewMerchantModalTemplate() {
+		const form = this.state.newMerchant
+		if (!form.open) return ''
+		const existing = this.state.merchants.find(item => String(item.id) === String(form.existingMerchantId))
+		return `<div class="app-modal-backdrop new-merchant-modal-backdrop">
+			<div class="app-modal new-merchant-modal" role="dialog" aria-modal="true" aria-labelledby="new-merchant-title">
+				<div class="app-modal-header">
+					<h4 id="new-merchant-title">New merchant</h4>
+					<button class="app-modal-close" type="button" aria-label="Close" data-purchase-action="close-new-merchant" ${form.saving ? 'disabled' : ''}>×</button>
+				</div>
+				<div class="app-modal-body new-merchant-modal-body">
+					<label>Merchant name<input name="merchantName" value="${this.escapeHtml(form.name)}" autocomplete="organization" data-new-merchant-field ${form.saving ? 'disabled' : ''}></label>
+					${existing ? `<div class="new-merchant-existing">A Merchant named <strong>${this.escapeHtml(existing.name)}</strong> already exists. Select it instead.</div>` : ''}
+					${form.error ? `<div class="purchase-save-error">${this.escapeHtml(form.error)}</div>` : ''}
+					<div class="app-modal-actions">
+						<button type="button" data-purchase-action="close-new-merchant" ${form.saving ? 'disabled' : ''}>Cancel</button>
+						${existing
+							? '<button class="product-primary-action" type="button" data-purchase-action="select-existing-merchant">Select merchant</button>'
+							: `<button class="product-primary-action" type="button" data-purchase-action="create-new-merchant" ${form.saving ? 'disabled' : ''}>${form.saving ? 'Creating...' : 'Create merchant'}</button>`}
+					</div>
+				</div>
+			</div>
+		</div>`
 	}
 
 	renderPurchaseMethodModal() {
@@ -2172,10 +2325,10 @@ export default class PurchasePage extends AbstractClass {
 		return `<div class="purchase-form-card">
 			<div class="purchase-meta-grid">
 				<label>Date<input type="date" name="date" value="${this.escapeHtml(this.state.form.date)}" data-purchase-field></label>
-				<label>Store<select name="merchantId" data-purchase-field>
-					<option value="">Other / no merchant</option>
-					${this.state.merchants.map(merchant => `<option value="${merchant.id}" ${String(merchant.id) === String(this.state.form.merchantId) ? 'selected' : ''}>${this.escapeHtml(merchant.name)}</option>`).join('')}
-				</select></label>
+					<label>Store<span class="merchant-select-row"><select name="merchantId" data-purchase-field>
+						<option value="">Other / no merchant</option>
+						${this.state.merchants.map(merchant => `<option value="${merchant.id}" ${String(merchant.id) === String(this.state.form.merchantId) ? 'selected' : ''}>${this.escapeHtml(merchant.name)}</option>`).join('')}
+					</select><button class="merchant-new-action" type="button" data-purchase-action="open-new-merchant" data-merchant-target="manual">+ New</button></span></label>
 				<label>Payment<select name="paymentType" data-purchase-field>
 					<option value="bank" ${this.state.form.paymentType === 'bank' ? 'selected' : ''}>Bank</option>
 					<option value="cash" ${this.state.form.paymentType === 'cash' ? 'selected' : ''}>Cash</option>
@@ -2370,10 +2523,10 @@ export default class PurchasePage extends AbstractClass {
 					${review.loading ? '<div class="product-empty">Parsing receipt...</div>' : ''}
 					${!review.loading && form ? `<div class="receipt-review-form">
 						<div class="purchase-meta-grid receipt-review-meta">
-							<label>Store<select name="merchantId" data-review-field>
+							<label>Store<span class="merchant-select-row"><select name="merchantId" data-review-field>
 								<option value="">Other / no merchant</option>
 								${this.state.merchants.map(merchant => `<option value="${merchant.id}" ${String(merchant.id) === String(form.merchantId) ? 'selected' : ''}>${this.escapeHtml(merchant.name)}</option>`).join('')}
-							</select></label>
+							</select><button class="merchant-new-action" type="button" data-purchase-action="open-new-merchant" data-merchant-target="review">+ New</button></span></label>
 							<label>Date and time<input type="datetime-local" name="purchasedAt" value="${this.escapeHtml(form.purchasedAt)}" data-review-field></label>
 							<label>Payment<select name="paymentType" data-review-field>
 								<option value="bank" ${form.paymentType === 'bank' ? 'selected' : ''}>Bank</option>

@@ -1,4 +1,5 @@
 const DATE_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+const DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z?$/
 
 const toFiniteNumber = value => {
 	const number = Number(value)
@@ -51,7 +52,9 @@ const getMonthRange = (year, monthIndex, {now = new Date()} = {}) => {
 	const isCurrentMonth = year === current.getFullYear() && monthIndex === current.getMonth()
 	return {
 		dateFrom: from.getTime(),
-		dateTo: isCurrentMonth ? current.getTime() : monthEnd.getTime(),
+		dateTo: isCurrentMonth
+			? new Date(current.getFullYear(), current.getMonth(), current.getDate(), 23, 59, 59, 999).getTime()
+			: monthEnd.getTime(),
 		monthKey: getLocalMonthKey(from)
 	}
 }
@@ -72,7 +75,7 @@ const getRecentThreePurchaseRange = (now = new Date()) => {
 	const from = new Date(current.getFullYear(), current.getMonth() - 2, 1, 0, 0, 0, 0)
 	return {
 		dateFrom: from.getTime(),
-		dateTo: current.getTime(),
+		dateTo: new Date(current.getFullYear(), current.getMonth(), current.getDate(), 23, 59, 59, 999).getTime(),
 		monthKey: getLocalMonthKey(from)
 	}
 }
@@ -93,17 +96,11 @@ const normalizePurchaseRange = (range = {}, {now = new Date(), normalizeTimestam
 		return rawDateFrom <= rawDateTo ? {dateFrom: rawDateFrom, dateTo: rawDateTo} : fallback
 	}
 
-	const current = getNowDate(now)
 	const fromParts = getLocalDateParts(range?.dateFrom)
 	const toParts = getLocalDateParts(range?.dateTo)
 	const from = createLocalDate(fromParts, 0, 0, 0, 0)
 	const toDate = createLocalDate(toParts, 0, 0, 0, 0)
-	const to = toDate
-		&& toDate.getFullYear() === current.getFullYear()
-		&& toDate.getMonth() === current.getMonth()
-		&& toDate.getDate() === current.getDate()
-		? current
-		: createLocalDate(toParts, 23, 59, 59, 999)
+	const to = createLocalDate(toParts, 23, 59, 59, 999)
 
 	const normalized = {
 		dateFrom: from ? from.getTime() : fallback.dateFrom,
@@ -124,6 +121,27 @@ const parsePurchaseTime = value => {
 	if (typeof value === 'string' && DATE_INPUT_PATTERN.test(value)) {
 		const parts = getLocalDateParts(value)
 		return createLocalDate(parts, 0, 0, 0, 0)?.getTime() ?? null
+	}
+	if (typeof value === 'string') {
+		const match = value.match(DATE_TIME_PATTERN)
+		if (match) {
+			const date = new Date(
+				Number(match[1]),
+				Number(match[2]) - 1,
+				Number(match[3]),
+				Number(match[4]),
+				Number(match[5]),
+				Number(match[6]),
+				0
+			)
+			if (date.getFullYear() === Number(match[1])
+				&& date.getMonth() === Number(match[2]) - 1
+				&& date.getDate() === Number(match[3])
+				&& date.getHours() === Number(match[4])
+				&& date.getMinutes() === Number(match[5])
+				&& date.getSeconds() === Number(match[6])) return date.getTime()
+			return null
+		}
 	}
 	const time = new Date(value).getTime()
 	return Number.isFinite(time) ? time : null

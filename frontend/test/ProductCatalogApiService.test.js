@@ -108,12 +108,62 @@ test('loadPurchases requests bounded date range with timestamp query params', as
 	}
 })
 
-test('default purchase range is current local calendar month to now', () => {
+test('default purchase range is current local calendar month through end of today', () => {
 	const now = new Date(2026, 8, 29, 15, 30, 0, 0)
 	const range = getDefaultPurchaseRange(now)
 
 	assert.equal(range.dateFrom, new Date(2026, 8, 1, 0, 0, 0, 0).getTime())
-	assert.equal(range.dateTo, now.getTime())
+	assert.equal(range.dateTo, new Date(2026, 8, 29, 23, 59, 59, 999).getTime())
+})
+
+test('default range includes today noon before and after noon but excludes tomorrow', async () => {
+	const repository = new ProductCatalogLocalRepository({indexedDbClient: new FakeIndexedDbClient()})
+	await repository.savePurchase({userId: 7, purchasedAt: '2026-10-20T12:00:00', paymentType: 'cash', total: 1, items: []}, {syncStatus: 'pending_create', userId: 7})
+	await repository.savePurchase({userId: 7, purchasedAt: '2026-10-21T00:00:00', paymentType: 'cash', total: 2, items: []}, {syncStatus: 'pending_create', userId: 7})
+
+	for (const hour of [8, 16]) {
+		const range = getDefaultPurchaseRange(new Date(2026, 9, 20, hour, 0, 0, 0))
+		const purchases = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+		assert.deepEqual(purchases.map(purchase => purchase.total), [1])
+	}
+})
+
+test('legacy UTC-labelled server datetime keeps Purchase wall-clock components locally', async () => {
+	const repository = new ProductCatalogLocalRepository({indexedDbClient: new FakeIndexedDbClient()})
+	await repository.mergeServerPurchases([{
+		id: 42,
+		userId: 7,
+		purchasedAt: '2026-10-20T12:00:00.000Z',
+		paymentType: 'cash',
+		total: 42,
+		items: []
+	}], {userId: 7})
+	const range = getDefaultPurchaseRange(new Date(2026, 9, 20, 8, 0, 0, 0))
+	const purchases = await repository.getPurchasesByRange(7, range.dateFrom, range.dateTo)
+	assert.deepEqual(purchases.map(purchase => purchase.total), [42])
+})
+
+test('createMerchant persists pending Merchant locally and queues durable creation', async () => {
+	const indexedDbClient = new FakeIndexedDbClient()
+	const repository = new ProductCatalogLocalRepository({indexedDbClient})
+	const operations = []
+	const service = new ProductCatalogApiService(repository, {
+		enqueueMutation: async operation => operations.push(operation)
+	})
+
+	const merchant = await service.createMerchant('Магазин офлайн')
+	const restoredRepository = new ProductCatalogLocalRepository({indexedDbClient})
+	const restored = await restoredRepository.getMerchants()
+
+	assert.match(String(merchant.id), /^local-merchant-/)
+	assert.equal(merchant.syncStatus, 'pending_create')
+	assert.equal(restored[0].name, 'Магазин офлайн')
+	assert.deepEqual(operations, [{
+		entityType: 'merchant',
+		entityLocalId: merchant.id,
+		action: 'create',
+		reason: 'merchant-create'
+	}])
 })
 
 test('clean local hydration stores complete server purchases and feeds sidebar projection', async () => {

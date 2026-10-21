@@ -8,10 +8,12 @@ import {normalizeQuantity} from '../hbapp/services/ProductUnitService.js'
 class FakeIndexedDbClient {
 	constructor() {
 		this.stores = new Map([
+			['meta', new Map()],
 			['productCategories', new Map()],
 			['products', new Map()],
 			['merchants', new Map()],
 			['purchases', new Map()],
+			['receiptDrafts', new Map()],
 			['purchaseWindows', new Map()],
 			['syncQueue', new Map()]
 		])
@@ -26,7 +28,9 @@ class FakeIndexedDbClient {
 	}
 
 	async put(storeName, value) {
-		const key = value.id ?? value.windowKey ?? value.operationId
+		const key = storeName === 'meta'
+			? value.key
+			: (storeName === 'receiptDrafts' ? value.localId : (value.id ?? value.windowKey ?? value.operationId))
 		this.stores.get(storeName).set(key, value)
 		return key
 	}
@@ -71,6 +75,36 @@ test('created local product is immediately searchable for purchase flow', async 
 	assert.equal(found[0].id, product.id)
 	assert.equal(found[0].syncStatus, 'pending_create')
 	assert.deepEqual(found[0].allowedUnits, ['g', 'kg'])
+})
+
+test('Merchant server id replacement updates purchases, XML drafts and confirmed mappings', async () => {
+	const repository = makeRepository()
+	const merchant = await repository.saveMerchant({name: 'Магазин біля дому'}, {syncStatus: 'pending_create'})
+	const purchase = await repository.savePurchase({
+		merchantId: merchant.id,
+		merchantName: merchant.name,
+		purchasedAt: '2026-10-20T12:00:00',
+		paymentType: 'cash',
+		total: 25,
+		items: []
+	}, {syncStatus: 'pending_create'})
+	await repository.indexedDbClient.put('receiptDrafts', {
+		localId: 'receipt-1',
+		xmlDraft: {review: {merchantId: merchant.id}}
+	})
+	await repository.indexedDbClient.put('meta', {
+		key: 'xml-merchant-map:7:tax:123',
+		type: 'xml-merchant-map',
+		merchantId: merchant.id,
+		merchantName: merchant.name
+	})
+
+	await repository.replaceMerchantLocalId(merchant.id, {id: 42, name: merchant.name, status: 'active'})
+
+	assert.equal((await repository.getPurchase(purchase.id)).merchantId, 42)
+	assert.equal((await repository.indexedDbClient.get('receiptDrafts', 'receipt-1')).xmlDraft.review.merchantId, 42)
+	assert.equal((await repository.indexedDbClient.get('meta', 'xml-merchant-map:7:tax:123')).merchantId, 42)
+	assert.equal((await repository.getMerchants())[0].id, 42)
 })
 
 test('server GET merge preserves pending_create purchase and is idempotent across hydration', async () => {

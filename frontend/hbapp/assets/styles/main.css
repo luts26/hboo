@@ -7341,6 +7341,58 @@ textarea.planing-textarea {
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.merchant-select-row {
+	align-items: stretch;
+	display: flex;
+	gap: .45rem;
+	margin-top: .35rem;
+}
+
+.purchase-form-card .merchant-select-row select,
+.receipt-review-meta .merchant-select-row select {
+	flex: 1 1 auto;
+	margin-top: 0;
+	min-width: 0;
+	width: auto;
+}
+
+.merchant-new-action {
+	background: var(--hboo-surface);
+	border: 1px solid rgba(255,255,255,.65);
+	border-radius: var(--hboo-radius-sm);
+	box-shadow: var(--hboo-shadow-control);
+	color: var(--hboo-accent);
+	cursor: pointer;
+	font: inherit;
+	font-size: 10pt;
+	font-weight: 800;
+	min-height: 40px;
+	padding: .5rem .7rem;
+	white-space: nowrap;
+}
+
+.new-merchant-modal {
+	max-width: 420px;
+}
+
+.new-merchant-modal-body label {
+	display: block;
+}
+
+.new-merchant-modal-body input {
+	margin-top: .35rem;
+	width: 100%;
+}
+
+.new-merchant-existing {
+	background: var(--hboo-surface-subtle);
+	border-radius: var(--hboo-radius-sm);
+	color: var(--hboo-text);
+	font-size: 10pt;
+	margin-top: .75rem;
+	padding: .75rem;
+}
+
 .product-form-actions {
 	display: flex;
 	flex-wrap: wrap;
@@ -8311,6 +8363,14 @@ textarea.planing-textarea {
 	.receipt-review-meta,
 	.receipt-review-item-grid {
 		grid-template-columns: 1fr 1fr;
+	}
+
+	.merchant-select-row {
+		flex-wrap: wrap;
+	}
+
+	.merchant-new-action {
+		flex: 1 0 100%;
 	}
 
 	.receipt-review-suggestion {

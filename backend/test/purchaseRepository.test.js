@@ -10,6 +10,7 @@ test('findPurchases loads item rows for all returned purchases with one bulk ite
     pool.execute = async (sql, params) => {
         calls.push({sql, params});
         if (sql.includes('FROM purchase p')) {
+            assert.match(sql, /DATE_FORMAT\(p\.purchased_at, '%Y-%m-%dT%H:%i:%s'\) AS purchasedAt/);
             return [[
                 {id: 1, userId: 7, merchantName: 'Novus', purchasedAt: '2026-09-29 12:00:00', paymentType: 'bank', total: 100},
                 {id: 2, userId: 7, merchantName: 'АТБ', purchasedAt: '2026-09-28 12:00:00', paymentType: 'bank', total: 50}
@@ -67,13 +68,29 @@ test('findPurchases applies inclusive date range before loading selected item ro
 
     try {
         const purchases = await purchaseRepository.findPurchases(7, {
-            dateFrom: new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
-            dateTo: new Date(2026, 8, 30, 23, 59, 59, 999).getTime()
+            dateFrom: Date.parse('2026-08-31T21:00:00Z'),
+            dateTo: Date.parse('2026-09-30T20:59:59.999Z')
         });
 
         assert.equal(calls.length, 2);
         assert.equal(purchases.length, 1);
         assert.equal(purchases[0].items.length, 1);
+    } finally {
+        pool.execute = originalExecute;
+    }
+});
+
+test('findPurchases converts epoch boundaries to Kyiv wall time independently of process local time', async () => {
+    const originalExecute = pool.execute;
+    pool.execute = async (sql, params) => {
+        assert.deepEqual(params.slice(0, 3), [7, '2026-10-01 00:00:00', '2026-10-20 23:59:59']);
+        return [[]];
+    };
+    try {
+        await purchaseRepository.findPurchases(7, {
+            dateFrom: Date.parse('2026-09-30T21:00:00Z'),
+            dateTo: Date.parse('2026-10-20T20:59:59.999Z')
+        });
     } finally {
         pool.execute = originalExecute;
     }

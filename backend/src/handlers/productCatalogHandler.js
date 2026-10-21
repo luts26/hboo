@@ -1,13 +1,7 @@
 import productCatalogService from '../services/ProductCatalogService.js';
 import purchaseTransactionService from '../services/PurchaseTransactionService.js';
 import { sendJson } from '../http/response.js';
-
-function getDefaultPurchaseRange(now = new Date()) {
-    return {
-        dateFrom: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime(),
-        dateTo: now.getTime()
-    };
-}
+import {getDefaultPurchaseRange} from '../services/PurchaseDateTime.js';
 
 function getPurchaseRange(url) {
     const fallback = getDefaultPurchaseRange();

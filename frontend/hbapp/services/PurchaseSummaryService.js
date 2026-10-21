@@ -1,3 +1,5 @@
+import {parsePurchaseTime} from './PurchaseDateRange.js'
+
 const MONTH_LABELS = [
 	'January',
 	'February',
@@ -13,14 +15,9 @@ const MONTH_LABELS = [
 	'December'
 ]
 
-const parsePurchaseTime = value => {
-	const time = new Date(value).getTime()
-	return Number.isFinite(time) ? time : null
-}
-
 const getCurrentMonthPeriod = (now = new Date()) => ({
 	from: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime(),
-	to: now.getTime(),
+	to: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime(),
 	label: MONTH_LABELS[now.getMonth()]
 })
 

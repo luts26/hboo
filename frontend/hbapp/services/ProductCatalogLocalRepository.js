@@ -603,7 +603,7 @@ export default class ProductCatalogLocalRepository {
 			syncStatus: 'synced'
 		})
 
-		await this.indexedDbClient.transaction(['merchants', 'purchases'], 'readwrite', async ({getAll, put, delete: deleteRecord}) => {
+		await this.indexedDbClient.transaction(['merchants', 'purchases', 'receiptDrafts', 'meta'], 'readwrite', async ({getAll, put, delete: deleteRecord}) => {
 			await put('merchants', saved)
 			if (existing) await deleteRecord('merchants', localId)
 			const purchases = await getAll('purchases')
@@ -616,8 +616,25 @@ export default class ProductCatalogLocalRepository {
 					merchantName: saved.name
 				}))
 			}
+			const receipts = await getAll('receiptDrafts')
+			for (const receipt of receipts) {
+				if (String(receipt.xmlDraft?.review?.merchantId || '') !== String(localId)) continue
+				await put('receiptDrafts', {
+					...receipt,
+					xmlDraft: {
+						...receipt.xmlDraft,
+						review: {...receipt.xmlDraft.review, merchantId: saved.id}
+					},
+					updatedAt: nowIso()
+				})
+			}
+			const metadata = await getAll('meta')
+			for (const record of metadata) {
+				if (record.type !== 'xml-merchant-map' || String(record.merchantId || '') !== String(localId)) continue
+				await put('meta', {...record, merchantId: saved.id, merchantName: saved.name, updatedAt: nowIso()})
+			}
 		})
-		notifyProductCatalogChanged({entityType: 'merchant', action: 'replace-local-id'})
+		notifyProductCatalogChanged({entityType: 'merchant', action: 'replace-local-id', localId, serverId: saved.id})
 		return clone(saved)
 	}
 }

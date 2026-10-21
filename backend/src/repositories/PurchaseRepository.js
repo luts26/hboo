@@ -1,5 +1,6 @@
 import pool from '../database/mysql.js';
 import transactionRepository from './TransactionRepository.js';
+import {formatPurchaseRangeBoundary} from '../services/PurchaseDateTime.js';
 
 const purchaseFields = `
     p.id,
@@ -7,7 +8,7 @@ const purchaseFields = `
     p.client_mutation_id AS clientMutationId,
     p.merchant_id AS merchantId,
     m.name AS merchantName,
-    p.purchased_at AS purchasedAt,
+    DATE_FORMAT(p.purchased_at, '%Y-%m-%dT%H:%i:%s') AS purchasedAt,
     p.payment_type AS paymentType,
     p.transaction_provider AS transactionProvider,
     p.transaction_id AS transactionId,
@@ -35,20 +36,6 @@ const itemFields = `
     pi.updated_at AS updatedAt
 `;
 
-const toSqlDateTime = timestamp => {
-    const date = new Date(Number(timestamp));
-    const pad = value => String(value).padStart(2, '0');
-    return [
-        date.getFullYear(),
-        pad(date.getMonth() + 1),
-        pad(date.getDate())
-    ].join('-') + ' ' + [
-        pad(date.getHours()),
-        pad(date.getMinutes()),
-        pad(date.getSeconds())
-    ].join(':');
-};
-
 const isFiniteTimestamp = value => value !== null
     && value !== undefined
     && value !== ''
@@ -73,7 +60,7 @@ class PurchaseRepository {
               AND p.purchased_at <= ?
             ORDER BY p.purchased_at DESC, p.id DESC
             LIMIT ?
-        `, [userId, toSqlDateTime(fromTime), toSqlDateTime(toTime), Number(limit)]);
+        `, [userId, formatPurchaseRangeBoundary(fromTime), formatPurchaseRangeBoundary(toTime), Number(limit)]);
 
         await this.attachItems(rows);
         return rows;

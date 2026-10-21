@@ -106,6 +106,18 @@ test('creates cash purchase without merchant or transaction and recalculates tot
     assert.equal(purchase.total, 325.42);
     assert.equal(purchase.items.length, 3);
     assert.equal(purchase.items[2].productStatus, 'disabled');
+    assert.equal(purchase.purchasedAt, '2026-09-28 12:00:00');
+});
+
+test('rejects invalid or timezone-dependent Purchase datetimes', async () => {
+    const service = makeService();
+    const base = {
+        payment_type: 'cash',
+        items: [{product_id: 10, quantity: 1, unit: 'kg', total: 20}]
+    };
+    await assert.rejects(() => service.createPurchase(1, {...base, purchased_at: '2026-02-29T12:00:00'}), /valid local datetime/);
+    await assert.rejects(() => service.createPurchase(1, {...base, purchased_at: 'October 20, 2026 12:00'}), /valid local datetime/);
+    await assert.rejects(() => service.createPurchase(1, {...base, purchased_at: '2026-10-20T12:00:00+03:00'}), /valid local datetime/);
 });
 
 test('passes client mutation id so repository can make purchase create idempotent', async () => {

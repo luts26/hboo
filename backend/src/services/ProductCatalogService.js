@@ -7,6 +7,7 @@ import {
     isUnitAllowed,
     isValidMeasurementType
 } from './ProductUnitService.js';
+import {parsePurchaseDateTime} from './PurchaseDateTime.js';
 
 const PAYMENT_TYPES = ['cash', 'bank', 'other'];
 const STATUSES = ['active', 'disabled'];
@@ -401,15 +402,9 @@ class ProductCatalogService {
     }
 
     requireDateTime(value, field) {
-        if (value instanceof Date && !Number.isNaN(value.getTime())) {
-            return value.toISOString().slice(0, 19).replace('T', ' ');
-        }
-
-        const text = String(value || '').trim();
-        if (!text) throw this.validationError(`${field} is required`);
-        const date = new Date(text);
-        if (Number.isNaN(date.getTime())) throw this.validationError(`${field} must be a valid date`);
-        return date.toISOString().slice(0, 19).replace('T', ' ');
+        const dateTime = parsePurchaseDateTime(value);
+        if (!dateTime) throw this.validationError(`${field} must be a valid local datetime`);
+        return dateTime;
     }
 
     requirePositiveDecimal(value, field) {
@@ -440,8 +435,7 @@ class ProductCatalogService {
 
     formatDateTime(value) {
         if (!value) return null;
-        if (value instanceof Date) return value.toISOString();
-        return value;
+        return parsePurchaseDateTime(value);
     }
 
     validationError(message) {

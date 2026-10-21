@@ -25,6 +25,7 @@ class MemoryStorage {
 class FakeIndexedDbClient {
 	constructor() {
 		this.stores = new Map([
+			['meta', new Map()],
 			['productCategories', new Map()],
 			['products', new Map()],
 			['merchants', new Map()],
@@ -87,7 +88,7 @@ test('pending purchase create syncs once and keeps localId after server id assig
 	api.post = async (path, payload) => {
 		posts += 1
 		assert.equal(path, '/purchases')
-		return {...payload, id: 42, merchantName: 'ATB', total: 254.58, items: []}
+		return {...payload, id: 42, merchantName: 'ATB', purchasedAt: payload.purchased_at, total: 254.58, items: []}
 	}
 
 	try {
@@ -107,6 +108,50 @@ test('pending purchase create syncs once and keeps localId after server id assig
 		assert.equal(purchases.length, 1)
 		assert.equal(purchases[0].id, purchase.id)
 		assert.equal(purchases[0].serverId, 42)
+		assert.equal(purchases[0].purchasedAt, '2026-09-28T12:00:00')
+		const visible = await repository.getPurchasesByRange(null,
+			new Date(2026, 8, 1, 0, 0, 0, 0).getTime(),
+			new Date(2026, 8, 28, 23, 59, 59, 999).getTime())
+		assert.equal(visible.length, 1)
+		assert.equal((await queue.getPendingOperations()).length, 0)
+	} finally {
+		api.post = originalPost
+	}
+})
+
+test('pending Merchant syncs before its dependent Purchase and replaces the local reference', async () => {
+	const {repository, syncService, queue} = setup()
+	const calls = []
+	const originalPost = api.post
+	api.post = async (path, payload) => {
+		calls.push(path)
+		if (path === '/merchants') return {id: 21, name: payload.name, status: 'active'}
+		if (path === '/purchases') {
+			assert.equal(payload.merchant_id, 21)
+			return {...payload, id: 51, merchantId: 21, merchantName: 'Магазин офлайн', purchasedAt: payload.purchased_at, total: 25, items: []}
+		}
+		throw new Error(`Unexpected ${path}`)
+	}
+
+	try {
+		const merchant = await repository.saveMerchant({name: 'Магазин офлайн'}, {syncStatus: 'pending_create'})
+		const purchase = await repository.savePurchase({
+			merchantId: merchant.id,
+			merchantName: merchant.name,
+			purchasedAt: '2026-10-20T12:00:00',
+			paymentType: 'cash',
+			total: 25,
+			items: []
+		}, {syncStatus: 'pending_create'})
+		await queue.enqueue({entityType: 'purchase', entityLocalId: purchase.id, action: 'create'})
+		await queue.enqueue({entityType: 'merchant', entityLocalId: merchant.id, action: 'create'})
+
+		await syncService.processQueue({force: true})
+
+		assert.deepEqual(calls, ['/merchants', '/purchases'])
+		assert.equal((await repository.getPurchase(purchase.id)).merchantId, 21)
+		assert.equal((await repository.getPurchase(purchase.id)).serverId, 51)
+		assert.equal((await repository.getPurchase(purchase.id)).purchasedAt, '2026-10-20T12:00:00')
 		assert.equal((await queue.getPendingOperations()).length, 0)
 	} finally {
 		api.post = originalPost

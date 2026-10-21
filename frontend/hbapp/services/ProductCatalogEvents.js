@@ -4,6 +4,7 @@ const PRODUCT_CATALOG_CHANGED_EVENT = 'hboo:product-catalog-changed'
 
 const notifyProductCatalogChanged = (detail = {}) => {
 	const payload = {
+		...detail,
 		entityType: detail.entityType || 'catalog',
 		action: detail.action || 'change',
 		timestamp: Date.now()
